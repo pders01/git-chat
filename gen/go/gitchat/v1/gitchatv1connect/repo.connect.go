@@ -44,6 +44,8 @@ const (
 	RepoServiceGetFileProcedure = "/gitchat.v1.RepoService/GetFile"
 	// RepoServiceListCommitsProcedure is the fully-qualified name of the RepoService's ListCommits RPC.
 	RepoServiceListCommitsProcedure = "/gitchat.v1.RepoService/ListCommits"
+	// RepoServiceGetBlameProcedure is the fully-qualified name of the RepoService's GetBlame RPC.
+	RepoServiceGetBlameProcedure = "/gitchat.v1.RepoService/GetBlame"
 	// RepoServiceGetDiffProcedure is the fully-qualified name of the RepoService's GetDiff RPC.
 	RepoServiceGetDiffProcedure = "/gitchat.v1.RepoService/GetDiff"
 )
@@ -69,6 +71,8 @@ type RepoServiceClient interface {
 	// ListCommits returns recent commits on a branch, newest first.
 	// Used by the commit-log view (third tab alongside chat and browse).
 	ListCommits(context.Context, *connect.Request[v1.ListCommitsRequest]) (*connect.Response[v1.ListCommitsResponse], error)
+	// GetBlame returns per-line author attribution for a file at a given ref.
+	GetBlame(context.Context, *connect.Request[v1.GetBlameRequest]) (*connect.Response[v1.GetBlameResponse], error)
 	// GetDiff returns a unified diff for a single file between two refs.
 	// Introduced in M4 as the backend for chat-embedded diff primitives:
 	// the LLM emits `[[diff from=X to=Y path=Z]]` markers in its prose,
@@ -122,6 +126,12 @@ func NewRepoServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(repoServiceMethods.ByName("ListCommits")),
 			connect.WithClientOptions(opts...),
 		),
+		getBlame: connect.NewClient[v1.GetBlameRequest, v1.GetBlameResponse](
+			httpClient,
+			baseURL+RepoServiceGetBlameProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("GetBlame")),
+			connect.WithClientOptions(opts...),
+		),
 		getDiff: connect.NewClient[v1.GetDiffRequest, v1.GetDiffResponse](
 			httpClient,
 			baseURL+RepoServiceGetDiffProcedure,
@@ -138,6 +148,7 @@ type repoServiceClient struct {
 	listTree     *connect.Client[v1.ListTreeRequest, v1.ListTreeResponse]
 	getFile      *connect.Client[v1.GetFileRequest, v1.GetFileResponse]
 	listCommits  *connect.Client[v1.ListCommitsRequest, v1.ListCommitsResponse]
+	getBlame     *connect.Client[v1.GetBlameRequest, v1.GetBlameResponse]
 	getDiff      *connect.Client[v1.GetDiffRequest, v1.GetDiffResponse]
 }
 
@@ -166,6 +177,11 @@ func (c *repoServiceClient) ListCommits(ctx context.Context, req *connect.Reques
 	return c.listCommits.CallUnary(ctx, req)
 }
 
+// GetBlame calls gitchat.v1.RepoService.GetBlame.
+func (c *repoServiceClient) GetBlame(ctx context.Context, req *connect.Request[v1.GetBlameRequest]) (*connect.Response[v1.GetBlameResponse], error) {
+	return c.getBlame.CallUnary(ctx, req)
+}
+
 // GetDiff calls gitchat.v1.RepoService.GetDiff.
 func (c *repoServiceClient) GetDiff(ctx context.Context, req *connect.Request[v1.GetDiffRequest]) (*connect.Response[v1.GetDiffResponse], error) {
 	return c.getDiff.CallUnary(ctx, req)
@@ -192,6 +208,8 @@ type RepoServiceHandler interface {
 	// ListCommits returns recent commits on a branch, newest first.
 	// Used by the commit-log view (third tab alongside chat and browse).
 	ListCommits(context.Context, *connect.Request[v1.ListCommitsRequest]) (*connect.Response[v1.ListCommitsResponse], error)
+	// GetBlame returns per-line author attribution for a file at a given ref.
+	GetBlame(context.Context, *connect.Request[v1.GetBlameRequest]) (*connect.Response[v1.GetBlameResponse], error)
 	// GetDiff returns a unified diff for a single file between two refs.
 	// Introduced in M4 as the backend for chat-embedded diff primitives:
 	// the LLM emits `[[diff from=X to=Y path=Z]]` markers in its prose,
@@ -241,6 +259,12 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(repoServiceMethods.ByName("ListCommits")),
 		connect.WithHandlerOptions(opts...),
 	)
+	repoServiceGetBlameHandler := connect.NewUnaryHandler(
+		RepoServiceGetBlameProcedure,
+		svc.GetBlame,
+		connect.WithSchema(repoServiceMethods.ByName("GetBlame")),
+		connect.WithHandlerOptions(opts...),
+	)
 	repoServiceGetDiffHandler := connect.NewUnaryHandler(
 		RepoServiceGetDiffProcedure,
 		svc.GetDiff,
@@ -259,6 +283,8 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 			repoServiceGetFileHandler.ServeHTTP(w, r)
 		case RepoServiceListCommitsProcedure:
 			repoServiceListCommitsHandler.ServeHTTP(w, r)
+		case RepoServiceGetBlameProcedure:
+			repoServiceGetBlameHandler.ServeHTTP(w, r)
 		case RepoServiceGetDiffProcedure:
 			repoServiceGetDiffHandler.ServeHTTP(w, r)
 		default:
@@ -288,6 +314,10 @@ func (UnimplementedRepoServiceHandler) GetFile(context.Context, *connect.Request
 
 func (UnimplementedRepoServiceHandler) ListCommits(context.Context, *connect.Request[v1.ListCommitsRequest]) (*connect.Response[v1.ListCommitsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.ListCommits is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) GetBlame(context.Context, *connect.Request[v1.GetBlameRequest]) (*connect.Response[v1.GetBlameResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.GetBlame is not implemented"))
 }
 
 func (UnimplementedRepoServiceHandler) GetDiff(context.Context, *connect.Request[v1.GetDiffRequest]) (*connect.Response[v1.GetDiffResponse], error) {

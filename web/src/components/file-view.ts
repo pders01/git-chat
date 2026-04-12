@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
 import { copyText } from "../lib/clipboard.js";
+import type { BlameLine } from "../gen/gitchat/v1/repo_pb.js";
 import type { GetFileResponse } from "../gen/gitchat/v1/repo_pb.js";
 
 // Shiki + its grammars are ~300 kB gzipped. Import lazily so the initial
@@ -33,6 +34,8 @@ export class GcFileView extends LitElement {
   @property({ type: String }) repoId = "";
   @property({ type: String }) path = "";
   @property({ type: String }) branch = "";
+  @state() private showBlame = false;
+  @state() private blameLines: BlameLine[] = [];
 
   @state() private view: ViewState = { phase: "empty" };
 
@@ -104,13 +107,19 @@ export class GcFileView extends LitElement {
       case "plain":
         return html`
           ${this.renderHeader(this.view.file)}
-          <pre class="plain">${this.view.text}</pre>
+          <div class="code-with-blame">
+            ${this.showBlame ? this.renderBlameGutter() : nothing}
+            <pre class="plain">${this.view.text}</pre>
+          </div>
           ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
         `;
       case "highlighted":
         return html`
           ${this.renderHeader(this.view.file)}
-          <div class="shiki-wrap">${unsafeHTML(this.view.html)}</div>
+          <div class="code-with-blame">
+            ${this.showBlame ? this.renderBlameGutter() : nothing}
+            <div class="shiki-wrap">${unsafeHTML(this.view.html)}</div>
+          </div>
           ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
         `;
     }
@@ -130,7 +139,14 @@ export class GcFileView extends LitElement {
           </span>
         </div>
         <button
-          class="ask-btn"
+          class="hd-btn ${this.showBlame ? "active" : ""}"
+          @click=${() => this.toggleBlame()}
+          aria-label="Toggle git blame"
+        >
+          blame
+        </button>
+        <button
+          class="hd-btn"
           @click=${() => this.askAboutFile()}
           aria-label="Ask about this file in chat"
         >
@@ -138,6 +154,41 @@ export class GcFileView extends LitElement {
         </button>
       </div>
     `;
+  }
+
+  private renderBlameGutter() {
+    return html`
+      <div class="blame-gutter">
+        ${this.blameLines.map(
+          (l, i) => {
+            // Only show author+SHA when it changes from the previous line.
+            const prev = i > 0 ? this.blameLines[i - 1] : null;
+            const showMeta = !prev || prev.commitSha !== l.commitSha;
+            return html`<div class="blame-line" title="${l.authorName} · ${l.commitSha}">
+              ${showMeta
+                ? html`<span class="blame-sha">${l.commitSha}</span><span class="blame-author">${l.authorName.slice(0, 12)}</span>`
+                : nothing}
+            </div>`;
+          },
+        )}
+      </div>
+    `;
+  }
+
+  private async toggleBlame() {
+    this.showBlame = !this.showBlame;
+    if (this.showBlame && this.blameLines.length === 0) {
+      try {
+        const resp = await repoClient.getBlame({
+          repoId: this.repoId,
+          path: this.path,
+        });
+        this.blameLines = resp.lines;
+      } catch {
+        this.blameLines = [];
+        this.showBlame = false;
+      }
+    }
   }
 
   private askAboutFile() {
@@ -232,6 +283,57 @@ export class GcFileView extends LitElement {
       flex: 1;
       min-width: 0;
       gap: var(--space-3);
+    }
+    .code-with-blame {
+      display: flex;
+      overflow: auto;
+    }
+    .blame-gutter {
+      flex-shrink: 0;
+      width: 180px;
+      border-right: 1px solid var(--surface-4);
+      font-size: 0.68rem;
+      line-height: 1.5;
+      padding: var(--space-4) var(--space-2);
+      background: var(--surface-0);
+      overflow: hidden;
+    }
+    .blame-line {
+      height: 1.5em;
+      display: flex;
+      gap: var(--space-2);
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .blame-sha {
+      color: var(--accent-user);
+      font-variant-numeric: tabular-nums;
+    }
+    .blame-author {
+      opacity: 0.5;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hd-btn {
+      flex-shrink: 0;
+      padding: var(--space-1) var(--space-3);
+      background: transparent;
+      color: var(--text);
+      border: 1px solid transparent;
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+      opacity: 0.5;
+    }
+    .hd-btn:hover {
+      opacity: 0.9;
+      border-color: var(--border-default);
+    }
+    .hd-btn.active {
+      opacity: 1;
+      background: var(--surface-2);
+      border-color: var(--border-default);
     }
     .ask-btn {
       flex-shrink: 0;

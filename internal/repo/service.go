@@ -86,6 +86,40 @@ func (s *Service) GetFile(
 	return connect.NewResponse(resp), nil
 }
 
+func (s *Service) GetBlame(
+	_ context.Context,
+	req *connect.Request[gitchatv1.GetBlameRequest],
+) (*connect.Response[gitchatv1.GetBlameResponse], error) {
+	entry := s.lookup(req.Msg.RepoId)
+	if entry == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
+	}
+	lines, err := entry.GetBlame(req.Msg.Ref, req.Msg.Path)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&gitchatv1.GetBlameResponse{Lines: lines}), nil
+}
+
+func (s *Service) CompareBranches(
+	_ context.Context,
+	req *connect.Request[gitchatv1.CompareBranchesRequest],
+) (*connect.Response[gitchatv1.CompareBranchesResponse], error) {
+	entry := s.lookup(req.Msg.RepoId)
+	if entry == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
+	}
+	files, totalAdd, totalDel, err := entry.CompareBranches(req.Msg.BaseRef, req.Msg.HeadRef)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&gitchatv1.CompareBranchesResponse{
+		Files:          files,
+		TotalAdditions: totalAdd,
+		TotalDeletions: totalDel,
+	}), nil
+}
+
 func (s *Service) ListCommits(
 	_ context.Context,
 	req *connect.Request[gitchatv1.ListCommitsRequest],

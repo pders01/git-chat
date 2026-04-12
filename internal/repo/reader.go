@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
@@ -280,6 +281,29 @@ func commitDiffStats(c *object.Commit) *diffStats {
 		s.deletions += st.Deletion
 	}
 	return s
+}
+
+// GetBlame returns per-line author attribution for a file.
+func (e *Entry) GetBlame(ref, path string) ([]*gitchatv1.BlameLine, error) {
+	commit, _, err := e.resolveCommit(ref)
+	if err != nil {
+		return nil, err
+	}
+	result, err := git.Blame(commit, path)
+	if err != nil {
+		return nil, fmt.Errorf("blame %q: %w", path, err)
+	}
+	out := make([]*gitchatv1.BlameLine, 0, len(result.Lines))
+	for _, l := range result.Lines {
+		out = append(out, &gitchatv1.BlameLine{
+			Text:        l.Text,
+			AuthorName:  l.AuthorName,
+			AuthorEmail: l.Author,
+			Date:        l.Date.Unix(),
+			CommitSha:   l.Hash.String()[:7],
+		})
+	}
+	return out, nil
 }
 
 // GetDiff returns a unified-diff patch for either a single file or an

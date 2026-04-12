@@ -36,6 +36,9 @@ service RepoService {
   // Used by the commit-log view (third tab alongside chat and browse).
   rpc ListCommits(ListCommitsRequest) returns (ListCommitsResponse);
 
+  // GetBlame returns per-line author attribution for a file at a given ref.
+  rpc GetBlame(GetBlameRequest) returns (GetBlameResponse);
+
   // GetDiff returns a unified diff for a single file between two refs.
   // Introduced in M4 as the backend for chat-embedded diff primitives:
   // the LLM emits `[[diff from=X to=Y path=Z]]` markers in its prose,
@@ -146,6 +149,25 @@ message CommitEntry {
   int32  files_changed = 7;   // number of files touched
   int32  additions = 8;       // total lines added
   int32  deletions = 9;       // total lines removed
+}
+
+// ─── GetBlame ───────────────────────────────────────────────────────────
+message GetBlameRequest {
+  string repo_id = 1;
+  string ref = 2;      // empty = HEAD
+  string path = 3;
+}
+
+message GetBlameResponse {
+  repeated BlameLine lines = 1;
+}
+
+message BlameLine {
+  string text = 1;
+  string author_name = 2;
+  string author_email = 3;
+  int64  date = 4;          // unix seconds
+  string commit_sha = 5;    // short SHA of the introducing commit
 }
 
 // ─── GetDiff ────────────────────────────────────────────────────────────
