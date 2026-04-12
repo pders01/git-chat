@@ -595,7 +595,7 @@ make proto      # buf generate > gen/go/, gen/ts/
 make web        # cd web && bun install && bun run build
 make build      # go build -tags netgo -ldflags "-s -w" ./cmd/git-chat
 make dev        # buf generate + go run + vite dev in parallel
-make check      # go vet + go test + tsc --noEmit
+make check      # go vet + go test + tsc + oxlint + oxfmt
 make test-e2e   # 24 Playwright tests (desktop + mobile)
 make all        # frontend + Go binary
 ```
