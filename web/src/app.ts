@@ -54,6 +54,7 @@ export class GcApp extends LitElement {
     this.addEventListener("gc:ask-about", this.onAskAbout as EventListener);
     this.addEventListener("gc:view-commit", this.onViewCommit as EventListener);
     this.addEventListener("gc:open-file", this.onOpenFile as EventListener);
+    this.addEventListener("gc:view-file-history", this.onViewFileHistory as EventListener);
     await this.boot();
   }
 
@@ -64,6 +65,7 @@ export class GcApp extends LitElement {
     this.removeEventListener("gc:ask-about", this.onAskAbout as EventListener);
     this.removeEventListener("gc:view-commit", this.onViewCommit as EventListener);
     this.removeEventListener("gc:open-file", this.onOpenFile as EventListener);
+    this.removeEventListener("gc:view-file-history", this.onViewFileHistory as EventListener);
     if (this.searchTimer) clearTimeout(this.searchTimer);
     for (const t of this.configDebounceTimers.values()) clearTimeout(t);
     this.configDebounceTimers.clear();
@@ -105,6 +107,19 @@ export class GcApp extends LitElement {
       const browser = this.renderRoot.querySelector("gc-repo-browser");
       browser?.dispatchEvent(
         new CustomEvent("gc:open-file", { detail: { path: e.detail.path } }),
+      );
+    });
+  };
+
+  // Bridge: file-view "history" button dispatches gc:view-file-history
+  // to switch to log tab and filter by file path.
+  private onViewFileHistory = (e: CustomEvent<{ path: string }>) => {
+    if (this.state.phase !== "authenticated") return;
+    this.switchTab("log");
+    requestAnimationFrame(() => {
+      const log = this.renderRoot.querySelector("gc-commit-log");
+      log?.dispatchEvent(
+        new CustomEvent("gc:set-filter-path", { detail: { path: e.detail.path } }),
       );
     });
   };
