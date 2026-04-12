@@ -539,7 +539,7 @@ git-chat/
 │   └── ts/
 ├── web/                         # Lit SPA (consumed by embed.FS at build time)
 │   ├── src/
-│   │   ├── app.ts               # shell: tabs, routing, search, settings, shortcuts, theme
+│   │   ├── app.ts               # shell: tabs, routing, search, command palette, settings, shortcuts, theme
 │   │   ├── components/
 │   │   │   ├── chat-view.ts     # streaming chat, @-mentions, KB hits, token counter, dashboard
 │   │   │   ├── repo-browser.ts  # expandable file tree + file viewer + focus toggle
@@ -568,6 +568,7 @@ git-chat/
 ├── buf.gen.yaml
 ├── Makefile
 ├── go.mod
+├── LICENSE
 └── README.md
 ```
 
@@ -593,7 +594,7 @@ CI enforces freshness with `make proto && git diff --exit-code gen/`.
 ```
 make proto      # buf generate > gen/go/, gen/ts/
 make web        # cd web && bun install && bun run build
-make build      # go build -tags netgo -ldflags "-s -w" ./cmd/git-chat
+make build      # CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" ./cmd/git-chat
 make dev        # buf generate + go run + vite dev in parallel
 make check      # go vet + go test + tsc + oxlint + oxfmt
 make test-e2e   # 24 Playwright tests (desktop + mobile)

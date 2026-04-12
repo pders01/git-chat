@@ -37,7 +37,7 @@ git chat add-key paul@laptop < ~/.ssh/id_ed25519.pub
 - **Working tree changes** -- staged, unstaged, untracked files with per-file diff viewer
 - **3D code city** -- Three.js visualization of file churn (commit frequency, additions/deletions, file size mapped to building dimensions), squarified treemap layout, time slider
 - **File history** -- commits filtered to a single file path
-- **Side-by-side diff** -- word-level diff highlighting via Shiki diff grammar
+- **Side-by-side diff** -- LCS-based word-level diff highlighting via Shiki diff grammar
 - **Commit search** -- filter by message or author
 - **Branch/tag switching** -- global ref selector in header (branches + tags)
 - **Session pinning** -- star/unstar important sessions
@@ -122,8 +122,9 @@ All `GITCHAT_*` variables are runtime-configurable via the settings UI. Values s
 
 | Key | Action |
 |-----|--------|
-| `Cmd+K` / `Ctrl+K` | New chat |
-| `Cmd+1-3` / `Ctrl+1-3` | Switch tabs |
+| `Cmd+K` / `Ctrl+K` | Command palette |
+| `Cmd+F` / `Ctrl+F` | Search |
+| `Cmd+1-4` / `Ctrl+1-4` | Switch tabs (chat, browse, log, kb) |
 | `Cmd+\` / `Ctrl+\` | Toggle focus mode |
 | `/` | Focus composer |
 | `Esc` | Blur / close modal |
@@ -137,10 +138,10 @@ All `GITCHAT_*` variables are runtime-configurable via the settings UI. Values s
 
 ```bash
 make dev          # vite HMR on :5173 + Go server on :8080
-make check        # go vet + go test + tsc --noEmit
+make check        # go vet + go test + tsc + oxlint + oxfmt
 make test-e2e     # Playwright (desktop + mobile), 24 tests
 make proto        # buf generate
 make all          # frontend + Go binary
 ```
 
-Requirements: Go 1.24+, Bun 1.2+, Chromium (for Playwright).
+Requirements: Go 1.25+, Bun 1.2+, Chromium (for Playwright).
