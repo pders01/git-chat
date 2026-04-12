@@ -28,6 +28,7 @@ type SessionRow struct {
 	CreatedAt    int64
 	UpdatedAt    int64
 	MessageCount int
+	Pinned       bool
 }
 
 // MessageRow is the DB-facing shape of a single chat message.
@@ -68,21 +69,25 @@ func (d *DB) CreateSession(ctx context.Context, id, principal, repoID, title str
 func (d *DB) GetSession(ctx context.Context, principal, id string) (*SessionRow, error) {
 	row := d.QueryRowContext(ctx, `
         SELECT s.id, s.repo_id, s.principal, s.title, s.created_at, s.updated_at,
-               (SELECT COUNT(*) FROM chat_message m WHERE m.session_id = s.id)
+               (SELECT COUNT(*) FROM chat_message m WHERE m.session_id = s.id),
+               s.pinned
         FROM chat_session s
         WHERE s.id = ? AND s.principal = ?`,
 		id, principal)
 	s := &SessionRow{}
-	if err := row.Scan(&s.ID, &s.RepoID, &s.Principal, &s.Title, &s.CreatedAt, &s.UpdatedAt, &s.MessageCount); err != nil {
+	var pinned int
+	if err := row.Scan(&s.ID, &s.RepoID, &s.Principal, &s.Title, &s.CreatedAt, &s.UpdatedAt, &s.MessageCount, &pinned); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
+	s.Pinned = pinned != 0
 	return s, nil
 }
 
-// ListSessions returns sessions for (principal, repoID), newest first.
+// ListSessions returns sessions for (principal, repoID). Pinned sessions
+// sort first; within each group, newest first.
 // Uses a LEFT JOIN for message count (was N+1 correlated subquery).
 // Limit 0 means 100 (default). Offset for pagination.
 func (d *DB) ListSessions(ctx context.Context, principal, repoID string, limit, offset int) ([]*SessionRow, error) {
@@ -92,12 +97,13 @@ func (d *DB) ListSessions(ctx context.Context, principal, repoID string, limit, 
 	rows, err := d.QueryContext(ctx, `
         SELECT s.id, s.repo_id, s.principal, s.title,
                s.created_at, s.updated_at,
-               COUNT(m.id) AS msg_count
+               COUNT(m.id) AS msg_count,
+               s.pinned
         FROM chat_session s
         LEFT JOIN chat_message m ON m.session_id = s.id
         WHERE s.principal = ? AND s.repo_id = ?
         GROUP BY s.id
-        ORDER BY s.updated_at DESC
+        ORDER BY s.pinned DESC, s.updated_at DESC
         LIMIT ? OFFSET ?`,
 		principal, repoID, limit, offset)
 	if err != nil {
@@ -107,9 +113,11 @@ func (d *DB) ListSessions(ctx context.Context, principal, repoID string, limit, 
 	var out []*SessionRow
 	for rows.Next() {
 		s := &SessionRow{}
-		if err := rows.Scan(&s.ID, &s.RepoID, &s.Principal, &s.Title, &s.CreatedAt, &s.UpdatedAt, &s.MessageCount); err != nil {
+		var pinned int
+		if err := rows.Scan(&s.ID, &s.RepoID, &s.Principal, &s.Title, &s.CreatedAt, &s.UpdatedAt, &s.MessageCount, &pinned); err != nil {
 			return nil, err
 		}
+		s.Pinned = pinned != 0
 		out = append(out, s)
 	}
 	return out, rows.Err()
@@ -129,6 +137,30 @@ func (d *DB) TouchSession(ctx context.Context, id string) error {
 		`UPDATE chat_session SET updated_at = ? WHERE id = ?`,
 		time.Now().Unix(), id)
 	return err
+}
+
+// PinSession sets or clears the pinned flag on a session (principal-scoped).
+// Returns ErrNotFound if the row doesn't exist or belongs to a different
+// principal.
+func (d *DB) PinSession(ctx context.Context, principal, id string, pinned bool) error {
+	v := 0
+	if pinned {
+		v = 1
+	}
+	res, err := d.ExecContext(ctx,
+		`UPDATE chat_session SET pinned = ? WHERE id = ? AND principal = ?`,
+		v, id, principal)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteSession removes a session (principal-scoped). Messages cascade

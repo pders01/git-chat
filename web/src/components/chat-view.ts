@@ -305,6 +305,20 @@ export class GcChatView extends LitElement {
     URL.revokeObjectURL(url);
   }
 
+  private async pinSession(sessionId: string, pinned: boolean) {
+    if (this.state.phase !== "ready") return;
+    try {
+      await chatClient.pinSession({ sessionId, pinned });
+      const resp = await chatClient.listSessions({ repoId: this.repoId });
+      this.state = {
+        ...this.state,
+        sessions: resp.sessions,
+      };
+    } catch (e) {
+      this.error = messageOf(e);
+    }
+  }
+
   private async deleteSession(sessionId: string) {
     if (!confirm("Delete this session? This cannot be undone.")) return;
     try {
@@ -635,6 +649,15 @@ export class GcChatView extends LitElement {
                             : html`<span class="sess-title">${sess.title}</span>`}
                           <span class="sess-meta" aria-label="${sess.messageCount} messages">${sess.messageCount}</span>
                         </button>
+                        <button
+                          class="sess-pin ${sess.pinned ? "pinned" : ""}"
+                          @click=${(e: Event) => {
+                            e.stopPropagation();
+                            void this.pinSession(sess.id, !sess.pinned);
+                          }}
+                          aria-label=${sess.pinned ? "Unpin session" : "Pin session"}
+                          title=${sess.pinned ? "Unpin" : "Pin"}
+                        >${sess.pinned ? "\u2605" : "\u2606"}</button>
                         <button
                           class="sess-delete"
                           @click=${(e: Event) => {
@@ -1384,6 +1407,35 @@ export class GcChatView extends LitElement {
       50% {
         opacity: 0;
       }
+    }
+
+    /* ── Session pin ──────────────────────────────────────────────── */
+    .sess-pin {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      background: transparent;
+      color: var(--text);
+      border: none;
+      font-size: 0.8rem;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.1s;
+      border-radius: var(--radius-sm);
+      padding: 0;
+      line-height: 24px;
+      text-align: center;
+    }
+    .sess-pin.pinned {
+      opacity: 0.6;
+      color: var(--accent-user);
+    }
+    .sess-row:hover .sess-pin {
+      opacity: 0.4;
+    }
+    .sess-pin:hover {
+      opacity: 1 !important;
+      color: var(--accent-user);
     }
 
     /* ── Token info ───────────────────────────────────────────────── */

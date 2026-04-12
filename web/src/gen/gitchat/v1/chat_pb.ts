@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file gitchat/v1/chat.proto.
  */
 export const file_gitchat_v1_chat: GenFile = /*@__PURE__*/
-  fileDesc("ChVnaXRjaGF0L3YxL2NoYXQucHJvdG8SCmdpdGNoYXQudjEiPgoNU2VhcmNoUmVxdWVzdBINCgVxdWVyeRgBIAEoCRIPCgdyZXBvX2lkGAIgASgJEg0KBWxpbWl0GAMgASgFIjUKDlNlYXJjaFJlc3BvbnNlEiMKBGhpdHMYASADKAsyFS5naXRjaGF0LnYxLlNlYXJjaEhpdCJECglTZWFyY2hIaXQSDgoGc291cmNlGAEgASgJEgoKAmlkGAIgASgJEg0KBXRpdGxlGAMgASgJEgwKBGJvZHkYBCABKAkieAoLQ2hhdFNlc3Npb24SCgoCaWQYASABKAkSDwoHcmVwb19pZBgCIAEoCRINCgV0aXRsZRgDIAEoCRISCgpjcmVhdGVkX2F0GAQgASgDEhIKCnVwZGF0ZWRfYXQYBSABKAMSFQoNbWVzc2FnZV9jb3VudBgGIAEoBSK5AQoLQ2hhdE1lc3NhZ2USCgoCaWQYASABKAkSEgoKc2Vzc2lvbl9pZBgCIAEoCRIlCgRyb2xlGAMgASgOMhcuZ2l0Y2hhdC52MS5NZXNzYWdlUm9sZRIPCgdjb250ZW50GAQgASgJEg0KBW1vZGVsGAUgASgJEhYKDnRva2VuX2NvdW50X2luGAYgASgFEhcKD3Rva2VuX2NvdW50X291dBgHIAEoBRISCgpjcmVhdGVkX2F0GAggASgDIiYKE0xpc3RTZXNzaW9uc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCSJBChRMaXN0U2Vzc2lvbnNSZXNwb25zZRIpCghzZXNzaW9ucxgBIAMoCzIXLmdpdGNoYXQudjEuQ2hhdFNlc3Npb24iJwoRR2V0U2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCSJpChJHZXRTZXNzaW9uUmVzcG9uc2USKAoHc2Vzc2lvbhgBIAEoCzIXLmdpdGNoYXQudjEuQ2hhdFNlc3Npb24SKQoIbWVzc2FnZXMYAiADKAsyFy5naXRjaGF0LnYxLkNoYXRNZXNzYWdlIkcKElNlbmRNZXNzYWdlUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg8KB3JlcG9faWQYAiABKAkSDAoEdGV4dBgDIAEoCSJ7CgxNZXNzYWdlQ2h1bmsSDwoFdG9rZW4YASABKAlIABIgCgRkb25lGAIgASgLMhAuZ2l0Y2hhdC52MS5Eb25lSAASMAoIY2FyZF9oaXQYAyABKAsyHC5naXRjaGF0LnYxLktub3dsZWRnZUNhcmRIaXRIAEIGCgRraW5kInAKEEtub3dsZWRnZUNhcmRIaXQSDwoHY2FyZF9pZBgBIAEoCRIRCglhbnN3ZXJfbWQYAiABKAkSDQoFbW9kZWwYAyABKAkSEQoJaGl0X2NvdW50GAQgASgFEhYKDmNyZWF0ZWRfY29tbWl0GAUgASgJIqABCgREb25lEhIKCnNlc3Npb25faWQYASABKAkSFwoPdXNlcl9tZXNzYWdlX2lkGAIgASgJEhwKFGFzc2lzdGFudF9tZXNzYWdlX2lkGAMgASgJEhYKDnRva2VuX2NvdW50X2luGAQgASgFEhcKD3Rva2VuX2NvdW50X291dBgFIAEoBRINCgVtb2RlbBgGIAEoCRINCgVlcnJvchgHIAEoCSI5ChRSZW5hbWVTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJIhcKFVJlbmFtZVNlc3Npb25SZXNwb25zZSIqChREZWxldGVTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJIhcKFURlbGV0ZVNlc3Npb25SZXNwb25zZSp3CgtNZXNzYWdlUm9sZRIcChhNRVNTQUdFX1JPTEVfVU5TUEVDSUZJRUQQABIVChFNRVNTQUdFX1JPTEVfVVNFUhABEhoKFk1FU1NBR0VfUk9MRV9BU1NJU1RBTlQQAhIXChNNRVNTQUdFX1JPTEVfU1lTVEVNEAMy5QMKC0NoYXRTZXJ2aWNlElEKDExpc3RTZXNzaW9ucxIfLmdpdGNoYXQudjEuTGlzdFNlc3Npb25zUmVxdWVzdBogLmdpdGNoYXQudjEuTGlzdFNlc3Npb25zUmVzcG9uc2USSwoKR2V0U2Vzc2lvbhIdLmdpdGNoYXQudjEuR2V0U2Vzc2lvblJlcXVlc3QaHi5naXRjaGF0LnYxLkdldFNlc3Npb25SZXNwb25zZRJJCgtTZW5kTWVzc2FnZRIeLmdpdGNoYXQudjEuU2VuZE1lc3NhZ2VSZXF1ZXN0GhguZ2l0Y2hhdC52MS5NZXNzYWdlQ2h1bmswARI/CgZTZWFyY2gSGS5naXRjaGF0LnYxLlNlYXJjaFJlcXVlc3QaGi5naXRjaGF0LnYxLlNlYXJjaFJlc3BvbnNlElQKDVJlbmFtZVNlc3Npb24SIC5naXRjaGF0LnYxLlJlbmFtZVNlc3Npb25SZXF1ZXN0GiEuZ2l0Y2hhdC52MS5SZW5hbWVTZXNzaW9uUmVzcG9uc2USVAoNRGVsZXRlU2Vzc2lvbhIgLmdpdGNoYXQudjEuRGVsZXRlU2Vzc2lvblJlcXVlc3QaIS5naXRjaGF0LnYxLkRlbGV0ZVNlc3Npb25SZXNwb25zZUKdAQoOY29tLmdpdGNoYXQudjFCCUNoYXRQcm90b1ABWjdnaXRodWIuY29tL3BkZXJzMDEvZ2l0LWNoYXQvZ2VuL2dvL2dpdGNoYXQvdjE7Z2l0Y2hhdHYxogIDR1hYqgIKR2l0Y2hhdC5WMcoCCkdpdGNoYXRcVjHiAhZHaXRjaGF0XFYxXEdQQk1ldGFkYXRh6gILR2l0Y2hhdDo6VjFiBnByb3RvMw");
+  fileDesc("ChVnaXRjaGF0L3YxL2NoYXQucHJvdG8SCmdpdGNoYXQudjEiPgoNU2VhcmNoUmVxdWVzdBINCgVxdWVyeRgBIAEoCRIPCgdyZXBvX2lkGAIgASgJEg0KBWxpbWl0GAMgASgFIjUKDlNlYXJjaFJlc3BvbnNlEiMKBGhpdHMYASADKAsyFS5naXRjaGF0LnYxLlNlYXJjaEhpdCJECglTZWFyY2hIaXQSDgoGc291cmNlGAEgASgJEgoKAmlkGAIgASgJEg0KBXRpdGxlGAMgASgJEgwKBGJvZHkYBCABKAkiiAEKC0NoYXRTZXNzaW9uEgoKAmlkGAEgASgJEg8KB3JlcG9faWQYAiABKAkSDQoFdGl0bGUYAyABKAkSEgoKY3JlYXRlZF9hdBgEIAEoAxISCgp1cGRhdGVkX2F0GAUgASgDEhUKDW1lc3NhZ2VfY291bnQYBiABKAUSDgoGcGlubmVkGAcgASgIIrkBCgtDaGF0TWVzc2FnZRIKCgJpZBgBIAEoCRISCgpzZXNzaW9uX2lkGAIgASgJEiUKBHJvbGUYAyABKA4yFy5naXRjaGF0LnYxLk1lc3NhZ2VSb2xlEg8KB2NvbnRlbnQYBCABKAkSDQoFbW9kZWwYBSABKAkSFgoOdG9rZW5fY291bnRfaW4YBiABKAUSFwoPdG9rZW5fY291bnRfb3V0GAcgASgFEhIKCmNyZWF0ZWRfYXQYCCABKAMiJgoTTGlzdFNlc3Npb25zUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJIkEKFExpc3RTZXNzaW9uc1Jlc3BvbnNlEikKCHNlc3Npb25zGAEgAygLMhcuZ2l0Y2hhdC52MS5DaGF0U2Vzc2lvbiInChFHZXRTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJImkKEkdldFNlc3Npb25SZXNwb25zZRIoCgdzZXNzaW9uGAEgASgLMhcuZ2l0Y2hhdC52MS5DaGF0U2Vzc2lvbhIpCghtZXNzYWdlcxgCIAMoCzIXLmdpdGNoYXQudjEuQ2hhdE1lc3NhZ2UiRwoSU2VuZE1lc3NhZ2VSZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDwoHcmVwb19pZBgCIAEoCRIMCgR0ZXh0GAMgASgJInsKDE1lc3NhZ2VDaHVuaxIPCgV0b2tlbhgBIAEoCUgAEiAKBGRvbmUYAiABKAsyEC5naXRjaGF0LnYxLkRvbmVIABIwCghjYXJkX2hpdBgDIAEoCzIcLmdpdGNoYXQudjEuS25vd2xlZGdlQ2FyZEhpdEgAQgYKBGtpbmQicAoQS25vd2xlZGdlQ2FyZEhpdBIPCgdjYXJkX2lkGAEgASgJEhEKCWFuc3dlcl9tZBgCIAEoCRINCgVtb2RlbBgDIAEoCRIRCgloaXRfY291bnQYBCABKAUSFgoOY3JlYXRlZF9jb21taXQYBSABKAkioAEKBERvbmUSEgoKc2Vzc2lvbl9pZBgBIAEoCRIXCg91c2VyX21lc3NhZ2VfaWQYAiABKAkSHAoUYXNzaXN0YW50X21lc3NhZ2VfaWQYAyABKAkSFgoOdG9rZW5fY291bnRfaW4YBCABKAUSFwoPdG9rZW5fY291bnRfb3V0GAUgASgFEg0KBW1vZGVsGAYgASgJEg0KBWVycm9yGAcgASgJIjkKFFJlbmFtZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDQoFdGl0bGUYAiABKAkiFwoVUmVuYW1lU2Vzc2lvblJlc3BvbnNlIioKFERlbGV0ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiFwoVRGVsZXRlU2Vzc2lvblJlc3BvbnNlIjcKEVBpblNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDgoGcGlubmVkGAIgASgIIhQKElBpblNlc3Npb25SZXNwb25zZSp3CgtNZXNzYWdlUm9sZRIcChhNRVNTQUdFX1JPTEVfVU5TUEVDSUZJRUQQABIVChFNRVNTQUdFX1JPTEVfVVNFUhABEhoKFk1FU1NBR0VfUk9MRV9BU1NJU1RBTlQQAhIXChNNRVNTQUdFX1JPTEVfU1lTVEVNEAMysgQKC0NoYXRTZXJ2aWNlElEKDExpc3RTZXNzaW9ucxIfLmdpdGNoYXQudjEuTGlzdFNlc3Npb25zUmVxdWVzdBogLmdpdGNoYXQudjEuTGlzdFNlc3Npb25zUmVzcG9uc2USSwoKR2V0U2Vzc2lvbhIdLmdpdGNoYXQudjEuR2V0U2Vzc2lvblJlcXVlc3QaHi5naXRjaGF0LnYxLkdldFNlc3Npb25SZXNwb25zZRJJCgtTZW5kTWVzc2FnZRIeLmdpdGNoYXQudjEuU2VuZE1lc3NhZ2VSZXF1ZXN0GhguZ2l0Y2hhdC52MS5NZXNzYWdlQ2h1bmswARI/CgZTZWFyY2gSGS5naXRjaGF0LnYxLlNlYXJjaFJlcXVlc3QaGi5naXRjaGF0LnYxLlNlYXJjaFJlc3BvbnNlElQKDVJlbmFtZVNlc3Npb24SIC5naXRjaGF0LnYxLlJlbmFtZVNlc3Npb25SZXF1ZXN0GiEuZ2l0Y2hhdC52MS5SZW5hbWVTZXNzaW9uUmVzcG9uc2USVAoNRGVsZXRlU2Vzc2lvbhIgLmdpdGNoYXQudjEuRGVsZXRlU2Vzc2lvblJlcXVlc3QaIS5naXRjaGF0LnYxLkRlbGV0ZVNlc3Npb25SZXNwb25zZRJLCgpQaW5TZXNzaW9uEh0uZ2l0Y2hhdC52MS5QaW5TZXNzaW9uUmVxdWVzdBoeLmdpdGNoYXQudjEuUGluU2Vzc2lvblJlc3BvbnNlQp0BCg5jb20uZ2l0Y2hhdC52MUIJQ2hhdFByb3RvUAFaN2dpdGh1Yi5jb20vcGRlcnMwMS9naXQtY2hhdC9nZW4vZ28vZ2l0Y2hhdC92MTtnaXRjaGF0djGiAgNHWFiqAgpHaXRjaGF0LlYxygIKR2l0Y2hhdFxWMeICFkdpdGNoYXRcVjFcR1BCTWV0YWRhdGHqAgtHaXRjaGF0OjpWMWIGcHJvdG8z");
 
 /**
  * ─── Search ─────────────────────────────────────────────────────────────
@@ -127,6 +127,11 @@ export type ChatSession = Message<"gitchat.v1.ChatSession"> & {
    * @generated from field: int32 message_count = 6;
    */
   messageCount: number;
+
+  /**
+   * @generated from field: bool pinned = 7;
+   */
+  pinned: boolean;
 };
 
 /**
@@ -522,6 +527,43 @@ export const DeleteSessionResponseSchema: GenMessage<DeleteSessionResponse> = /*
   messageDesc(file_gitchat_v1_chat, 16);
 
 /**
+ * ─── PinSession ─────────────────────────────────────────────────────────
+ *
+ * @generated from message gitchat.v1.PinSessionRequest
+ */
+export type PinSessionRequest = Message<"gitchat.v1.PinSessionRequest"> & {
+  /**
+   * @generated from field: string session_id = 1;
+   */
+  sessionId: string;
+
+  /**
+   * @generated from field: bool pinned = 2;
+   */
+  pinned: boolean;
+};
+
+/**
+ * Describes the message gitchat.v1.PinSessionRequest.
+ * Use `create(PinSessionRequestSchema)` to create a new message.
+ */
+export const PinSessionRequestSchema: GenMessage<PinSessionRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 17);
+
+/**
+ * @generated from message gitchat.v1.PinSessionResponse
+ */
+export type PinSessionResponse = Message<"gitchat.v1.PinSessionResponse"> & {
+};
+
+/**
+ * Describes the message gitchat.v1.PinSessionResponse.
+ * Use `create(PinSessionResponseSchema)` to create a new message.
+ */
+export const PinSessionResponseSchema: GenMessage<PinSessionResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 18);
+
+/**
  * Role mirrors the OpenAI chat completions roles for wire-level
  * simplicity. We do not expose `tool` because tool use is a higher-level
  * concept that lives in the LLM adapter, not in the wire protocol.
@@ -634,6 +676,16 @@ export const ChatService: GenService<{
     methodKind: "unary";
     input: typeof DeleteSessionRequestSchema;
     output: typeof DeleteSessionResponseSchema;
+  },
+  /**
+   * PinSession toggles the pinned/starred state of a session.
+   *
+   * @generated from rpc gitchat.v1.ChatService.PinSession
+   */
+  pinSession: {
+    methodKind: "unary";
+    input: typeof PinSessionRequestSchema;
+    output: typeof PinSessionResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_gitchat_v1_chat, 0);

@@ -48,6 +48,8 @@ const (
 	// ChatServiceDeleteSessionProcedure is the fully-qualified name of the ChatService's DeleteSession
 	// RPC.
 	ChatServiceDeleteSessionProcedure = "/gitchat.v1.ChatService/DeleteSession"
+	// ChatServicePinSessionProcedure is the fully-qualified name of the ChatService's PinSession RPC.
+	ChatServicePinSessionProcedure = "/gitchat.v1.ChatService/PinSession"
 )
 
 // ChatServiceClient is a client for the gitchat.v1.ChatService service.
@@ -69,6 +71,8 @@ type ChatServiceClient interface {
 	RenameSession(context.Context, *connect.Request[v1.RenameSessionRequest]) (*connect.Response[v1.RenameSessionResponse], error)
 	// DeleteSession removes a session and cascades to its messages.
 	DeleteSession(context.Context, *connect.Request[v1.DeleteSessionRequest]) (*connect.Response[v1.DeleteSessionResponse], error)
+	// PinSession toggles the pinned/starred state of a session.
+	PinSession(context.Context, *connect.Request[v1.PinSessionRequest]) (*connect.Response[v1.PinSessionResponse], error)
 }
 
 // NewChatServiceClient constructs a client for the gitchat.v1.ChatService service. By default, it
@@ -118,6 +122,12 @@ func NewChatServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(chatServiceMethods.ByName("DeleteSession")),
 			connect.WithClientOptions(opts...),
 		),
+		pinSession: connect.NewClient[v1.PinSessionRequest, v1.PinSessionResponse](
+			httpClient,
+			baseURL+ChatServicePinSessionProcedure,
+			connect.WithSchema(chatServiceMethods.ByName("PinSession")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -129,6 +139,7 @@ type chatServiceClient struct {
 	search        *connect.Client[v1.SearchRequest, v1.SearchResponse]
 	renameSession *connect.Client[v1.RenameSessionRequest, v1.RenameSessionResponse]
 	deleteSession *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
+	pinSession    *connect.Client[v1.PinSessionRequest, v1.PinSessionResponse]
 }
 
 // ListSessions calls gitchat.v1.ChatService.ListSessions.
@@ -161,6 +172,11 @@ func (c *chatServiceClient) DeleteSession(ctx context.Context, req *connect.Requ
 	return c.deleteSession.CallUnary(ctx, req)
 }
 
+// PinSession calls gitchat.v1.ChatService.PinSession.
+func (c *chatServiceClient) PinSession(ctx context.Context, req *connect.Request[v1.PinSessionRequest]) (*connect.Response[v1.PinSessionResponse], error) {
+	return c.pinSession.CallUnary(ctx, req)
+}
+
 // ChatServiceHandler is an implementation of the gitchat.v1.ChatService service.
 type ChatServiceHandler interface {
 	// ListSessions returns every chat session for the authenticated
@@ -180,6 +196,8 @@ type ChatServiceHandler interface {
 	RenameSession(context.Context, *connect.Request[v1.RenameSessionRequest]) (*connect.Response[v1.RenameSessionResponse], error)
 	// DeleteSession removes a session and cascades to its messages.
 	DeleteSession(context.Context, *connect.Request[v1.DeleteSessionRequest]) (*connect.Response[v1.DeleteSessionResponse], error)
+	// PinSession toggles the pinned/starred state of a session.
+	PinSession(context.Context, *connect.Request[v1.PinSessionRequest]) (*connect.Response[v1.PinSessionResponse], error)
 }
 
 // NewChatServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -225,6 +243,12 @@ func NewChatServiceHandler(svc ChatServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(chatServiceMethods.ByName("DeleteSession")),
 		connect.WithHandlerOptions(opts...),
 	)
+	chatServicePinSessionHandler := connect.NewUnaryHandler(
+		ChatServicePinSessionProcedure,
+		svc.PinSession,
+		connect.WithSchema(chatServiceMethods.ByName("PinSession")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/gitchat.v1.ChatService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ChatServiceListSessionsProcedure:
@@ -239,6 +263,8 @@ func NewChatServiceHandler(svc ChatServiceHandler, opts ...connect.HandlerOption
 			chatServiceRenameSessionHandler.ServeHTTP(w, r)
 		case ChatServiceDeleteSessionProcedure:
 			chatServiceDeleteSessionHandler.ServeHTTP(w, r)
+		case ChatServicePinSessionProcedure:
+			chatServicePinSessionHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -270,4 +296,8 @@ func (UnimplementedChatServiceHandler) RenameSession(context.Context, *connect.R
 
 func (UnimplementedChatServiceHandler) DeleteSession(context.Context, *connect.Request[v1.DeleteSessionRequest]) (*connect.Response[v1.DeleteSessionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.ChatService.DeleteSession is not implemented"))
+}
+
+func (UnimplementedChatServiceHandler) PinSession(context.Context, *connect.Request[v1.PinSessionRequest]) (*connect.Response[v1.PinSessionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.ChatService.PinSession is not implemented"))
 }

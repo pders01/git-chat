@@ -36,6 +36,9 @@ service ChatService {
 
   // DeleteSession removes a session and cascades to its messages.
   rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
+
+  // PinSession toggles the pinned/starred state of a session.
+  rpc PinSession(PinSessionRequest) returns (PinSessionResponse);
 }
 
 // ─── Search ─────────────────────────────────────────────────────────────
@@ -65,6 +68,7 @@ message ChatSession {
   int64 created_at = 4;     // unix seconds
   int64 updated_at = 5;
   int32 message_count = 6;
+  bool pinned = 7;
 }
 
 // Role mirrors the OpenAI chat completions roles for wire-level
@@ -170,3 +174,11 @@ message DeleteSessionRequest {
 }
 
 message DeleteSessionResponse {}
+
+// ─── PinSession ─────────────────────────────────────────────────────────
+message PinSessionRequest {
+  string session_id = 1;
+  bool pinned = 2;
+}
+
+message PinSessionResponse {}

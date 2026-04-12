@@ -185,6 +185,21 @@ func (s *Service) RenameSession(
 	return connect.NewResponse(&gitchatv1.RenameSessionResponse{}), nil
 }
 
+// ─── PinSession ────────────────────────────────────────────────────────
+func (s *Service) PinSession(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.PinSessionRequest],
+) (*connect.Response[gitchatv1.PinSessionResponse], error) {
+	principal, _, _ := auth.PrincipalFromContext(ctx)
+	if err := s.DB.PinSession(ctx, principal, req.Msg.SessionId, req.Msg.Pinned); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&gitchatv1.PinSessionResponse{}), nil
+}
+
 func (s *Service) DeleteSession(
 	ctx context.Context,
 	req *connect.Request[gitchatv1.DeleteSessionRequest],
@@ -618,6 +633,7 @@ func toSession(r *storage.SessionRow) *gitchatv1.ChatSession {
 		CreatedAt:    r.CreatedAt,
 		UpdatedAt:    r.UpdatedAt,
 		MessageCount: int32(r.MessageCount),
+		Pinned:       r.Pinned,
 	}
 }
 

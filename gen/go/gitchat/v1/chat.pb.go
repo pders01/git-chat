@@ -257,6 +257,7 @@ type ChatSession struct {
 	CreatedAt     int64                  `protobuf:"varint,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // unix seconds
 	UpdatedAt     int64                  `protobuf:"varint,5,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	MessageCount  int32                  `protobuf:"varint,6,opt,name=message_count,json=messageCount,proto3" json:"message_count,omitempty"`
+	Pinned        bool                   `protobuf:"varint,7,opt,name=pinned,proto3" json:"pinned,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -331,6 +332,13 @@ func (x *ChatSession) GetMessageCount() int32 {
 		return x.MessageCount
 	}
 	return 0
+}
+
+func (x *ChatSession) GetPinned() bool {
+	if x != nil {
+		return x.Pinned
+	}
+	return false
 }
 
 type ChatMessage struct {
@@ -1130,6 +1138,95 @@ func (*DeleteSessionResponse) Descriptor() ([]byte, []int) {
 	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{16}
 }
 
+// ─── PinSession ─────────────────────────────────────────────────────────
+type PinSessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Pinned        bool                   `protobuf:"varint,2,opt,name=pinned,proto3" json:"pinned,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PinSessionRequest) Reset() {
+	*x = PinSessionRequest{}
+	mi := &file_gitchat_v1_chat_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PinSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PinSessionRequest) ProtoMessage() {}
+
+func (x *PinSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_chat_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PinSessionRequest.ProtoReflect.Descriptor instead.
+func (*PinSessionRequest) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *PinSessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *PinSessionRequest) GetPinned() bool {
+	if x != nil {
+		return x.Pinned
+	}
+	return false
+}
+
+type PinSessionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PinSessionResponse) Reset() {
+	*x = PinSessionResponse{}
+	mi := &file_gitchat_v1_chat_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PinSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PinSessionResponse) ProtoMessage() {}
+
+func (x *PinSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_chat_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PinSessionResponse.ProtoReflect.Descriptor instead.
+func (*PinSessionResponse) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{18}
+}
+
 var File_gitchat_v1_chat_proto protoreflect.FileDescriptor
 
 const file_gitchat_v1_chat_proto_rawDesc = "" +
@@ -1146,7 +1243,7 @@ const file_gitchat_v1_chat_proto_rawDesc = "" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x03 \x01(\tR\x05title\x12\x12\n" +
-	"\x04body\x18\x04 \x01(\tR\x04body\"\xaf\x01\n" +
+	"\x04body\x18\x04 \x01(\tR\x04body\"\xc7\x01\n" +
 	"\vChatSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\arepo_id\x18\x02 \x01(\tR\x06repoId\x12\x14\n" +
@@ -1155,7 +1252,8 @@ const file_gitchat_v1_chat_proto_rawDesc = "" +
 	"created_at\x18\x04 \x01(\x03R\tcreatedAt\x12\x1d\n" +
 	"\n" +
 	"updated_at\x18\x05 \x01(\x03R\tupdatedAt\x12#\n" +
-	"\rmessage_count\x18\x06 \x01(\x05R\fmessageCount\"\x86\x02\n" +
+	"\rmessage_count\x18\x06 \x01(\x05R\fmessageCount\x12\x16\n" +
+	"\x06pinned\x18\a \x01(\bR\x06pinned\"\x86\x02\n" +
 	"\vChatMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -1210,12 +1308,17 @@ const file_gitchat_v1_chat_proto_rawDesc = "" +
 	"\x14DeleteSessionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"\x17\n" +
-	"\x15DeleteSessionResponse*w\n" +
+	"\x15DeleteSessionResponse\"J\n" +
+	"\x11PinSessionRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
+	"\x06pinned\x18\x02 \x01(\bR\x06pinned\"\x14\n" +
+	"\x12PinSessionResponse*w\n" +
 	"\vMessageRole\x12\x1c\n" +
 	"\x18MESSAGE_ROLE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11MESSAGE_ROLE_USER\x10\x01\x12\x1a\n" +
 	"\x16MESSAGE_ROLE_ASSISTANT\x10\x02\x12\x17\n" +
-	"\x13MESSAGE_ROLE_SYSTEM\x10\x032\xe5\x03\n" +
+	"\x13MESSAGE_ROLE_SYSTEM\x10\x032\xb2\x04\n" +
 	"\vChatService\x12Q\n" +
 	"\fListSessions\x12\x1f.gitchat.v1.ListSessionsRequest\x1a .gitchat.v1.ListSessionsResponse\x12K\n" +
 	"\n" +
@@ -1223,7 +1326,9 @@ const file_gitchat_v1_chat_proto_rawDesc = "" +
 	"\vSendMessage\x12\x1e.gitchat.v1.SendMessageRequest\x1a\x18.gitchat.v1.MessageChunk0\x01\x12?\n" +
 	"\x06Search\x12\x19.gitchat.v1.SearchRequest\x1a\x1a.gitchat.v1.SearchResponse\x12T\n" +
 	"\rRenameSession\x12 .gitchat.v1.RenameSessionRequest\x1a!.gitchat.v1.RenameSessionResponse\x12T\n" +
-	"\rDeleteSession\x12 .gitchat.v1.DeleteSessionRequest\x1a!.gitchat.v1.DeleteSessionResponseB\x9d\x01\n" +
+	"\rDeleteSession\x12 .gitchat.v1.DeleteSessionRequest\x1a!.gitchat.v1.DeleteSessionResponse\x12K\n" +
+	"\n" +
+	"PinSession\x12\x1d.gitchat.v1.PinSessionRequest\x1a\x1e.gitchat.v1.PinSessionResponseB\x9d\x01\n" +
 	"\x0ecom.gitchat.v1B\tChatProtoP\x01Z7github.com/pders01/git-chat/gen/go/gitchat/v1;gitchatv1\xa2\x02\x03GXX\xaa\x02\n" +
 	"Gitchat.V1\xca\x02\n" +
 	"Gitchat\\V1\xe2\x02\x16Gitchat\\V1\\GPBMetadata\xea\x02\vGitchat::V1b\x06proto3"
@@ -1241,7 +1346,7 @@ func file_gitchat_v1_chat_proto_rawDescGZIP() []byte {
 }
 
 var file_gitchat_v1_chat_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_gitchat_v1_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_gitchat_v1_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_gitchat_v1_chat_proto_goTypes = []any{
 	(MessageRole)(0),              // 0: gitchat.v1.MessageRole
 	(*SearchRequest)(nil),         // 1: gitchat.v1.SearchRequest
@@ -1261,6 +1366,8 @@ var file_gitchat_v1_chat_proto_goTypes = []any{
 	(*RenameSessionResponse)(nil), // 15: gitchat.v1.RenameSessionResponse
 	(*DeleteSessionRequest)(nil),  // 16: gitchat.v1.DeleteSessionRequest
 	(*DeleteSessionResponse)(nil), // 17: gitchat.v1.DeleteSessionResponse
+	(*PinSessionRequest)(nil),     // 18: gitchat.v1.PinSessionRequest
+	(*PinSessionResponse)(nil),    // 19: gitchat.v1.PinSessionResponse
 }
 var file_gitchat_v1_chat_proto_depIdxs = []int32{
 	3,  // 0: gitchat.v1.SearchResponse.hits:type_name -> gitchat.v1.SearchHit
@@ -1276,14 +1383,16 @@ var file_gitchat_v1_chat_proto_depIdxs = []int32{
 	1,  // 10: gitchat.v1.ChatService.Search:input_type -> gitchat.v1.SearchRequest
 	14, // 11: gitchat.v1.ChatService.RenameSession:input_type -> gitchat.v1.RenameSessionRequest
 	16, // 12: gitchat.v1.ChatService.DeleteSession:input_type -> gitchat.v1.DeleteSessionRequest
-	7,  // 13: gitchat.v1.ChatService.ListSessions:output_type -> gitchat.v1.ListSessionsResponse
-	9,  // 14: gitchat.v1.ChatService.GetSession:output_type -> gitchat.v1.GetSessionResponse
-	11, // 15: gitchat.v1.ChatService.SendMessage:output_type -> gitchat.v1.MessageChunk
-	2,  // 16: gitchat.v1.ChatService.Search:output_type -> gitchat.v1.SearchResponse
-	15, // 17: gitchat.v1.ChatService.RenameSession:output_type -> gitchat.v1.RenameSessionResponse
-	17, // 18: gitchat.v1.ChatService.DeleteSession:output_type -> gitchat.v1.DeleteSessionResponse
-	13, // [13:19] is the sub-list for method output_type
-	7,  // [7:13] is the sub-list for method input_type
+	18, // 13: gitchat.v1.ChatService.PinSession:input_type -> gitchat.v1.PinSessionRequest
+	7,  // 14: gitchat.v1.ChatService.ListSessions:output_type -> gitchat.v1.ListSessionsResponse
+	9,  // 15: gitchat.v1.ChatService.GetSession:output_type -> gitchat.v1.GetSessionResponse
+	11, // 16: gitchat.v1.ChatService.SendMessage:output_type -> gitchat.v1.MessageChunk
+	2,  // 17: gitchat.v1.ChatService.Search:output_type -> gitchat.v1.SearchResponse
+	15, // 18: gitchat.v1.ChatService.RenameSession:output_type -> gitchat.v1.RenameSessionResponse
+	17, // 19: gitchat.v1.ChatService.DeleteSession:output_type -> gitchat.v1.DeleteSessionResponse
+	19, // 20: gitchat.v1.ChatService.PinSession:output_type -> gitchat.v1.PinSessionResponse
+	14, // [14:21] is the sub-list for method output_type
+	7,  // [7:14] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
 	7,  // [7:7] is the sub-list for extension extendee
 	0,  // [0:7] is the sub-list for field type_name
@@ -1305,7 +1414,7 @@ func file_gitchat_v1_chat_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gitchat_v1_chat_proto_rawDesc), len(file_gitchat_v1_chat_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
