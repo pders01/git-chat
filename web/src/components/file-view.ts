@@ -153,6 +153,8 @@ export class GcFileView extends LitElement {
       <div class="blame-tip" style=${this.blameTooltipStyle}
         @mouseenter=${() => { if (this.hoverTimer) clearTimeout(this.hoverTimer); }}
         @mouseleave=${this.onGutterLeave}
+        @focusin=${() => { if (this.hoverTimer) clearTimeout(this.hoverTimer); }}
+        @keydown=${(e: KeyboardEvent) => { if (e.key === "Escape") this.hoveredBlame = null; }}
       >
         <div class="bt-header">
           <span class="bt-sha">${b.commitSha}</span>
@@ -229,6 +231,27 @@ export class GcFileView extends LitElement {
     }, 200);
   };
 
+  private onBlameKeydown = (e: KeyboardEvent) => {
+    const cell = (e.target as HTMLElement).closest?.(".blame-cell") as HTMLElement | null;
+    if (!cell) return;
+    const idx = parseInt(cell.dataset.idx ?? "-1");
+    if (idx < 0 || idx >= this.blameLines.length) return;
+
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      this.hoveredBlame = this.blameLines[idx]!;
+      const rect = cell.getBoundingClientRect();
+      this.blameTooltipStyle = `top:${rect.bottom + 4}px;left:${rect.right + 8}px`;
+    } else if (e.key === "Escape") {
+      this.hoveredBlame = null;
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const next = e.key === "ArrowDown" ? idx + 1 : idx - 1;
+      const cells = this.renderRoot.querySelectorAll<HTMLElement>(".blame-cell[tabindex]");
+      cells[next]?.focus();
+    }
+  };
+
   private onGutterLeave = () => {
     if (this.hoverTimer) clearTimeout(this.hoverTimer);
     this.hoverTimer = setTimeout(() => { this.hoveredBlame = null; }, 150);
@@ -264,6 +287,7 @@ export class GcFileView extends LitElement {
       <div class="blame-table-wrap"
         @mouseover=${this.onGutterHover}
         @mouseout=${this.onGutterLeave}
+        @keydown=${this.onBlameKeydown}
       >
         <table class="blame-table">
           <colgroup>
@@ -279,7 +303,7 @@ export class GcFileView extends LitElement {
               if (isNewBlock) blockIdx++;
               return html`
                 <tr class="${isNewBlock ? "blame-start" : ""}">
-                  <td class="blame-cell" data-idx=${i}>
+                  <td class="blame-cell" data-idx=${i} tabindex="0" role="button">
                     ${isNewBlock && blame
                       ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span> <span class="blame-msg">${(blame.commitMessage || "").split("\n")[0].slice(0, 20)}</span>`
                       : nothing}
@@ -497,6 +521,7 @@ export class GcFileView extends LitElement {
     /* ── Blame table layout ──────────────────────── */
     .blame-table-wrap {
       font-size: 0.8rem;
+      padding-top: var(--space-4);
     }
     .blame-table {
       table-layout: fixed;
@@ -528,6 +553,15 @@ export class GcFileView extends LitElement {
     .blame-table tr:hover .blame-cell,
     .blame-table tr:hover .lno-cell {
       background: var(--surface-3);
+    }
+    .blame-cell:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: -2px;
+    }
+    .hd-btn:focus-visible,
+    .bt-btn:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
     }
     .blame-cont {
       opacity: 0.3;
