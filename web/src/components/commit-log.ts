@@ -1246,8 +1246,9 @@ export class GcCommitLog extends LitElement {
       background: transparent !important;
     }
     .diff-content mark {
-      background: rgba(255, 200, 0, 0.25);
+      background: rgba(255, 255, 255, 0.15);
       border-radius: 2px;
+      outline: 1px solid rgba(255, 255, 255, 0.1);
       padding: 0 1px;
     }
 
