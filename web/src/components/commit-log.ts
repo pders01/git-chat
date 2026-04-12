@@ -99,6 +99,16 @@ export class GcCommitLog extends LitElement {
     );
   }
 
+  private onListKeydown = (e: KeyboardEvent) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const rows = [...this.renderRoot.querySelectorAll<HTMLElement>(".commit-row")];
+    const current = (this.renderRoot as ShadowRoot).activeElement as HTMLElement | null;
+    const idx = current ? rows.indexOf(current) : -1;
+    const next = e.key === "ArrowDown" ? idx + 1 : idx - 1;
+    rows[next]?.focus();
+  };
+
   private async selectCommit(sha: string) {
     // Support prefix matching (e.g. 7-char short SHA from blame).
     if (this.state.phase === "ready" && sha.length < 40) {
@@ -157,12 +167,13 @@ export class GcCommitLog extends LitElement {
         ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
         <!-- Left: commit list sidebar -->
         <aside class="commit-list" aria-label="Commit history">
-          <ul class="commits" role="list">
+          <ul class="commits" role="list" @keydown=${this.onListKeydown}>
             ${commits.map(
               (c) => html`
                 <li>
                   <button
                     class="commit-row ${c.sha === this.selectedSha ? "selected" : ""}"
+                    aria-pressed=${c.sha === this.selectedSha ? "true" : "false"}
                     @click=${() => this.selectCommit(c.sha)}
                     title="${c.message} — ${c.authorName}"
                   >
@@ -203,11 +214,19 @@ export class GcCommitLog extends LitElement {
                   <div class="detail-title">
                     <span
                       class="detail-sha copyable"
+                      tabindex="0"
+                      role="button"
                       @click=${(e: Event) => {
                         e.stopPropagation();
                         copyText(this, sel.sha, "SHA copied");
                       }}
-                      title="Click to copy full SHA"
+                      @keydown=${(e: KeyboardEvent) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          copyText(this, sel.sha, "SHA copied");
+                        }
+                      }}
+                      title="Press Enter to copy full SHA"
                     >${sel.shortSha}</span>
                     <span class="detail-msg">${sel.message}</span>
                   </div>
@@ -472,6 +491,12 @@ export class GcCommitLog extends LitElement {
       font-family: inherit;
       font-size: var(--text-xs);
       cursor: pointer;
+    }
+    .action-btn:focus-visible,
+    .commit-row:focus-visible,
+    .detail-sha:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
     }
     .action-btn:hover {
       background: var(--action-bg-hover);
