@@ -283,6 +283,67 @@ func commitDiffStats(c *object.Commit) *diffStats {
 	return s
 }
 
+// CompareBranches returns the files changed between two refs with
+// per-file add/delete stats.
+func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFile, int32, int32, error) {
+	baseCommit, _, err := e.resolveCommit(baseRef)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("resolve base: %w", err)
+	}
+	headCommit, _, err := e.resolveCommit(headRef)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("resolve head: %w", err)
+	}
+	baseTree, err := baseCommit.Tree()
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	headTree, err := headCommit.Tree()
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	changes, err := baseTree.Diff(headTree)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	patch, err := changes.Patch()
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	stats := patch.Stats()
+	var totalAdd, totalDel int32
+	out := make([]*gitchatv1.ChangedFile, 0, len(stats))
+	for _, s := range stats {
+		status := "modified"
+		// Detect add/delete from the change set.
+		for _, c := range changes {
+			name := c.To.Name
+			if name == "" {
+				name = c.From.Name
+			}
+			if name == s.Name {
+				if c.From.Name == "" {
+					status = "added"
+				} else if c.To.Name == "" {
+					status = "deleted"
+				} else if c.From.Name != c.To.Name {
+					status = "renamed"
+				}
+				break
+			}
+		}
+		out = append(out, &gitchatv1.ChangedFile{
+			Path:      s.Name,
+			Status:    status,
+			Additions: int32(s.Addition),
+			Deletions: int32(s.Deletion),
+		})
+		totalAdd += int32(s.Addition)
+		totalDel += int32(s.Deletion)
+	}
+	return out, totalAdd, totalDel, nil
+}
+
 // GetBlame returns per-line author attribution for a file.
 func (e *Entry) GetBlame(ref, path string) ([]*gitchatv1.BlameLine, error) {
 	commit, _, err := e.resolveCommit(ref)
@@ -293,14 +354,25 @@ func (e *Entry) GetBlame(ref, path string) ([]*gitchatv1.BlameLine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("blame %q: %w", path, err)
 	}
+	// Cache commit messages by hash to avoid repeated lookups.
+	msgCache := map[string]string{}
 	out := make([]*gitchatv1.BlameLine, 0, len(result.Lines))
 	for _, l := range result.Lines {
+		shortSHA := l.Hash.String()[:7]
+		msg, ok := msgCache[shortSHA]
+		if !ok {
+			if c, err := e.repo.CommitObject(l.Hash); err == nil {
+				msg = strings.TrimSpace(c.Message)
+			}
+			msgCache[shortSHA] = msg
+		}
 		out = append(out, &gitchatv1.BlameLine{
-			Text:        l.Text,
-			AuthorName:  l.AuthorName,
-			AuthorEmail: l.Author,
-			Date:        l.Date.Unix(),
-			CommitSha:   l.Hash.String()[:7],
+			Text:          l.Text,
+			AuthorName:    l.AuthorName,
+			AuthorEmail:   l.Author,
+			Date:          l.Date.Unix(),
+			CommitSha:     shortSHA,
+			CommitMessage: msg,
 		})
 	}
 	return out, nil

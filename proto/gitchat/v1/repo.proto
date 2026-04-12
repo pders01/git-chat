@@ -39,6 +39,9 @@ service RepoService {
   // GetBlame returns per-line author attribution for a file at a given ref.
   rpc GetBlame(GetBlameRequest) returns (GetBlameResponse);
 
+  // CompareBranches returns the list of files changed between two refs.
+  rpc CompareBranches(CompareBranchesRequest) returns (CompareBranchesResponse);
+
   // GetDiff returns a unified diff for a single file between two refs.
   // Introduced in M4 as the backend for chat-embedded diff primitives:
   // the LLM emits `[[diff from=X to=Y path=Z]]` markers in its prose,
@@ -168,6 +171,27 @@ message BlameLine {
   string author_email = 3;
   int64  date = 4;          // unix seconds
   string commit_sha = 5;    // short SHA of the introducing commit
+  string commit_message = 6; // first line of the commit message
+}
+
+// ─── CompareBranches ────────────────────────────────────────────────────
+message CompareBranchesRequest {
+  string repo_id = 1;
+  string base_ref = 2;   // e.g. "main"
+  string head_ref = 3;   // e.g. "feature-branch"
+}
+
+message CompareBranchesResponse {
+  repeated ChangedFile files = 1;
+  int32 total_additions = 2;
+  int32 total_deletions = 3;
+}
+
+message ChangedFile {
+  string path = 1;
+  string status = 2;     // "added", "modified", "deleted", "renamed"
+  int32 additions = 3;
+  int32 deletions = 4;
 }
 
 // ─── GetDiff ────────────────────────────────────────────────────────────

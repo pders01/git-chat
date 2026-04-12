@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file gitchat/v1/repo.proto.
  */
 export const file_gitchat_v1_repo: GenFile = /*@__PURE__*/
-  fileDesc("ChVnaXRjaGF0L3YxL3JlcG8ucHJvdG8SCmdpdGNoYXQudjEiTgoEUmVwbxIKCgJpZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIWCg5kZWZhdWx0X2JyYW5jaBgDIAEoCRITCgtoZWFkX2NvbW1pdBgEIAEoCSISChBMaXN0UmVwb3NSZXF1ZXN0IjQKEUxpc3RSZXBvc1Jlc3BvbnNlEh8KBXJlcG9zGAEgAygLMhAuZ2l0Y2hhdC52MS5SZXBvIiYKE0xpc3RCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCSI8ChRMaXN0QnJhbmNoZXNSZXNwb25zZRIkCghicmFuY2hlcxgBIAMoCzISLmdpdGNoYXQudjEuQnJhbmNoIk8KBkJyYW5jaBIMCgRuYW1lGAEgASgJEg4KBmNvbW1pdBgCIAEoCRIWCg5jb21taXR0ZXJfdGltZRgDIAEoAxIPCgdzdWJqZWN0GAQgASgJIj0KD0xpc3RUcmVlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIlAKEExpc3RUcmVlUmVzcG9uc2USJgoHZW50cmllcxgBIAMoCzIVLmdpdGNoYXQudjEuVHJlZUVudHJ5EhQKDHJlZl9yZXNvbHZlZBgCIAEoCSJeCglUcmVlRW50cnkSDAoEbmFtZRgBIAEoCRIjCgR0eXBlGAIgASgOMhUuZ2l0Y2hhdC52MS5FbnRyeVR5cGUSDAoEc2l6ZRgDIAEoAxIQCghibG9iX3NoYRgEIAEoCSJPCg5HZXRGaWxlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJEhEKCW1heF9ieXRlcxgEIAEoAyJ6Cg9HZXRGaWxlUmVzcG9uc2USDwoHY29udGVudBgBIAEoDBIMCgRzaXplGAIgASgDEhEKCXRydW5jYXRlZBgDIAEoCBIRCglpc19iaW5hcnkYBCABKAgSEAoIYmxvYl9zaGEYBSABKAkSEAoIbGFuZ3VhZ2UYBiABKAkiUQoSTGlzdENvbW1pdHNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSCwoDcmVmGAIgASgJEg0KBWxpbWl0GAMgASgFEg4KBm9mZnNldBgEIAEoBSJRChNMaXN0Q29tbWl0c1Jlc3BvbnNlEigKB2NvbW1pdHMYASADKAsyFy5naXRjaGF0LnYxLkNvbW1pdEVudHJ5EhAKCGhhc19tb3JlGAIgASgIIrsBCgtDb21taXRFbnRyeRILCgNzaGEYASABKAkSEQoJc2hvcnRfc2hhGAIgASgJEg8KB21lc3NhZ2UYAyABKAkSEwoLYXV0aG9yX25hbWUYBCABKAkSFAoMYXV0aG9yX2VtYWlsGAUgASgJEhMKC2F1dGhvcl90aW1lGAYgASgDEhUKDWZpbGVzX2NoYW5nZWQYByABKAUSEQoJYWRkaXRpb25zGAggASgFEhEKCWRlbGV0aW9ucxgJIAEoBSI9Cg9HZXRCbGFtZVJlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRILCgNyZWYYAiABKAkSDAoEcGF0aBgDIAEoCSI4ChBHZXRCbGFtZVJlc3BvbnNlEiQKBWxpbmVzGAEgAygLMhUuZ2l0Y2hhdC52MS5CbGFtZUxpbmUiZgoJQmxhbWVMaW5lEgwKBHRleHQYASABKAkSEwoLYXV0aG9yX25hbWUYAiABKAkSFAoMYXV0aG9yX2VtYWlsGAMgASgJEgwKBGRhdGUYBCABKAMSEgoKY29tbWl0X3NoYRgFIAEoCSJRCg5HZXREaWZmUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEhAKCGZyb21fcmVmGAIgASgJEg4KBnRvX3JlZhgDIAEoCRIMCgRwYXRoGAQgASgJIl4KD0dldERpZmZSZXNwb25zZRIUCgx1bmlmaWVkX2RpZmYYASABKAkSEwoLZnJvbV9jb21taXQYAiABKAkSEQoJdG9fY29tbWl0GAMgASgJEg0KBWVtcHR5GAQgASgIKoIBCglFbnRyeVR5cGUSGgoWRU5UUllfVFlQRV9VTlNQRUNJRklFRBAAEhMKD0VOVFJZX1RZUEVfRklMRRABEhIKDkVOVFJZX1RZUEVfRElSEAISFgoSRU5UUllfVFlQRV9TWU1MSU5LEAMSGAoURU5UUllfVFlQRV9TVUJNT0RVTEUQBDKQBAoLUmVwb1NlcnZpY2USSAoJTGlzdFJlcG9zEhwuZ2l0Y2hhdC52MS5MaXN0UmVwb3NSZXF1ZXN0Gh0uZ2l0Y2hhdC52MS5MaXN0UmVwb3NSZXNwb25zZRJRCgxMaXN0QnJhbmNoZXMSHy5naXRjaGF0LnYxLkxpc3RCcmFuY2hlc1JlcXVlc3QaIC5naXRjaGF0LnYxLkxpc3RCcmFuY2hlc1Jlc3BvbnNlEkUKCExpc3RUcmVlEhsuZ2l0Y2hhdC52MS5MaXN0VHJlZVJlcXVlc3QaHC5naXRjaGF0LnYxLkxpc3RUcmVlUmVzcG9uc2USQgoHR2V0RmlsZRIaLmdpdGNoYXQudjEuR2V0RmlsZVJlcXVlc3QaGy5naXRjaGF0LnYxLkdldEZpbGVSZXNwb25zZRJOCgtMaXN0Q29tbWl0cxIeLmdpdGNoYXQudjEuTGlzdENvbW1pdHNSZXF1ZXN0Gh8uZ2l0Y2hhdC52MS5MaXN0Q29tbWl0c1Jlc3BvbnNlEkUKCEdldEJsYW1lEhsuZ2l0Y2hhdC52MS5HZXRCbGFtZVJlcXVlc3QaHC5naXRjaGF0LnYxLkdldEJsYW1lUmVzcG9uc2USQgoHR2V0RGlmZhIaLmdpdGNoYXQudjEuR2V0RGlmZlJlcXVlc3QaGy5naXRjaGF0LnYxLkdldERpZmZSZXNwb25zZUKdAQoOY29tLmdpdGNoYXQudjFCCVJlcG9Qcm90b1ABWjdnaXRodWIuY29tL3BkZXJzMDEvZ2l0LWNoYXQvZ2VuL2dvL2dpdGNoYXQvdjE7Z2l0Y2hhdHYxogIDR1hYqgIKR2l0Y2hhdC5WMcoCCkdpdGNoYXRcVjHiAhZHaXRjaGF0XFYxXEdQQk1ldGFkYXRh6gILR2l0Y2hhdDo6VjFiBnByb3RvMw");
+  fileDesc("ChVnaXRjaGF0L3YxL3JlcG8ucHJvdG8SCmdpdGNoYXQudjEiTgoEUmVwbxIKCgJpZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIWCg5kZWZhdWx0X2JyYW5jaBgDIAEoCRITCgtoZWFkX2NvbW1pdBgEIAEoCSISChBMaXN0UmVwb3NSZXF1ZXN0IjQKEUxpc3RSZXBvc1Jlc3BvbnNlEh8KBXJlcG9zGAEgAygLMhAuZ2l0Y2hhdC52MS5SZXBvIiYKE0xpc3RCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCSI8ChRMaXN0QnJhbmNoZXNSZXNwb25zZRIkCghicmFuY2hlcxgBIAMoCzISLmdpdGNoYXQudjEuQnJhbmNoIk8KBkJyYW5jaBIMCgRuYW1lGAEgASgJEg4KBmNvbW1pdBgCIAEoCRIWCg5jb21taXR0ZXJfdGltZRgDIAEoAxIPCgdzdWJqZWN0GAQgASgJIj0KD0xpc3RUcmVlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIlAKEExpc3RUcmVlUmVzcG9uc2USJgoHZW50cmllcxgBIAMoCzIVLmdpdGNoYXQudjEuVHJlZUVudHJ5EhQKDHJlZl9yZXNvbHZlZBgCIAEoCSJeCglUcmVlRW50cnkSDAoEbmFtZRgBIAEoCRIjCgR0eXBlGAIgASgOMhUuZ2l0Y2hhdC52MS5FbnRyeVR5cGUSDAoEc2l6ZRgDIAEoAxIQCghibG9iX3NoYRgEIAEoCSJPCg5HZXRGaWxlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJEhEKCW1heF9ieXRlcxgEIAEoAyJ6Cg9HZXRGaWxlUmVzcG9uc2USDwoHY29udGVudBgBIAEoDBIMCgRzaXplGAIgASgDEhEKCXRydW5jYXRlZBgDIAEoCBIRCglpc19iaW5hcnkYBCABKAgSEAoIYmxvYl9zaGEYBSABKAkSEAoIbGFuZ3VhZ2UYBiABKAkiUQoSTGlzdENvbW1pdHNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSCwoDcmVmGAIgASgJEg0KBWxpbWl0GAMgASgFEg4KBm9mZnNldBgEIAEoBSJRChNMaXN0Q29tbWl0c1Jlc3BvbnNlEigKB2NvbW1pdHMYASADKAsyFy5naXRjaGF0LnYxLkNvbW1pdEVudHJ5EhAKCGhhc19tb3JlGAIgASgIIrsBCgtDb21taXRFbnRyeRILCgNzaGEYASABKAkSEQoJc2hvcnRfc2hhGAIgASgJEg8KB21lc3NhZ2UYAyABKAkSEwoLYXV0aG9yX25hbWUYBCABKAkSFAoMYXV0aG9yX2VtYWlsGAUgASgJEhMKC2F1dGhvcl90aW1lGAYgASgDEhUKDWZpbGVzX2NoYW5nZWQYByABKAUSEQoJYWRkaXRpb25zGAggASgFEhEKCWRlbGV0aW9ucxgJIAEoBSI9Cg9HZXRCbGFtZVJlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRILCgNyZWYYAiABKAkSDAoEcGF0aBgDIAEoCSI4ChBHZXRCbGFtZVJlc3BvbnNlEiQKBWxpbmVzGAEgAygLMhUuZ2l0Y2hhdC52MS5CbGFtZUxpbmUifgoJQmxhbWVMaW5lEgwKBHRleHQYASABKAkSEwoLYXV0aG9yX25hbWUYAiABKAkSFAoMYXV0aG9yX2VtYWlsGAMgASgJEgwKBGRhdGUYBCABKAMSEgoKY29tbWl0X3NoYRgFIAEoCRIWCg5jb21taXRfbWVzc2FnZRgGIAEoCSJNChZDb21wYXJlQnJhbmNoZXNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSEAoIYmFzZV9yZWYYAiABKAkSEAoIaGVhZF9yZWYYAyABKAkicwoXQ29tcGFyZUJyYW5jaGVzUmVzcG9uc2USJgoFZmlsZXMYASADKAsyFy5naXRjaGF0LnYxLkNoYW5nZWRGaWxlEhcKD3RvdGFsX2FkZGl0aW9ucxgCIAEoBRIXCg90b3RhbF9kZWxldGlvbnMYAyABKAUiUQoLQ2hhbmdlZEZpbGUSDAoEcGF0aBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSEQoJYWRkaXRpb25zGAMgASgFEhEKCWRlbGV0aW9ucxgEIAEoBSJRCg5HZXREaWZmUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEhAKCGZyb21fcmVmGAIgASgJEg4KBnRvX3JlZhgDIAEoCRIMCgRwYXRoGAQgASgJIl4KD0dldERpZmZSZXNwb25zZRIUCgx1bmlmaWVkX2RpZmYYASABKAkSEwoLZnJvbV9jb21taXQYAiABKAkSEQoJdG9fY29tbWl0GAMgASgJEg0KBWVtcHR5GAQgASgIKoIBCglFbnRyeVR5cGUSGgoWRU5UUllfVFlQRV9VTlNQRUNJRklFRBAAEhMKD0VOVFJZX1RZUEVfRklMRRABEhIKDkVOVFJZX1RZUEVfRElSEAISFgoSRU5UUllfVFlQRV9TWU1MSU5LEAMSGAoURU5UUllfVFlQRV9TVUJNT0RVTEUQBDLsBAoLUmVwb1NlcnZpY2USSAoJTGlzdFJlcG9zEhwuZ2l0Y2hhdC52MS5MaXN0UmVwb3NSZXF1ZXN0Gh0uZ2l0Y2hhdC52MS5MaXN0UmVwb3NSZXNwb25zZRJRCgxMaXN0QnJhbmNoZXMSHy5naXRjaGF0LnYxLkxpc3RCcmFuY2hlc1JlcXVlc3QaIC5naXRjaGF0LnYxLkxpc3RCcmFuY2hlc1Jlc3BvbnNlEkUKCExpc3RUcmVlEhsuZ2l0Y2hhdC52MS5MaXN0VHJlZVJlcXVlc3QaHC5naXRjaGF0LnYxLkxpc3RUcmVlUmVzcG9uc2USQgoHR2V0RmlsZRIaLmdpdGNoYXQudjEuR2V0RmlsZVJlcXVlc3QaGy5naXRjaGF0LnYxLkdldEZpbGVSZXNwb25zZRJOCgtMaXN0Q29tbWl0cxIeLmdpdGNoYXQudjEuTGlzdENvbW1pdHNSZXF1ZXN0Gh8uZ2l0Y2hhdC52MS5MaXN0Q29tbWl0c1Jlc3BvbnNlEkUKCEdldEJsYW1lEhsuZ2l0Y2hhdC52MS5HZXRCbGFtZVJlcXVlc3QaHC5naXRjaGF0LnYxLkdldEJsYW1lUmVzcG9uc2USWgoPQ29tcGFyZUJyYW5jaGVzEiIuZ2l0Y2hhdC52MS5Db21wYXJlQnJhbmNoZXNSZXF1ZXN0GiMuZ2l0Y2hhdC52MS5Db21wYXJlQnJhbmNoZXNSZXNwb25zZRJCCgdHZXREaWZmEhouZ2l0Y2hhdC52MS5HZXREaWZmUmVxdWVzdBobLmdpdGNoYXQudjEuR2V0RGlmZlJlc3BvbnNlQp0BCg5jb20uZ2l0Y2hhdC52MUIJUmVwb1Byb3RvUAFaN2dpdGh1Yi5jb20vcGRlcnMwMS9naXQtY2hhdC9nZW4vZ28vZ2l0Y2hhdC92MTtnaXRjaGF0djGiAgNHWFiqAgpHaXRjaGF0LlYxygIKR2l0Y2hhdFxWMeICFkdpdGNoYXRcVjFcR1BCTWV0YWRhdGHqAgtHaXRjaGF0OjpWMWIGcHJvdG8z");
 
 /**
  * ─── Repo ───────────────────────────────────────────────────────────────
@@ -558,6 +558,13 @@ export type BlameLine = Message<"gitchat.v1.BlameLine"> & {
    * @generated from field: string commit_sha = 5;
    */
   commitSha: string;
+
+  /**
+   * first line of the commit message
+   *
+   * @generated from field: string commit_message = 6;
+   */
+  commitMessage: string;
 };
 
 /**
@@ -566,6 +573,100 @@ export type BlameLine = Message<"gitchat.v1.BlameLine"> & {
  */
 export const BlameLineSchema: GenMessage<BlameLine> = /*@__PURE__*/
   messageDesc(file_gitchat_v1_repo, 16);
+
+/**
+ * ─── CompareBranches ────────────────────────────────────────────────────
+ *
+ * @generated from message gitchat.v1.CompareBranchesRequest
+ */
+export type CompareBranchesRequest = Message<"gitchat.v1.CompareBranchesRequest"> & {
+  /**
+   * @generated from field: string repo_id = 1;
+   */
+  repoId: string;
+
+  /**
+   * e.g. "main"
+   *
+   * @generated from field: string base_ref = 2;
+   */
+  baseRef: string;
+
+  /**
+   * e.g. "feature-branch"
+   *
+   * @generated from field: string head_ref = 3;
+   */
+  headRef: string;
+};
+
+/**
+ * Describes the message gitchat.v1.CompareBranchesRequest.
+ * Use `create(CompareBranchesRequestSchema)` to create a new message.
+ */
+export const CompareBranchesRequestSchema: GenMessage<CompareBranchesRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 17);
+
+/**
+ * @generated from message gitchat.v1.CompareBranchesResponse
+ */
+export type CompareBranchesResponse = Message<"gitchat.v1.CompareBranchesResponse"> & {
+  /**
+   * @generated from field: repeated gitchat.v1.ChangedFile files = 1;
+   */
+  files: ChangedFile[];
+
+  /**
+   * @generated from field: int32 total_additions = 2;
+   */
+  totalAdditions: number;
+
+  /**
+   * @generated from field: int32 total_deletions = 3;
+   */
+  totalDeletions: number;
+};
+
+/**
+ * Describes the message gitchat.v1.CompareBranchesResponse.
+ * Use `create(CompareBranchesResponseSchema)` to create a new message.
+ */
+export const CompareBranchesResponseSchema: GenMessage<CompareBranchesResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 18);
+
+/**
+ * @generated from message gitchat.v1.ChangedFile
+ */
+export type ChangedFile = Message<"gitchat.v1.ChangedFile"> & {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path: string;
+
+  /**
+   * "added", "modified", "deleted", "renamed"
+   *
+   * @generated from field: string status = 2;
+   */
+  status: string;
+
+  /**
+   * @generated from field: int32 additions = 3;
+   */
+  additions: number;
+
+  /**
+   * @generated from field: int32 deletions = 4;
+   */
+  deletions: number;
+};
+
+/**
+ * Describes the message gitchat.v1.ChangedFile.
+ * Use `create(ChangedFileSchema)` to create a new message.
+ */
+export const ChangedFileSchema: GenMessage<ChangedFile> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 19);
 
 /**
  * ─── GetDiff ────────────────────────────────────────────────────────────
@@ -605,7 +706,7 @@ export type GetDiffRequest = Message<"gitchat.v1.GetDiffRequest"> & {
  * Use `create(GetDiffRequestSchema)` to create a new message.
  */
 export const GetDiffRequestSchema: GenMessage<GetDiffRequest> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_repo, 17);
+  messageDesc(file_gitchat_v1_repo, 20);
 
 /**
  * @generated from message gitchat.v1.GetDiffResponse
@@ -645,7 +746,7 @@ export type GetDiffResponse = Message<"gitchat.v1.GetDiffResponse"> & {
  * Use `create(GetDiffResponseSchema)` to create a new message.
  */
 export const GetDiffResponseSchema: GenMessage<GetDiffResponse> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_repo, 18);
+  messageDesc(file_gitchat_v1_repo, 21);
 
 /**
  * @generated from enum gitchat.v1.EntryType
@@ -763,6 +864,16 @@ export const RepoService: GenService<{
     methodKind: "unary";
     input: typeof GetBlameRequestSchema;
     output: typeof GetBlameResponseSchema;
+  },
+  /**
+   * CompareBranches returns the list of files changed between two refs.
+   *
+   * @generated from rpc gitchat.v1.RepoService.CompareBranches
+   */
+  compareBranches: {
+    methodKind: "unary";
+    input: typeof CompareBranchesRequestSchema;
+    output: typeof CompareBranchesResponseSchema;
   },
   /**
    * GetDiff returns a unified diff for a single file between two refs.

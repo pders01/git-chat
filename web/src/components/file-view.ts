@@ -36,6 +36,8 @@ export class GcFileView extends LitElement {
   @property({ type: String }) branch = "";
   @state() private showBlame = false;
   @state() private blameLines: BlameLine[] = [];
+  @state() private hoveredBlame: BlameLine | null = null;
+  private hoverTimer: ReturnType<typeof setTimeout> | null = null;
 
   @state() private view: ViewState = { phase: "empty" };
 
@@ -107,6 +109,7 @@ export class GcFileView extends LitElement {
       case "plain":
         return html`
           ${this.renderHeader(this.view.file)}
+          ${this.showBlame ? this.renderBlameBar() : nothing}
           <div class="code-with-blame">
             ${this.showBlame ? this.renderBlameGutter() : nothing}
             <pre class="plain">${this.view.text}</pre>
@@ -116,6 +119,7 @@ export class GcFileView extends LitElement {
       case "highlighted":
         return html`
           ${this.renderHeader(this.view.file)}
+          ${this.showBlame ? this.renderBlameBar() : nothing}
           <div class="code-with-blame">
             ${this.showBlame ? this.renderBlameGutter() : nothing}
             <div class="shiki-wrap">${unsafeHTML(this.view.html)}</div>
@@ -123,6 +127,27 @@ export class GcFileView extends LitElement {
           ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
         `;
     }
+  }
+
+  private renderBlameBar() {
+    const b = this.hoveredBlame;
+    if (!b) return nothing;
+    const age = new Date(Number(b.date) * 1000).toISOString().slice(0, 10);
+    const subject = (b.commitMessage || "").split("\n")[0] || "(no message)";
+    return html`
+      <div class="blame-bar">
+        <span class="bb-sha">${b.commitSha}</span>
+        <span class="bb-subject">${subject}</span>
+        <span class="bb-meta">${b.authorName} · ${age}</span>
+        <button class="bb-btn" @click=${() => {
+          this.hoveredBlame = null;
+          this.dispatchEvent(new CustomEvent("gc:ask-about", {
+            bubbles: true, composed: true,
+            detail: { prompt: `Explain commit ${b.commitSha} ("${subject}") and its changes to \`${this.path}\`.` },
+          }));
+        }}>explain in chat</button>
+      </div>
+    `;
   }
 
   private renderHeader(file: GetFileResponse) {
@@ -156,21 +181,44 @@ export class GcFileView extends LitElement {
     `;
   }
 
+  // Event delegation on the gutter container — one listener for all
+  // lines, not one per line. O(1) listeners regardless of file size.
+  private onGutterHover = (e: MouseEvent) => {
+    const target = (e.target as HTMLElement).closest?.(".blame-line") as HTMLElement | null;
+    if (!target) return;
+    const idx = parseInt(target.dataset.idx ?? "-1");
+    if (idx < 0 || idx >= this.blameLines.length) return;
+    if (this.hoverTimer) clearTimeout(this.hoverTimer);
+    this.hoverTimer = setTimeout(() => {
+      this.hoveredBlame = this.blameLines[idx]!;
+    }, 200);
+  };
+
+  private onGutterLeave = () => {
+    if (this.hoverTimer) clearTimeout(this.hoverTimer);
+    this.hoverTimer = setTimeout(() => { this.hoveredBlame = null; }, 150);
+  };
+
   private renderBlameGutter() {
     return html`
-      <div class="blame-gutter">
-        ${this.blameLines.map(
+      <div class="blame-gutter"
+        @mouseover=${this.onGutterHover}
+        @mouseout=${this.onGutterLeave}
+      >
+        ${(() => { let blockIdx = -1; return this.blameLines.map(
           (l, i) => {
-            // Only show author+SHA when it changes from the previous line.
             const prev = i > 0 ? this.blameLines[i - 1] : null;
-            const showMeta = !prev || prev.commitSha !== l.commitSha;
-            return html`<div class="blame-line" title="${l.authorName} · ${l.commitSha}">
-              ${showMeta
-                ? html`<span class="blame-sha">${l.commitSha}</span><span class="blame-author">${l.authorName.slice(0, 12)}</span>`
+            const isNewBlock = !prev || prev.commitSha !== l.commitSha;
+            // Alternate background for each commit block — count unique commits seen.
+            if (isNewBlock) blockIdx++;
+            const band = blockIdx % 2 === 0 ? "band-even" : "band-odd";
+            return html`<div class="blame-line ${band} ${isNewBlock ? "blame-start" : ""}" data-idx=${i}>
+              ${isNewBlock
+                ? html`<span class="blame-sha">${l.commitSha}</span><span class="blame-msg">${(l.commitMessage || "").slice(0, 24)}</span>`
                 : nothing}
             </div>`;
           },
-        )}
+        ); })()}
       </div>
     `;
   }
@@ -287,29 +335,103 @@ export class GcFileView extends LitElement {
     .code-with-blame {
       display: flex;
       overflow: auto;
+      /* CRITICAL: both gutter and code MUST share the exact same
+         line-height in px. Using em/rem causes sub-pixel drift that
+         accumulates over hundreds of lines. 18px = 0.8rem * ~1.4
+         at default browser font size. */
+      --blame-lh: 18px;
+      font-size: 0.8rem;
+      line-height: var(--blame-lh);
+    }
+    .code-with-blame > .plain,
+    .code-with-blame > .shiki-wrap {
+      flex: 1;
+      min-width: 0;
+      overflow-x: auto;
+    }
+    /* Force Shiki's internal spans to use our line-height, not its own. */
+    .code-with-blame .shiki,
+    .code-with-blame .shiki code,
+    .code-with-blame .shiki .line,
+    .code-with-blame pre {
+      line-height: var(--blame-lh) !important;
+      font-size: 0.8rem !important;
     }
     .blame-gutter {
       flex-shrink: 0;
-      width: 180px;
+      width: 200px;
       border-right: 1px solid var(--surface-4);
-      font-size: 0.68rem;
-      line-height: 1.5;
+      font-size: 0.7rem;
+      line-height: var(--blame-lh);
       padding: var(--space-4) var(--space-2);
       background: var(--surface-0);
       overflow: hidden;
     }
     .blame-line {
-      height: 1.5em;
+      height: var(--blame-lh);
       display: flex;
       gap: var(--space-2);
       white-space: nowrap;
       overflow: hidden;
+      cursor: default;
+      box-sizing: border-box;
+    }
+    .blame-line:hover {
+      background: var(--surface-3);
+    }
+    .blame-start {
+      border-top: 1px solid var(--surface-4);
+    }
+    /* ── Blame info bar (below file header, inline) ─────────── */
+    .blame-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-2) var(--space-4);
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--surface-4);
+      font-size: var(--text-xs);
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .bb-sha {
+      color: var(--accent-user);
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
+    .bb-subject {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .bb-meta {
+      opacity: 0.5;
+      flex-shrink: 0;
+    }
+    .bb-btn {
+      flex-shrink: 0;
+      padding: var(--space-1) var(--space-3);
+      background: var(--action-bg);
+      color: var(--text);
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+    }
+    .bb-btn:hover {
+      background: var(--action-bg-hover);
+    }
+
+    .blame-continuation {
+      opacity: 0.15;
+      padding-left: 0.3rem;
     }
     .blame-sha {
       color: var(--accent-user);
       font-variant-numeric: tabular-nums;
     }
-    .blame-author {
+    .blame-msg {
       opacity: 0.5;
       overflow: hidden;
       text-overflow: ellipsis;
