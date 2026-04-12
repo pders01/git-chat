@@ -19,6 +19,13 @@
 # SSH host keys (generated at first run)
 host_ed25519*
 
+# Test artifacts
+/test-results/
+/web/test-results/
+
+# Claude Code worktrees
+/.claude/worktrees/
+
 # Editor / OS
 .DS_Store
 .idea/
