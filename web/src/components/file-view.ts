@@ -125,7 +125,7 @@ export class GcFileView extends LitElement {
       case "plain":
         return html`
           ${this.renderHeader(this.view.file)}
-          ${this.showBlame ? this.renderBlameTooltip() : nothing}
+          ${this.showBlame ? this.renderBlameStrip() : nothing}
           ${this.showBlame
             ? this.renderBlameTable(this.view.text.split("\n"), false)
             : html`<pre class="plain">${this.view.text}</pre>`}
@@ -134,7 +134,7 @@ export class GcFileView extends LitElement {
       case "highlighted":
         return html`
           ${this.renderHeader(this.view.file)}
-          ${this.showBlame ? this.renderBlameTooltip() : nothing}
+          ${this.showBlame ? this.renderBlameStrip() : nothing}
           ${this.showBlame
             ? this.renderBlameTable(this.getShikiLines(this.view.html), true)
             : html`<div class="shiki-wrap">${unsafeHTML(this.view.html)}</div>`}
@@ -143,30 +143,20 @@ export class GcFileView extends LitElement {
     }
   }
 
-  private renderBlameTooltip() {
+  private renderBlameStrip() {
     const b = this.hoveredBlame;
     if (!b) return nothing;
     const age = new Date(Number(b.date) * 1000).toISOString().slice(0, 10);
-    const lines = (b.commitMessage || "").split("\n");
-    const subject = lines[0] || "(no message)";
-    const body = lines.slice(2).join("\n").trim();
+    const subject = (b.commitMessage || "").split("\n")[0] || "(no message)";
     return html`
-      <div class="blame-tip" style=${this.blameTooltipStyle}
-        @mouseenter=${() => { if (this.hoverTimer) clearTimeout(this.hoverTimer); }}
-        @mouseleave=${this.onGutterLeave}
-        @focusin=${() => { if (this.hoverTimer) clearTimeout(this.hoverTimer); }}
-        @keydown=${(e: KeyboardEvent) => { if (e.key === "Escape") this.hoveredBlame = null; }}
-      >
-        <div class="bt-header">
-          <span class="bt-sha">${b.commitSha}</span>
-          <span class="bt-meta">${b.authorName} · ${age}</span>
-        </div>
-        <div class="bt-subject">${subject}</div>
-        ${body ? html`<div class="bt-body">${body}</div>` : nothing}
-        <div class="bt-actions">
-          <button class="bt-btn" @click=${() => this.viewCommitInLog(b.commitSha)}>view in log</button>
-          <button class="bt-btn" @click=${() => this.askAboutCommit(b.commitSha, subject)}>ask in chat</button>
-        </div>
+      <div class="blame-strip">
+        <span class="bs-sha">${b.commitSha.slice(0, 7)}</span>
+        <span class="bs-subject">${subject}</span>
+        <span class="bs-meta">${b.authorName} · ${age}</span>
+        <span class="bs-spacer"></span>
+        <button class="bs-btn" @click=${() => this.viewCommitInLog(b.commitSha)}>log</button>
+        <button class="bs-btn" @click=${() => this.askAboutCommit(b.commitSha, subject)}>chat</button>
+        <button class="bs-btn bs-close" @click=${() => { this.hoveredBlame = null; }} aria-label="Dismiss">×</button>
       </div>
     `;
   }
@@ -205,34 +195,22 @@ export class GcFileView extends LitElement {
     `;
   }
 
-  // Event delegation on the gutter container — one listener for all
-  // lines, not one per line. O(1) listeners regardless of file size.
-  private onGutterHover = (e: MouseEvent) => {
-    const row = (e.target as HTMLElement).closest?.("tr") as HTMLElement | null;
-    if (!row) return;
-    const cell = row.querySelector(".blame-cell") as HTMLElement | null;
+  // Event delegation on the gutter — click to select a blame line.
+  private onGutterClick = (e: MouseEvent) => {
+    const cell = (e.target as HTMLElement).closest?.(".blame-cell") as HTMLElement | null;
     if (!cell) return;
     const idx = parseInt(cell.dataset.idx ?? "-1");
     if (idx < 0 || idx >= this.blameLines.length) return;
-    // Same line — don't reposition or flicker.
-    if (idx === this.hoveredIdx && this.hoveredBlame) return;
-    if (this.hoverTimer) clearTimeout(this.hoverTimer);
-    this.hoverTimer = setTimeout(() => {
+    const blame = this.blameLines[idx];
+    if (!blame) return;
+    // Toggle: click same commit → dismiss.
+    if (this.hoveredBlame?.commitSha === blame.commitSha) {
+      this.hoveredBlame = null;
+      this.hoveredIdx = -1;
+    } else {
       this.hoveredIdx = idx;
-      this.hoveredBlame = this.blameLines[idx]!;
-      requestAnimationFrame(() => {
-        const tip = this.renderRoot.querySelector(".blame-tip") as HTMLElement | null;
-        const tipW = tip?.offsetWidth ?? 560;
-        const tipH = tip?.offsetHeight ?? 200;
-        let left = e.clientX + 16;
-        let top = e.clientY + 12;
-        if (left + tipW > window.innerWidth - 8) left = e.clientX - tipW - 8;
-        if (top + tipH > window.innerHeight - 8) top = e.clientY - tipH - 8;
-        if (top < 8) top = 8;
-        if (left < 8) left = 8;
-        this.blameTooltipStyle = `top:${top}px;left:${left}px`;
-      });
-    }, 300);
+      this.hoveredBlame = blame;
+    }
   };
 
   private onBlameKeydown = (e: KeyboardEvent) => {
@@ -243,9 +221,14 @@ export class GcFileView extends LitElement {
 
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      this.hoveredBlame = this.blameLines[idx]!;
-      const rect = cell.getBoundingClientRect();
-      this.blameTooltipStyle = `top:${rect.bottom + 4}px;left:${rect.right + 8}px`;
+      const blame = this.blameLines[idx];
+      if (blame && this.hoveredBlame?.commitSha === blame.commitSha) {
+        this.hoveredBlame = null;
+        this.hoveredIdx = -1;
+      } else {
+        this.hoveredBlame = blame ?? null;
+        this.hoveredIdx = idx;
+      }
     } else if (e.key === "Escape") {
       this.hoveredBlame = null;
     } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -257,11 +240,7 @@ export class GcFileView extends LitElement {
   };
 
   private onGutterLeave = () => {
-    if (this.hoverTimer) clearTimeout(this.hoverTimer);
-    this.hoverTimer = setTimeout(() => {
-      this.hoveredBlame = null;
-      this.hoveredIdx = -1;
-    }, 150);
+    // No-op — blame selection is click-based, not hover-based.
   };
 
   /** Cached wrapper — avoids re-parsing Shiki HTML on every render. */
@@ -291,8 +270,7 @@ export class GcFileView extends LitElement {
   private renderBlameTable(lines: string[], isHighlighted: boolean) {
     return html`
       <div class="blame-table-wrap"
-        @mouseover=${this.onGutterHover}
-        @mouseout=${this.onGutterLeave}
+        @click=${this.onGutterClick}
         @keydown=${this.onBlameKeydown}
       >
         <table class="blame-table">
@@ -310,7 +288,7 @@ export class GcFileView extends LitElement {
                 <tr class="${isNewBlock ? "blame-start" : ""}">
                   <td class="blame-cell" data-idx=${i} tabindex="0" role="button">
                     ${isNewBlock && blame
-                      ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span> <span class="blame-msg">${(blame.commitMessage || "").split("\n")[0]}</span>`
+                      ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span>`
                       : nothing}
                   </td>
                   <td class="lno-cell">${i + 1}</td>
@@ -461,68 +439,48 @@ export class GcFileView extends LitElement {
       min-width: 0;
       gap: var(--space-3);
     }
-    /* ── Blame tooltip (hover popup) ────────────── */
-    .blame-tip {
-      position: fixed;
-      z-index: 50;
-      width: min(560px, calc(100vw - 32px));
-      padding: var(--space-3) var(--space-4);
-      background: var(--surface-2);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-md);
-      font-size: var(--text-xs);
-      box-shadow: 0 4px 24px rgba(0,0,0,0.35);
-      transition: top 0.12s ease-out, left 0.12s ease-out;
-    }
-    .bt-header {
+    /* ── Blame detail strip (click-to-select) ──── */
+    .blame-strip {
       display: flex;
       align-items: center;
       gap: var(--space-3);
-      margin-bottom: var(--space-1);
+      padding: 0 var(--space-4);
+      height: 32px;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--surface-4);
+      font-size: var(--text-xs);
+      flex-shrink: 0;
     }
-    .bt-sha {
+    .bs-sha {
       color: var(--accent-user);
       font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
     }
-    .bt-meta {
-      opacity: 0.5;
-      margin-left: auto;
-    }
-    .bt-subject {
-      font-size: var(--text-sm);
+    .bs-subject {
       font-weight: 500;
-      margin-bottom: var(--space-1);
-      word-break: break-word;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-    .bt-body {
-      opacity: 0.6;
-      white-space: pre-wrap;
-      word-break: break-word;
-      max-height: min(200px, 40vh);
-      overflow-y: auto;
-      line-height: 1.5;
+    .bs-meta {
+      opacity: 0.5;
+      flex-shrink: 0;
+      white-space: nowrap;
     }
-    .bt-actions {
-      display: flex;
-      gap: var(--space-2);
-      margin-top: var(--space-2);
-      padding-top: var(--space-2);
-      border-top: 1px solid var(--border-default);
-    }
-    .bt-btn {
-      padding: var(--space-1) var(--space-3);
-      background: var(--surface-3);
+    .bs-spacer { flex: 1; }
+    .bs-btn {
+      padding: 2px var(--space-2);
+      background: transparent;
       color: var(--text);
       border: 1px solid var(--border-default);
-      border-radius: var(--radius-md);
+      border-radius: var(--radius-sm);
       font-family: inherit;
-      font-size: var(--text-xs);
+      font-size: 0.65rem;
       cursor: pointer;
+      opacity: 0.6;
     }
-    .bt-btn:hover {
-      background: var(--action-bg-hover);
-      border-color: var(--border-accent);
-    }
+    .bs-btn:hover { opacity: 1; background: var(--surface-3); }
+    .bs-close { border: none; font-size: 0.8rem; }
     /* ── Blame table layout ──────────────────────── */
     .blame-table-wrap {
       font-size: 0.8rem;
@@ -536,7 +494,7 @@ export class GcFileView extends LitElement {
       font-size: inherit;
     }
     .blame-col {
-      width: 280px;
+      width: 80px;
     }
     .lno-col {
       width: 3.5em;
@@ -553,7 +511,7 @@ export class GcFileView extends LitElement {
       background: var(--surface-1-alt);
       border-right: 1px solid var(--surface-4);
       cursor: pointer;
-      vertical-align: top;
+      vertical-align: middle;
     }
     .blame-table tr:hover .blame-cell,
     .blame-table tr:hover .lno-cell {
@@ -594,10 +552,6 @@ export class GcFileView extends LitElement {
     .blame-sha {
       color: var(--accent-user);
       font-variant-numeric: tabular-nums;
-    }
-    .blame-msg {
-      color: var(--text);
-      opacity: 0.65;
     }
     .hd-btn {
       flex-shrink: 0;
