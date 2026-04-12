@@ -538,9 +538,16 @@ func fileContent(commit *object.Commit, path string) (string, error) {
 		}
 		return "", fmt.Errorf("find file: %w", err)
 	}
+	// Skip oversized or binary files to avoid O(m×n) diff on huge blobs.
+	if f.Size > int64(maxWholeDiffBytes_) {
+		return "(file too large for inline diff)", nil
+	}
 	contents, err := f.Contents()
 	if err != nil {
 		return "", fmt.Errorf("read blob: %w", err)
+	}
+	if isBinary([]byte(contents[:min(len(contents), 8192)])) {
+		return "(binary file)", nil
 	}
 	return contents, nil
 }
