@@ -62,6 +62,7 @@ export class GcChatView extends LitElement {
   // @-mention autocomplete state.
   @state() private mentionResults: string[] = [];
   @state() private showMentions = false;
+  @state() private mentionIdx = -1;
   /** Cache of directory path → full entry paths (dirs suffixed with /). */
   private dirCache = new Map<string, string[]>();
   // Focus mode hides the session sidebar and removes the messages
@@ -328,6 +329,7 @@ export class GcChatView extends LitElement {
         return name.includes(filterPart);
       })
       .slice(0, 8);
+    this.mentionIdx = -1;
     this.showMentions = this.mentionResults.length > 0;
   }
 
@@ -348,6 +350,29 @@ export class GcChatView extends LitElement {
   }
 
   private onKeydown(e: KeyboardEvent) {
+    // Mention autocomplete keyboard navigation.
+    if (this.showMentions && this.mentionResults.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        this.mentionIdx = (this.mentionIdx + 1) % this.mentionResults.length;
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        this.mentionIdx = this.mentionIdx <= 0 ? this.mentionResults.length - 1 : this.mentionIdx - 1;
+        return;
+      }
+      if ((e.key === "Enter" || e.key === "Tab") && this.mentionIdx >= 0) {
+        e.preventDefault();
+        this.insertMention(this.mentionResults[this.mentionIdx]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        this.showMentions = false;
+        return;
+      }
+    }
     // Cmd+Enter / Ctrl+Enter sends; plain Enter inserts a newline.
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -628,8 +653,8 @@ export class GcChatView extends LitElement {
               ${this.showMentions
                 ? html`<ul class="mention-list" role="listbox">
                     ${this.mentionResults.map(
-                      (p) => html`<li role="option">
-                        <button class="mention-item" @click=${() => this.insertMention(p)}>
+                      (p, i) => html`<li role="option" aria-selected=${i === this.mentionIdx ? "true" : "false"}>
+                        <button class="mention-item ${i === this.mentionIdx ? "active" : ""}" @click=${() => this.insertMention(p)}>
                           ${p}
                         </button>
                       </li>`,
@@ -1370,7 +1395,8 @@ export class GcChatView extends LitElement {
       text-align: left;
       cursor: pointer;
     }
-    .mention-item:hover {
+    .mention-item:hover,
+    .mention-item.active {
       background: var(--surface-3);
     }
     .composer-row {
