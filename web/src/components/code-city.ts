@@ -1,4 +1,4 @@
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repoClient } from "../lib/transport.js";
 
@@ -313,7 +313,9 @@ export class GcCodeCity extends LitElement {
     if (!canvas) return;
 
     const container = canvas.parentElement!;
-    const { width, height } = container.getBoundingClientRect();
+    const rect = container.getBoundingClientRect();
+    const width = rect.width || 800;
+    const height = rect.height || 600;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x1a1d24);
@@ -583,11 +585,12 @@ export class GcCodeCity extends LitElement {
   /* ---- render ---- */
 
   override render() {
-    if (this.loading) return html`<div class="hint">loading activity data...</div>`;
-    if (this.error) return html`<div class="hint err">${this.error}</div>`;
+    if (this.loading && !this.scene) return html`<div class="hint">loading activity data...</div>`;
+    if (this.error && !this.scene) return html`<div class="hint err">${this.error}</div>`;
     return html`
       <div class="city-container">
         <canvas class="city-canvas"></canvas>
+        ${this.loading ? html`<div class="city-loading">updating...</div>` : nothing}
         <div class="city-controls">
           <span class="time-label">${formatDate(this.currentSince)}</span>
           <input
@@ -614,11 +617,21 @@ export class GcCodeCity extends LitElement {
       display: flex;
       flex-direction: column;
       flex: 1;
+      min-height: 0;
+      position: relative;
     }
     .city-canvas {
       flex: 1;
       min-height: 0;
       display: block;
+      width: 100%;
+    }
+    .city-loading {
+      position: absolute;
+      top: var(--space-2);
+      right: var(--space-3);
+      font-size: var(--text-xs);
+      opacity: 0.5;
     }
     .city-controls {
       display: flex;
