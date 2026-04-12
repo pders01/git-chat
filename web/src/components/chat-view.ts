@@ -251,7 +251,7 @@ export class GcChatView extends LitElement {
           break;
         }
       }
-      this.suggestions = suggestions.slice(0, 4);
+      this.suggestions = suggestions.slice(0, 3);
     } catch {
       // Non-critical — fallback to static suggestions.
       this.suggestions = [
@@ -263,56 +263,43 @@ export class GcChatView extends LitElement {
 
   private renderGroupedActivity() {
     const now = Math.floor(Date.now() / 1000);
-    const groups: Array<{ label: string; commits: typeof this.recentCommits }> = [];
     const buckets = [
       { max: 3600, label: "last hour" },
-      { max: 86400, label: "earlier today" },
+      { max: 86400, label: "today" },
       { max: 604800, label: "this week" },
       { max: Infinity, label: "older" },
     ];
 
+    const groups: Array<{ label: string; scopes: string[]; count: number }> = [];
     for (const bucket of buckets) {
+      const prevMax = buckets[buckets.indexOf(bucket) - 1]?.max ?? 0;
       const matching = this.recentCommits.filter((c) => {
         const age = now - c.timestamp;
-        const prevMax = buckets[buckets.indexOf(bucket) - 1]?.max ?? 0;
         return age < bucket.max && age >= prevMax;
       });
-      if (matching.length > 0) {
-        groups.push({ label: bucket.label, commits: matching });
-      }
-    }
+      if (matching.length === 0) continue;
 
-    return groups.map((g) => {
-      // Summarize: group by commit type prefix (feat, fix, chore, etc.)
-      const types = new Map<string, string[]>();
-      for (const c of g.commits) {
-        const match = c.message.match(/^(\w+)(?:\(.*?\))?:\s*(.+)/);
-        const type = match ? match[1] : "other";
-        const desc = match ? match[2] : c.message;
-        if (!types.has(type)) types.set(type, []);
-        types.get(type)!.push(desc);
-      }
-      const summaries: string[] = [];
-      for (const [type, descs] of types) {
-        if (descs.length === 1) {
-          summaries.push(`${type}: ${descs[0]}`);
-        } else {
-          summaries.push(`${type}: ${descs.length} changes — ${descs.slice(0, 2).join(", ")}${descs.length > 2 ? ", …" : ""}`);
+      // Extract unique scopes from conventional commit messages.
+      const scopes = new Set<string>();
+      for (const c of matching) {
+        const m = c.message.match(/^\w+\(([^)]+)\)/);
+        if (m) scopes.add(m[1]);
+        else {
+          // No scope — use first word of message as area.
+          const word = c.message.split(/[:\s]/)[0];
+          if (word) scopes.add(word);
         }
       }
+      groups.push({ label: bucket.label, scopes: [...scopes].slice(0, 5), count: matching.length });
+    }
 
-      return html`
-        <div class="activity-group">
-          <div class="activity-period">${g.label}</div>
-          ${summaries.map((s) => html`<div class="activity-summary">${s}</div>`)}
-          <div class="activity-commits">
-            ${g.commits.map((c) => html`
-              <span class="activity-sha">${c.shortSha}</span>
-            `)}
-          </div>
-        </div>
-      `;
-    });
+    return html`${groups.map((g) => html`
+      <div class="activity-line">
+        <span class="activity-period">${g.label}</span>
+        <span class="activity-count">${g.count} commit${g.count > 1 ? "s" : ""}</span>
+        <span class="activity-scopes">${g.scopes.join(", ")}</span>
+      </div>
+    `)}`;
   }
 
   private startRename(sessionId: string) {
@@ -1322,34 +1309,30 @@ export class GcChatView extends LitElement {
       opacity: 0.4;
       margin-bottom: var(--space-2);
     }
-    .activity-group {
-      margin-bottom: var(--space-3);
+    .activity-line {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-2);
+      padding: var(--space-1) 0;
+      font-size: var(--text-xs);
     }
     .activity-period {
       font-size: 0.6rem;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.05em;
       opacity: 0.35;
-      padding-bottom: var(--space-1);
-      border-bottom: 1px solid var(--surface-4);
-      margin-bottom: var(--space-1);
+      flex-shrink: 0;
+      min-width: 70px;
     }
-    .activity-summary {
-      font-size: var(--text-xs);
-      padding: 2px 0;
-      line-height: 1.5;
+    .activity-count {
+      flex-shrink: 0;
+      opacity: 0.6;
     }
-    .activity-commits {
-      display: flex;
-      gap: var(--space-2);
-      flex-wrap: wrap;
-      margin-top: var(--space-1);
-    }
-    .activity-sha {
-      font-size: 0.6rem;
-      color: var(--accent-user);
-      opacity: 0.5;
-      font-variant-numeric: tabular-nums;
+    .activity-scopes {
+      opacity: 0.45;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     /* ── Turns ───────────────────────────────────────────────────── */
