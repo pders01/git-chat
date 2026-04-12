@@ -342,4 +342,85 @@ test.describe("features", () => {
     });
     await page.waitForTimeout(300);
   });
+
+  // ── Blame → Log navigation ─────────────────────────────────
+
+  test("blame: 'view in log' navigates to log and selects commit", async () => {
+    // Switch to browse.
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
+      (tabs?.[1] as HTMLElement)?.click();
+    });
+    await page.waitForTimeout(1000);
+
+    // Click first file.
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const browser = app?.shadowRoot?.querySelector("gc-repo-browser");
+      const files = browser?.shadowRoot?.querySelectorAll(".entry.file");
+      (files?.[0] as HTMLElement)?.click();
+    });
+    await page.waitForTimeout(1000);
+
+    // Toggle blame on.
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const browser = app?.shadowRoot?.querySelector("gc-repo-browser");
+      const fileView = browser?.shadowRoot?.querySelector("gc-file-view");
+      const blameBtn = fileView?.shadowRoot?.querySelector(".hd-btn") as HTMLElement;
+      blameBtn?.click();
+    });
+    await page.waitForTimeout(1500);
+
+    // Check blame table rendered.
+    const hasBlameTable = await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const browser = app?.shadowRoot?.querySelector("gc-repo-browser");
+      const fileView = browser?.shadowRoot?.querySelector("gc-file-view");
+      return !!fileView?.shadowRoot?.querySelector(".blame-table");
+    });
+    expect(hasBlameTable).toBe(true);
+
+    // Grab a full SHA from the first blame cell via the DOM's dataset.
+    // The blame-cell has data-idx; we read the commit SHA from the tooltip data.
+    const sha = await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const browser = app?.shadowRoot?.querySelector("gc-repo-browser");
+      const fileView = browser?.shadowRoot?.querySelector("gc-file-view");
+      // The blame-sha span shows 7 chars; get the full SHA via the bt-sha in the tooltip.
+      // Easier: simulate a hover to populate hoveredBlame, then read bt-sha.
+      // Simplest: just grab from the rendered blame-sha text (short) — the commit-log
+      // can match by prefix.
+      const shaSpan = fileView?.shadowRoot?.querySelector(".blame-sha");
+      return shaSpan?.textContent?.trim() ?? "";
+    });
+    expect(sha.length).toBeGreaterThan(0);
+
+    // Simulate the blame → log bridge by dispatching gc:view-commit.
+    await page.evaluate(async (commitSha) => {
+      const app = document.querySelector("gc-app");
+      if (!app) return;
+      const browser = app.shadowRoot?.querySelector("gc-repo-browser");
+      const fileView = browser?.shadowRoot?.querySelector("gc-file-view");
+      const source = fileView ?? app;
+      source.dispatchEvent(new CustomEvent("gc:view-commit", {
+        bubbles: true,
+        composed: true,
+        detail: { sha: commitSha },
+      }));
+    }, sha);
+    await page.waitForTimeout(3000);
+
+    // Should be on log tab now.
+    await expect(page).toHaveURL(/#\/.*\/log$/);
+
+    // A commit row should be selected.
+    const hasSelectedCommit = await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const log = app?.shadowRoot?.querySelector("gc-commit-log");
+      return !!log?.shadowRoot?.querySelector(".commit-row.selected");
+    });
+    expect(hasSelectedCommit).toBe(true);
+  });
 });
