@@ -40,6 +40,7 @@ dev:
 	go run ./cmd/git-chat local \
 		--http 127.0.0.1:$(DEV_PORT) \
 		--open-host 127.0.0.1:5173 \
+		$(if $(NO_BROWSER),--no-browser) \
 		.; \
 	wait
 

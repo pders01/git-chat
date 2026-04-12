@@ -134,14 +134,21 @@ function layoutStrip(
 /*  Color helpers                                                      */
 /* ------------------------------------------------------------------ */
 
-function churnColor(lastModified: number): number {
+// Color by commit count intensity — high churn = hot, low = cool.
+// Also factors in recency as a secondary signal.
+function churnColor(lastModified: number, commitCount = 1, maxCommits = 10): number {
+  // Primary: commit count intensity (0=cold, 1=hot)
+  const intensity = Math.min(1, commitCount / Math.max(1, maxCommits * 0.6));
+  // Secondary: recency (0=old, 1=recent)
   const now = Date.now() / 1000;
   const age = now - lastModified;
-  const daysOld = age / 86400;
-  const t = Math.min(1, Math.max(0, daysOld / 90));
-  const r = Math.round(255 * (1 - t));
-  const g = Math.round(100 * (1 - t));
-  const b = Math.round(100 + 155 * t);
+  const recency = Math.max(0, 1 - age / (90 * 86400));
+  // Blend: 70% intensity, 30% recency
+  const t = intensity * 0.7 + recency * 0.3;
+  // Cool blue → warm orange → hot red
+  const r = Math.round(60 + 195 * t);
+  const g = Math.round(80 + 120 * Math.max(0, t - 0.3) * (1 - t));
+  const b = Math.round(200 * (1 - t) + 40);
   return (r << 16) | (g << 8) | b;
 }
 
@@ -223,6 +230,7 @@ export class GcCodeCity extends LitElement {
   private animFrameId = 0;
   private _resizeObserver: ResizeObserver | null = null;
   private blockMeshes: Map<string, InstanceType<THREE["Mesh"]>> = new Map();
+  private _maxCommits = 1;
   private tree: DirNode | null = null;
 
   // Debounce timer for slider
@@ -254,14 +262,16 @@ export class GcCodeCity extends LitElement {
     this.error = "";
 
     try {
-      const params = {
+      if (!this.repoId) {
+        this.loading = false;
+        return;
+      }
+      const resp = await (repoClient as any).getFileChurnMap({
         repoId: this.repoId,
-        ref: this.branch,
-        sinceTimestamp: BigInt(sinceTimestamp ?? 0),
-        untilTimestamp: BigInt(0),
-      };
-
-      const resp = await (repoClient as any).getFileChurnMap(params);
+        ref: this.branch || "",
+        sinceTimestamp: String(sinceTimestamp ?? 0),
+        untilTimestamp: "0",
+      });
       const files: FileNode[] = (resp.files ?? []).map((f: any) => ({
         path: f.path ?? "",
         name: (f.path ?? "").split("/").pop() ?? "",
@@ -320,7 +330,7 @@ export class GcCodeCity extends LitElement {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x1a1d24);
 
-    this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+    this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
     this.camera.position.set(30, 30, 30);
     this.camera.lookAt(0, 0, 0);
 
@@ -355,8 +365,9 @@ export class GcCodeCity extends LitElement {
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // Click handler
+    // Click + hover handlers
     canvas.addEventListener("click", this.onClick);
+    canvas.addEventListener("mousemove", this.onHover);
 
     // Resize
     this._resizeObserver = new ResizeObserver(() => {
@@ -397,8 +408,14 @@ export class GcCodeCity extends LitElement {
       if ((obj as any).material) (obj as any).material.dispose();
     }
 
+    // Compute max commits for color normalization
+    const allFiles: FileNode[] = [];
+    const collectFiles = (dir: DirNode) => { allFiles.push(...dir.files); dir.children.forEach(collectFiles); };
+    collectFiles(this.tree);
+    this._maxCommits = Math.max(1, ...allFiles.map(f => f.commitCount));
+
     // Total city size proportional to sqrt of total size
-    const citySize = Math.max(10, Math.sqrt(this.tree.totalSize) * 1.5);
+    const citySize = Math.max(10, Math.sqrt(this.tree.totalSize) * 0.05);
     const rootRect: Rect = { x: -citySize / 2, y: -citySize / 2, w: citySize, h: citySize };
 
     this.layoutDir(this.tree, rootRect, 0);
@@ -467,7 +484,7 @@ export class GcCodeCity extends LitElement {
     const THREE = this.three;
 
     const height = Math.max(0.1, Math.log2(file.commitCount + 1) * 2);
-    const color = churnColor(file.lastModified);
+    const color = churnColor(file.lastModified, file.commitCount, this._maxCommits);
 
     const geometry = new THREE.BoxGeometry(w * 0.9, height, d * 0.9);
     const material = new THREE.MeshStandardMaterial({ color });
@@ -490,6 +507,32 @@ export class GcCodeCity extends LitElement {
   };
 
   /* ---- click / raycast ---- */
+
+  @state() private tooltipText = "";
+  @state() private tooltipX = 0;
+  @state() private tooltipY = 0;
+
+  private onHover = (event: MouseEvent) => {
+    if (!this.raycaster || !this.mouse || !this.camera || !this.scene) return;
+    const canvas = event.target as HTMLCanvasElement;
+    const rect = canvas.getBoundingClientRect();
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+    const intersects = this.raycaster.intersectObjects([...this.blockMeshes.values()]);
+    if (intersects.length > 0) {
+      const hit = intersects[0].object;
+      const f = hit.userData?.file;
+      const path = hit.userData?.path ?? "";
+      this.tooltipText = f ? `${path} (${f.commitCount} commits, +${f.additions}/-${f.deletions})` : path;
+      this.tooltipX = event.clientX - rect.left;
+      this.tooltipY = event.clientY - rect.top;
+      canvas.style.cursor = "pointer";
+    } else {
+      this.tooltipText = "";
+      canvas.style.cursor = "default";
+    }
+  };
 
   private onClick = (event: MouseEvent) => {
     if (!this.raycaster || !this.mouse || !this.camera || !this.scene) return;
@@ -545,7 +588,7 @@ export class GcCodeCity extends LitElement {
         continue;
       }
       const targetHeight = Math.max(0.1, Math.log2(file.commitCount + 1) * 2);
-      const targetColor = churnColor(file.lastModified);
+      const targetColor = churnColor(file.lastModified, file.commitCount, this._maxCommits);
       this.animateHeight(mesh, targetHeight, targetColor);
     }
   }
@@ -591,6 +634,7 @@ export class GcCodeCity extends LitElement {
       <div class="city-container">
         <canvas class="city-canvas"></canvas>
         ${this.loading ? html`<div class="city-loading">updating...</div>` : nothing}
+        ${this.tooltipText ? html`<div class="city-tooltip" style="left:${this.tooltipX + 12}px;top:${this.tooltipY - 8}px">${this.tooltipText}</div>` : nothing}
         <div class="city-controls">
           <span class="time-label">${formatDate(this.currentSince)}</span>
           <input
@@ -632,6 +676,18 @@ export class GcCodeCity extends LitElement {
       right: var(--space-3);
       font-size: var(--text-xs);
       opacity: 0.5;
+    }
+    .city-tooltip {
+      position: absolute;
+      padding: 4px 8px;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--surface-4);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 10;
     }
     .city-controls {
       display: flex;
