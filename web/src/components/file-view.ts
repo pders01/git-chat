@@ -202,9 +202,11 @@ export class GcFileView extends LitElement {
   // Event delegation on the gutter container — one listener for all
   // lines, not one per line. O(1) listeners regardless of file size.
   private onGutterHover = (e: MouseEvent) => {
-    const target = (e.target as HTMLElement).closest?.(".blame-cell") as HTMLElement | null;
-    if (!target) return;
-    const idx = parseInt(target.dataset.idx ?? "-1");
+    const row = (e.target as HTMLElement).closest?.("tr") as HTMLElement | null;
+    if (!row) return;
+    const cell = row.querySelector(".blame-cell") as HTMLElement | null;
+    if (!cell) return;
+    const idx = parseInt(cell.dataset.idx ?? "-1");
     if (idx < 0 || idx >= this.blameLines.length) return;
     if (this.hoverTimer) clearTimeout(this.hoverTimer);
     this.hoverTimer = setTimeout(() => {
@@ -213,7 +215,7 @@ export class GcFileView extends LitElement {
       // Defer one frame so the tooltip DOM exists and we can measure it.
       requestAnimationFrame(() => {
         const tip = this.renderRoot.querySelector(".blame-tip") as HTMLElement | null;
-        const gutterRect = target.getBoundingClientRect();
+        const gutterRect = cell.getBoundingClientRect();
         const tipW = tip?.offsetWidth ?? 560;
         const tipH = tip?.offsetHeight ?? 200;
         let left = gutterRect.right + 8;
@@ -522,7 +524,8 @@ export class GcFileView extends LitElement {
       cursor: pointer;
       vertical-align: top;
     }
-    .blame-cell:hover {
+    .blame-table tr:hover .blame-cell,
+    .blame-table tr:hover .lno-cell {
       background: var(--surface-3);
     }
     .blame-cont {
