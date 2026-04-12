@@ -529,7 +529,8 @@ export class GcChatView extends LitElement {
     // Narrow once up here so all the template references are type-safe.
     const s = this.state;
     return html`
-      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""}" role="main">
+      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""}" role="main"
+        @keydown=${(e: KeyboardEvent) => { if (e.key === "Escape" && this.drawerOpen) { this.drawerOpen = false; } }}>
         <button
           class="drawer-toggle"
           @click=${() => (this.drawerOpen = !this.drawerOpen)}
@@ -622,7 +623,8 @@ export class GcChatView extends LitElement {
             <button
               class="focus-btn"
               @click=${this.toggleFocus}
-              title=${this.focused ? "show sidebar" : "hide sidebar"}
+              aria-label=${this.focused ? "Show sidebar" : "Hide sidebar"}
+              aria-pressed=${this.focused ? "true" : "false"}
             >
               ${this.focused ? "◀" : "▶"}
               <span class="focus-label">

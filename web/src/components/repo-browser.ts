@@ -168,7 +168,8 @@ export class GcRepoBrowser extends LitElement {
 
   private renderReady(s: Extract<BrowserState, { phase: "ready" }>) {
     return html`
-      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""}">
+      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""}"
+        @keydown=${(e: KeyboardEvent) => { if (e.key === "Escape" && this.drawerOpen) { this.drawerOpen = false; } }}>
         <button class="drawer-toggle" @click=${() => (this.drawerOpen = !this.drawerOpen)} aria-label="Toggle file tree">☰</button>
         ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
         <aside>
@@ -178,7 +179,8 @@ export class GcRepoBrowser extends LitElement {
             <button
               class="focus-btn"
               @click=${this.onToggleFocus}
-              title=${this.focused ? "show tree" : "hide tree"}
+              aria-label=${this.focused ? "Show file tree" : "Hide file tree"}
+              aria-pressed=${this.focused ? "true" : "false"}
             >
               ${this.focused ? "◀" : "▶"}
             </button>

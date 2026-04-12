@@ -162,7 +162,8 @@ export class GcCommitLog extends LitElement {
     const { commits, hasMore, offset } = this.state;
     const sel = this.selectedCommit();
     return html`
-      <div class="layout ${this.drawerOpen ? "drawer-open" : ""}">
+      <div class="layout ${this.drawerOpen ? "drawer-open" : ""}"
+        @keydown=${(e: KeyboardEvent) => { if (e.key === "Escape" && this.drawerOpen) { this.drawerOpen = false; } }}>
         <button class="drawer-toggle" @click=${() => (this.drawerOpen = !this.drawerOpen)} aria-label="Toggle commit list">☰</button>
         ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
         <!-- Left: commit list sidebar -->
@@ -243,6 +244,7 @@ export class GcCommitLog extends LitElement {
                     <button
                       class="action-btn"
                       @click=${() => this.askAboutCommit(sel)}
+                      aria-label="Explain commit ${sel.shortSha} in chat"
                     >
                       explain in chat
                     </button>
