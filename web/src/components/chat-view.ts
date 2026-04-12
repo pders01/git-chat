@@ -596,16 +596,14 @@ export class GcChatView extends LitElement {
           <button class="new" @click=${() => this.newChat()} aria-label="New chat (⌘K)">
             <span class="plus" aria-hidden="true">+</span> new chat
           </button>
-          ${s.sessions.length > 5
-            ? html`<input
-                class="session-filter"
-                type="search"
-                placeholder="filter sessions…"
-                .value=${this.sessionFilter}
-                @input=${(e: Event) => { this.sessionFilter = (e.target as HTMLInputElement).value; }}
-                aria-label="Filter sessions"
-              />`
-            : nothing}
+          <input
+            class="session-filter"
+            type="search"
+            placeholder="filter sessions…"
+            .value=${this.sessionFilter}
+            @input=${(e: Event) => { this.sessionFilter = (e.target as HTMLInputElement).value; }}
+            aria-label="Filter sessions"
+          />
           <div class="sidebar-label" id="sessions-label">sessions</div>
           <ul class="sessions" role="list" aria-labelledby="sessions-label">
             ${s.sessions.length === 0

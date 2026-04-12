@@ -1,5 +1,6 @@
 BINARY := dist/git-chat
 GO_LDFLAGS := -s -w -X main.version=$(shell git describe --always --dirty 2>/dev/null || echo dev)
+DEV_PORT ?= 18081
 
 .PHONY: all
 all: web build
@@ -24,7 +25,7 @@ run:
 # the real Go backend against the current working directory.
 #
 #   - vite dev server (HMR, instant Lit reloads) on :5173
-#   - Go server bound to :18081 in local mode, using $PWD as the repo
+#   - Go server bound to :$(DEV_PORT) in local mode (default 18081), using $PWD as the repo
 #   - --open-host 127.0.0.1:5173 rewrites the printed Open URL so the
 #     browser lands on vite (HMR-enabled) instead of the Go server's
 #     embedded static assets
@@ -37,7 +38,7 @@ dev:
 	@trap 'kill 0' SIGINT SIGTERM EXIT; \
 	(cd web && bun run dev) & \
 	go run ./cmd/git-chat local \
-		--http 127.0.0.1:18081 \
+		--http 127.0.0.1:$(DEV_PORT) \
 		--open-host 127.0.0.1:5173 \
 		.; \
 	wait

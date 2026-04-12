@@ -65,9 +65,10 @@ func (d *DB) SearchMessages(ctx context.Context, query string, limit int) ([]Sea
 		return nil, nil
 	}
 	rows, err := d.QueryContext(ctx, `
-        SELECT m.id, m.content, m.session_id
+        SELECT m.id, m.content, m.session_id, COALESCE(s.title, m.session_id)
         FROM chat_message_fts f
         JOIN chat_message m ON m.rowid = f.rowid
+        LEFT JOIN chat_session s ON s.id = m.session_id
         WHERE chat_message_fts MATCH ?
         ORDER BY f.rank
         LIMIT ?`,
@@ -79,12 +80,12 @@ func (d *DB) SearchMessages(ctx context.Context, query string, limit int) ([]Sea
 	var out []SearchResult
 	for rows.Next() {
 		var r SearchResult
-		var content, sessionID string
-		if err := rows.Scan(&r.ID, &content, &sessionID); err != nil {
+		var content, sessionID, title string
+		if err := rows.Scan(&r.ID, &content, &sessionID, &title); err != nil {
 			return nil, err
 		}
 		r.Source = "message"
-		r.Title = sessionID
+		r.Title = title
 		if len(content) > 200 {
 			r.Body = content[:200] + "…"
 		} else {
