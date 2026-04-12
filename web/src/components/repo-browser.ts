@@ -212,6 +212,7 @@ export class GcRepoBrowser extends LitElement {
 
   private selectFile(node: TreeNode) {
     this.selectedFile = node.fullPath;
+    this._lastRestoredFile = node.fullPath;
     this.requestUpdate();
     this.dispatchEvent(
       new CustomEvent("gc:nav", {

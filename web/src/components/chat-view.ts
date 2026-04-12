@@ -295,6 +295,7 @@ export class GcChatView extends LitElement {
       // parallel. Each resolution triggers an incremental re-render
       // via the triggered state update inside renderTurnMarkdown.
       void this.renderHistoricalMarkdown();
+      this._lastRestoredSession = sessionId;
       this.dispatchNav({ sessionId });
     } catch (e) {
       this.error = messageOf(e);

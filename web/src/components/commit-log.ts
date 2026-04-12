@@ -260,6 +260,7 @@ export class GcCommitLog extends LitElement {
     } finally {
       if (this.selectedSha === requestedSha) this.diffLoading = false;
     }
+    this._lastRestoredSha = this.selectedSha;
     this.dispatchNav({ commitSha: this.selectedSha || undefined, logFile: undefined });
   }
 
