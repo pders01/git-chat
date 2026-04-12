@@ -215,15 +215,15 @@ export class GcFileView extends LitElement {
       // Defer one frame so the tooltip DOM exists and we can measure it.
       requestAnimationFrame(() => {
         const tip = this.renderRoot.querySelector(".blame-tip") as HTMLElement | null;
-        const gutterRect = cell.getBoundingClientRect();
         const tipW = tip?.offsetWidth ?? 560;
         const tipH = tip?.offsetHeight ?? 200;
-        let left = gutterRect.right + 8;
-        let top = e.clientY - 20;
-        if (left + tipW > window.innerWidth) left = gutterRect.left - tipW - 8;
-        // Flip above cursor if overflows bottom.
+        // Position near cursor, offset right+below. Clamp to viewport.
+        let left = e.clientX + 16;
+        let top = e.clientY + 12;
+        if (left + tipW > window.innerWidth - 8) left = e.clientX - tipW - 8;
         if (top + tipH > window.innerHeight - 8) top = e.clientY - tipH - 8;
         if (top < 8) top = 8;
+        if (left < 8) left = 8;
         this.blameTooltipStyle = `top:${top}px;left:${left}px`;
       });
     }, 200);
