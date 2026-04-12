@@ -109,6 +109,8 @@ export class GcCommitLog extends LitElement {
     rows[next]?.focus();
   };
 
+  @state() private diffError = "";
+
   private async selectCommit(sha: string) {
     // Support prefix matching (e.g. 7-char short SHA from blame).
     if (this.state.phase === "ready" && sha.length < 40) {
@@ -118,27 +120,33 @@ export class GcCommitLog extends LitElement {
     if (this.selectedSha === sha) {
       this.selectedSha = "";
       this.diffHtml = "";
+      this.diffError = "";
       return;
     }
+    const requestedSha = sha;
     this.selectedSha = sha;
     this.drawerOpen = false;
     this.diffHtml = "";
+    this.diffError = "";
     this.diffLoading = true;
 
     try {
       const resp = await repoClient.getDiff({
         repoId: this.repoId,
         toRef: sha,
-        // empty fromRef = parent of sha, empty path = whole commit
       });
+      if (this.selectedSha !== requestedSha) return; // stale
       if (resp.empty) {
         this.diffHtml = "<p style='opacity:0.5'>no changes</p>";
       } else {
         const { highlight } = await loadHighlight();
-        this.diffHtml = await highlight(resp.unifiedDiff, "diff");
+        const html = await highlight(resp.unifiedDiff, "diff");
+        if (this.selectedSha !== requestedSha) return; // stale
+        this.diffHtml = html;
       }
     } catch (e) {
-      this.diffHtml = `<p style="color:var(--danger)">${e instanceof Error ? e.message : e}</p>`;
+      if (this.selectedSha !== requestedSha) return;
+      this.diffError = e instanceof Error ? e.message : String(e);
     } finally {
       this.diffLoading = false;
     }
@@ -146,7 +154,9 @@ export class GcCommitLog extends LitElement {
 
   private selectedCommit(): CommitEntry | undefined {
     if (this.state.phase !== "ready" || !this.selectedSha) return undefined;
-    return this.state.commits.find((c) => c.sha === this.selectedSha);
+    return this.state.commits.find((c) =>
+      c.sha === this.selectedSha || c.sha.startsWith(this.selectedSha),
+    );
   }
 
   override render() {
@@ -253,9 +263,11 @@ export class GcCommitLog extends LitElement {
                 <div class="detail-body">
                   ${this.diffLoading
                     ? html`<div class="diff-loading">loading diff…</div>`
-                    : this.diffHtml
-                      ? html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
-                      : nothing}
+                    : this.diffError
+                      ? html`<p style="color:var(--danger);padding:var(--space-4)">${this.diffError}</p>`
+                      : this.diffHtml
+                        ? html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
+                        : nothing}
                 </div>
               `
             : html`
