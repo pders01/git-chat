@@ -42,6 +42,9 @@ export class GcApp extends LitElement {
   @state() private expandedGroups: Set<string> = new Set();
   private configDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
+  @state() private kbCards: Array<{ id: string; question: string; answerPreview: string; model: string; createdBy: string; hitCount: number; createdAt: bigint; invalidated: boolean }> = [];
+  @state() private kbLoading = false;
+
   override async connectedCallback() {
     super.connectedCallback();
     window.addEventListener("hashchange", this.onHashChange);
@@ -408,7 +411,7 @@ export class GcApp extends LitElement {
             <span class="principal">${principal}</span>
             <span class="dot">·</span>
             <span class="mode">${modeLabel}</span>
-            <button class="settings-btn" @click=${() => { this.showSettings = !this.showSettings; if (this.showSettings) this.loadConfig(); }} aria-label="Settings" title="Settings">
+            <button class="settings-btn" @click=${() => { this.showSettings = !this.showSettings; if (this.showSettings) { this.loadConfig(); this.loadKBCards(); } }} aria-label="Settings" title="Settings">
               ⚙
             </button>
             <button class="logout" @click=${() => this.logout()} aria-label="Log out">
@@ -502,6 +505,27 @@ export class GcApp extends LitElement {
 
   private async resetConfigEntry(entry: any) {
     this.updateConfigEntry(entry.key, entry.defaultValue);
+  }
+
+  private async loadKBCards() {
+    if (this.state.phase !== "authenticated") return;
+    this.kbLoading = true;
+    try {
+      const resp = await (chatClient as any).listCards({ repoId: this.state.selectedRepo });
+      this.kbCards = (resp.cards ?? []).map((c: any) => ({
+        id: c.id, question: c.question, answerPreview: c.answerPreview,
+        model: c.model, createdBy: c.createdBy, hitCount: c.hitCount,
+        createdAt: c.createdAt, invalidated: c.invalidated,
+      }));
+    } catch { this.kbCards = []; }
+    finally { this.kbLoading = false; }
+  }
+
+  private async deleteKBCard(cardId: string) {
+    try {
+      await (chatClient as any).deleteCard({ cardId });
+      this.kbCards = this.kbCards.filter((c) => c.id !== cardId);
+    } catch { /* swallow */ }
   }
 
   private toggleGroup(group: string) {
@@ -619,6 +643,28 @@ export class GcApp extends LitElement {
     `;
   }
 
+  private renderKBSection() {
+    if (this.kbLoading) {
+      return html`<div class="kb-section"><span class="config-loading">loading knowledge base…</span></div>`;
+    }
+    return html`
+      <div class="kb-section">
+        <h3 class="config-title">Knowledge Base</h3>
+        ${this.kbCards.length === 0
+          ? html`<span class="config-loading">no cards yet</span>`
+          : html`<div class="kb-cards">
+              ${this.kbCards.map(c => html`
+                <div class="kb-card ${c.invalidated ? "stale" : ""}">
+                  <span class="kb-q">${c.question}</span>
+                  <span class="kb-meta">${c.hitCount} hits · ${c.createdBy || "system"}${c.invalidated ? " · stale" : ""}</span>
+                  <button class="kb-delete" @click=${() => this.deleteKBCard(c.id)} title="Delete card">×</button>
+                </div>
+              `)}
+            </div>`}
+      </div>
+    `;
+  }
+
   private renderSettingsModal() {
     const sidebarW = parseInt(settings.get("sidebar-width"));
     const contentW = parseInt(settings.get("content-max-width"));
@@ -699,6 +745,8 @@ export class GcApp extends LitElement {
           </label>
 
           ${this.renderServerConfig()}
+
+          ${this.renderKBSection()}
 
           <div class="setting-actions">
             <button class="action-btn" @click=${async () => {
@@ -1439,6 +1487,52 @@ export class GcApp extends LitElement {
       opacity: 0.4;
       line-height: 1.3;
     }
+
+    /* ── KB card management ────────────────────────────────── */
+    .kb-section {
+      margin-top: var(--space-4);
+      padding-top: var(--space-4);
+      border-top: 1px solid var(--surface-4);
+    }
+    .kb-cards {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .kb-card {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2);
+      border: 1px solid var(--surface-4);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+    }
+    .kb-card.stale { opacity: 0.5; }
+    .kb-q {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .kb-meta {
+      flex-shrink: 0;
+      opacity: 0.5;
+      font-size: 0.6rem;
+    }
+    .kb-delete {
+      flex-shrink: 0;
+      background: transparent;
+      color: var(--text);
+      border: none;
+      font-size: 0.9rem;
+      cursor: pointer;
+      opacity: 0.3;
+      padding: 0 var(--space-1);
+    }
+    .kb-delete:hover { opacity: 1; color: var(--danger); }
 
     /* ── Responsive ─────────────────────────────────────────── */
     @media (max-width: 768px) {

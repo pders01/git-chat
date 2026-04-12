@@ -22,6 +22,7 @@ type CardRow struct {
 	InvalidatedAt        int64 // 0 = valid
 	CreatedAt            int64
 	UpdatedAt            int64
+	CreatedBy            string
 }
 
 // ProvenanceRow is a single file-dependency for a card.
@@ -80,7 +81,8 @@ func (d *DB) FindValidCard(ctx context.Context, repoID, normalizedQ string) (*Ca
         SELECT c.id, c.repo_id, c.question_normalized, c.answer_md,
                c.model, c.hit_count, c.created_commit,
                c.last_verified_commit,
-               COALESCE(c.invalidated_at, 0), c.created_at, c.updated_at
+               COALESCE(c.invalidated_at, 0), c.created_at, c.updated_at,
+               c.created_by
         FROM kb_card_fts f
         JOIN kb_card c ON c.rowid = f.rowid
         WHERE kb_card_fts MATCH ?
@@ -92,7 +94,7 @@ func (d *DB) FindValidCard(ctx context.Context, repoID, normalizedQ string) (*Ca
 	c := &CardRow{}
 	err := row.Scan(&c.ID, &c.RepoID, &c.QuestionNormalized, &c.AnswerMD,
 		&c.Model, &c.HitCount, &c.CreatedCommit, &c.LastVerifiedCommit,
-		&c.InvalidatedAt, &c.CreatedAt, &c.UpdatedAt)
+		&c.InvalidatedAt, &c.CreatedAt, &c.UpdatedAt, &c.CreatedBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -127,8 +129,8 @@ func (d *DB) UpsertCard(ctx context.Context, c CardRow) (string, error) {
         INSERT INTO kb_card (
             id, repo_id, question_normalized, answer_md, model,
             hit_count, created_commit, last_verified_commit,
-            invalidated_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, NULL, ?, ?)
+            invalidated_at, created_at, updated_at, created_by
+        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, NULL, ?, ?, ?)
         ON CONFLICT (repo_id, question_normalized) DO UPDATE SET
             answer_md            = excluded.answer_md,
             model                = excluded.model,
@@ -138,7 +140,7 @@ func (d *DB) UpsertCard(ctx context.Context, c CardRow) (string, error) {
             updated_at           = excluded.updated_at`,
 		c.ID, c.RepoID, c.QuestionNormalized, c.AnswerMD, c.Model,
 		c.CreatedCommit, c.LastVerifiedCommit,
-		now, now)
+		now, now, c.CreatedBy)
 	if err != nil {
 		return "", err
 	}
@@ -206,6 +208,46 @@ func (d *DB) ReplaceProvenance(ctx context.Context, cardID string, rows []Proven
 		}
 	}
 	return tx.Commit()
+}
+
+// ListCards returns all cards for a given repo, ordered by hit_count DESC.
+func (d *DB) ListCards(ctx context.Context, repoID string) ([]*CardRow, error) {
+	rows, err := d.QueryContext(ctx, `
+        SELECT id, repo_id, question_normalized, answer_md, model,
+               hit_count, created_commit, last_verified_commit,
+               COALESCE(invalidated_at, 0), created_at, updated_at, created_by
+        FROM kb_card
+        WHERE repo_id = ?
+        ORDER BY hit_count DESC`,
+		repoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*CardRow
+	for rows.Next() {
+		c := &CardRow{}
+		if err := rows.Scan(&c.ID, &c.RepoID, &c.QuestionNormalized, &c.AnswerMD,
+			&c.Model, &c.HitCount, &c.CreatedCommit, &c.LastVerifiedCommit,
+			&c.InvalidatedAt, &c.CreatedAt, &c.UpdatedAt, &c.CreatedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// DeleteCard removes a card by ID.
+func (d *DB) DeleteCard(ctx context.Context, cardID string) error {
+	res, err := d.ExecContext(ctx, `DELETE FROM kb_card WHERE id = ?`, cardID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ListProvenance returns all provenance rows for a card, sorted by path.

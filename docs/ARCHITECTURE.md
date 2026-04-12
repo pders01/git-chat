@@ -572,6 +572,15 @@ describe the repo, the answer is marked untrusted. Contrast with a naive
 embedding-based RAG cache, which happily returns stale answers until a human
 notices.
 
+### Multi-user sharing and attribution
+
+Knowledge cards are shared across all principals at the repository level.
+Cards are promoted when multiple users ask similar questions (configurable
+threshold via `GITCHAT_KB_PROMOTION_THRESHOLD`). The `created_by` field
+tracks which principal's question triggered promotion. Cards can be viewed
+and deleted via the `ListCards`/`DeleteCard` RPCs exposed on `ChatService`,
+surfaced in the settings modal under "Knowledge Base".
+
 ---
 
 ## 8. Connect service surface

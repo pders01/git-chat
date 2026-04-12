@@ -39,6 +39,12 @@ service ChatService {
 
   // PinSession toggles the pinned/starred state of a session.
   rpc PinSession(PinSessionRequest) returns (PinSessionResponse);
+
+  // ListCards returns all knowledge cards for a repository.
+  rpc ListCards(ListCardsRequest) returns (ListCardsResponse);
+
+  // DeleteCard removes a knowledge card by ID.
+  rpc DeleteCard(DeleteCardRequest) returns (DeleteCardResponse);
 }
 
 // ─── Search ─────────────────────────────────────────────────────────────
@@ -182,3 +188,30 @@ message PinSessionRequest {
 }
 
 message PinSessionResponse {}
+
+// ─── ListCards ──────────────────────────────────────────────────────
+message ListCardsRequest {
+  string repo_id = 1;
+}
+
+message KBCard {
+  string id = 1;
+  string question = 2;
+  string answer_preview = 3;  // first 200 chars of answer_md
+  string model = 4;
+  string created_by = 5;
+  int32 hit_count = 6;
+  int64 created_at = 7;
+  bool invalidated = 8;
+}
+
+message ListCardsResponse {
+  repeated KBCard cards = 1;
+}
+
+// ─── DeleteCard ─────────────────────────────────────────────────────
+message DeleteCardRequest {
+  string card_id = 1;
+}
+
+message DeleteCardResponse {}

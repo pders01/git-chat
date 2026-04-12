@@ -50,6 +50,10 @@ const (
 	ChatServiceDeleteSessionProcedure = "/gitchat.v1.ChatService/DeleteSession"
 	// ChatServicePinSessionProcedure is the fully-qualified name of the ChatService's PinSession RPC.
 	ChatServicePinSessionProcedure = "/gitchat.v1.ChatService/PinSession"
+	// ChatServiceListCardsProcedure is the fully-qualified name of the ChatService's ListCards RPC.
+	ChatServiceListCardsProcedure = "/gitchat.v1.ChatService/ListCards"
+	// ChatServiceDeleteCardProcedure is the fully-qualified name of the ChatService's DeleteCard RPC.
+	ChatServiceDeleteCardProcedure = "/gitchat.v1.ChatService/DeleteCard"
 )
 
 // ChatServiceClient is a client for the gitchat.v1.ChatService service.
@@ -73,6 +77,10 @@ type ChatServiceClient interface {
 	DeleteSession(context.Context, *connect.Request[v1.DeleteSessionRequest]) (*connect.Response[v1.DeleteSessionResponse], error)
 	// PinSession toggles the pinned/starred state of a session.
 	PinSession(context.Context, *connect.Request[v1.PinSessionRequest]) (*connect.Response[v1.PinSessionResponse], error)
+	// ListCards returns all knowledge cards for a repository.
+	ListCards(context.Context, *connect.Request[v1.ListCardsRequest]) (*connect.Response[v1.ListCardsResponse], error)
+	// DeleteCard removes a knowledge card by ID.
+	DeleteCard(context.Context, *connect.Request[v1.DeleteCardRequest]) (*connect.Response[v1.DeleteCardResponse], error)
 }
 
 // NewChatServiceClient constructs a client for the gitchat.v1.ChatService service. By default, it
@@ -128,6 +136,18 @@ func NewChatServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(chatServiceMethods.ByName("PinSession")),
 			connect.WithClientOptions(opts...),
 		),
+		listCards: connect.NewClient[v1.ListCardsRequest, v1.ListCardsResponse](
+			httpClient,
+			baseURL+ChatServiceListCardsProcedure,
+			connect.WithSchema(chatServiceMethods.ByName("ListCards")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteCard: connect.NewClient[v1.DeleteCardRequest, v1.DeleteCardResponse](
+			httpClient,
+			baseURL+ChatServiceDeleteCardProcedure,
+			connect.WithSchema(chatServiceMethods.ByName("DeleteCard")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -140,6 +160,8 @@ type chatServiceClient struct {
 	renameSession *connect.Client[v1.RenameSessionRequest, v1.RenameSessionResponse]
 	deleteSession *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
 	pinSession    *connect.Client[v1.PinSessionRequest, v1.PinSessionResponse]
+	listCards     *connect.Client[v1.ListCardsRequest, v1.ListCardsResponse]
+	deleteCard    *connect.Client[v1.DeleteCardRequest, v1.DeleteCardResponse]
 }
 
 // ListSessions calls gitchat.v1.ChatService.ListSessions.
@@ -177,6 +199,16 @@ func (c *chatServiceClient) PinSession(ctx context.Context, req *connect.Request
 	return c.pinSession.CallUnary(ctx, req)
 }
 
+// ListCards calls gitchat.v1.ChatService.ListCards.
+func (c *chatServiceClient) ListCards(ctx context.Context, req *connect.Request[v1.ListCardsRequest]) (*connect.Response[v1.ListCardsResponse], error) {
+	return c.listCards.CallUnary(ctx, req)
+}
+
+// DeleteCard calls gitchat.v1.ChatService.DeleteCard.
+func (c *chatServiceClient) DeleteCard(ctx context.Context, req *connect.Request[v1.DeleteCardRequest]) (*connect.Response[v1.DeleteCardResponse], error) {
+	return c.deleteCard.CallUnary(ctx, req)
+}
+
 // ChatServiceHandler is an implementation of the gitchat.v1.ChatService service.
 type ChatServiceHandler interface {
 	// ListSessions returns every chat session for the authenticated
@@ -198,6 +230,10 @@ type ChatServiceHandler interface {
 	DeleteSession(context.Context, *connect.Request[v1.DeleteSessionRequest]) (*connect.Response[v1.DeleteSessionResponse], error)
 	// PinSession toggles the pinned/starred state of a session.
 	PinSession(context.Context, *connect.Request[v1.PinSessionRequest]) (*connect.Response[v1.PinSessionResponse], error)
+	// ListCards returns all knowledge cards for a repository.
+	ListCards(context.Context, *connect.Request[v1.ListCardsRequest]) (*connect.Response[v1.ListCardsResponse], error)
+	// DeleteCard removes a knowledge card by ID.
+	DeleteCard(context.Context, *connect.Request[v1.DeleteCardRequest]) (*connect.Response[v1.DeleteCardResponse], error)
 }
 
 // NewChatServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -249,6 +285,18 @@ func NewChatServiceHandler(svc ChatServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(chatServiceMethods.ByName("PinSession")),
 		connect.WithHandlerOptions(opts...),
 	)
+	chatServiceListCardsHandler := connect.NewUnaryHandler(
+		ChatServiceListCardsProcedure,
+		svc.ListCards,
+		connect.WithSchema(chatServiceMethods.ByName("ListCards")),
+		connect.WithHandlerOptions(opts...),
+	)
+	chatServiceDeleteCardHandler := connect.NewUnaryHandler(
+		ChatServiceDeleteCardProcedure,
+		svc.DeleteCard,
+		connect.WithSchema(chatServiceMethods.ByName("DeleteCard")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/gitchat.v1.ChatService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ChatServiceListSessionsProcedure:
@@ -265,6 +313,10 @@ func NewChatServiceHandler(svc ChatServiceHandler, opts ...connect.HandlerOption
 			chatServiceDeleteSessionHandler.ServeHTTP(w, r)
 		case ChatServicePinSessionProcedure:
 			chatServicePinSessionHandler.ServeHTTP(w, r)
+		case ChatServiceListCardsProcedure:
+			chatServiceListCardsHandler.ServeHTTP(w, r)
+		case ChatServiceDeleteCardProcedure:
+			chatServiceDeleteCardHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -300,4 +352,12 @@ func (UnimplementedChatServiceHandler) DeleteSession(context.Context, *connect.R
 
 func (UnimplementedChatServiceHandler) PinSession(context.Context, *connect.Request[v1.PinSessionRequest]) (*connect.Response[v1.PinSessionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.ChatService.PinSession is not implemented"))
+}
+
+func (UnimplementedChatServiceHandler) ListCards(context.Context, *connect.Request[v1.ListCardsRequest]) (*connect.Response[v1.ListCardsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.ChatService.ListCards is not implemented"))
+}
+
+func (UnimplementedChatServiceHandler) DeleteCard(context.Context, *connect.Request[v1.DeleteCardRequest]) (*connect.Response[v1.DeleteCardResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.ChatService.DeleteCard is not implemented"))
 }

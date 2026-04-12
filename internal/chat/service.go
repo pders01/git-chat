@@ -427,7 +427,7 @@ func (s *Service) SendMessage(
 	// past user messages (via FTS5) before promoting. This prevents
 	// one-off poorly-phrased questions from polluting the KB.
 	if assistantContent != "" && llmErr == "" {
-		go s.maybePromoteCard(repoID, normalizedQ, assistantContent, headCommit, text, repoEntry)
+		go s.maybePromoteCard(repoID, normalizedQ, assistantContent, headCommit, text, repoEntry, principal)
 	}
 
 	// Fire-and-forget title generation for new sessions. The user
@@ -457,6 +457,49 @@ func (s *Service) SendMessage(
 		return err
 	}
 	return nil
+}
+
+// ─── ListCards ─────────────────────────────────────────────────────────
+func (s *Service) ListCards(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.ListCardsRequest],
+) (*connect.Response[gitchatv1.ListCardsResponse], error) {
+	rows, err := s.DB.ListCards(ctx, req.Msg.RepoId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	cards := make([]*gitchatv1.KBCard, 0, len(rows))
+	for _, r := range rows {
+		preview := r.AnswerMD
+		if len(preview) > 200 {
+			preview = preview[:200]
+		}
+		cards = append(cards, &gitchatv1.KBCard{
+			Id:            r.ID,
+			Question:      r.QuestionNormalized,
+			AnswerPreview: preview,
+			Model:         r.Model,
+			CreatedBy:     r.CreatedBy,
+			HitCount:      int32(r.HitCount),
+			CreatedAt:     r.CreatedAt,
+			Invalidated:   r.InvalidatedAt != 0,
+		})
+	}
+	return connect.NewResponse(&gitchatv1.ListCardsResponse{Cards: cards}), nil
+}
+
+// ─── DeleteCard ────────────────────────────────────────────────────────
+func (s *Service) DeleteCard(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.DeleteCardRequest],
+) (*connect.Response[gitchatv1.DeleteCardResponse], error) {
+	if err := s.DB.DeleteCard(ctx, req.Msg.CardId); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&gitchatv1.DeleteCardResponse{}), nil
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -577,7 +620,7 @@ var cardPromotionThreshold = envIntSvc("GITCHAT_KB_PROMOTION_THRESHOLD", 2)
 // maybePromoteCard checks whether a question has been asked enough
 // times to justify caching, and if so, upserts a knowledge card.
 // Runs in a background goroutine — errors are cosmetic.
-func (s *Service) maybePromoteCard(repoID, normalizedQ, answer, headCommit, userText string, r *repo.Entry) {
+func (s *Service) maybePromoteCard(repoID, normalizedQ, answer, headCommit, userText string, r *repo.Entry, principal string) {
 	ctx, cancel := context.WithTimeout(context.Background(), cardTimeout)
 	defer cancel()
 
@@ -601,6 +644,7 @@ func (s *Service) maybePromoteCard(repoID, normalizedQ, answer, headCommit, user
 		Model:                s.Model,
 		CreatedCommit:        headCommit,
 		LastVerifiedCommit:   headCommit,
+		CreatedBy:            principal,
 	})
 	if err != nil {
 		slog.Debug("card upsert failed", "err", err)

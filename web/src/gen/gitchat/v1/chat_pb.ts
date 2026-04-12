@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file gitchat/v1/chat.proto.
  */
 export const file_gitchat_v1_chat: GenFile = /*@__PURE__*/
-  fileDesc("ChVnaXRjaGF0L3YxL2NoYXQucHJvdG8SCmdpdGNoYXQudjEiPgoNU2VhcmNoUmVxdWVzdBINCgVxdWVyeRgBIAEoCRIPCgdyZXBvX2lkGAIgASgJEg0KBWxpbWl0GAMgASgFIjUKDlNlYXJjaFJlc3BvbnNlEiMKBGhpdHMYASADKAsyFS5naXRjaGF0LnYxLlNlYXJjaEhpdCJECglTZWFyY2hIaXQSDgoGc291cmNlGAEgASgJEgoKAmlkGAIgASgJEg0KBXRpdGxlGAMgASgJEgwKBGJvZHkYBCABKAkiiAEKC0NoYXRTZXNzaW9uEgoKAmlkGAEgASgJEg8KB3JlcG9faWQYAiABKAkSDQoFdGl0bGUYAyABKAkSEgoKY3JlYXRlZF9hdBgEIAEoAxISCgp1cGRhdGVkX2F0GAUgASgDEhUKDW1lc3NhZ2VfY291bnQYBiABKAUSDgoGcGlubmVkGAcgASgIIrkBCgtDaGF0TWVzc2FnZRIKCgJpZBgBIAEoCRISCgpzZXNzaW9uX2lkGAIgASgJEiUKBHJvbGUYAyABKA4yFy5naXRjaGF0LnYxLk1lc3NhZ2VSb2xlEg8KB2NvbnRlbnQYBCABKAkSDQoFbW9kZWwYBSABKAkSFgoOdG9rZW5fY291bnRfaW4YBiABKAUSFwoPdG9rZW5fY291bnRfb3V0GAcgASgFEhIKCmNyZWF0ZWRfYXQYCCABKAMiJgoTTGlzdFNlc3Npb25zUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJIkEKFExpc3RTZXNzaW9uc1Jlc3BvbnNlEikKCHNlc3Npb25zGAEgAygLMhcuZ2l0Y2hhdC52MS5DaGF0U2Vzc2lvbiInChFHZXRTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJImkKEkdldFNlc3Npb25SZXNwb25zZRIoCgdzZXNzaW9uGAEgASgLMhcuZ2l0Y2hhdC52MS5DaGF0U2Vzc2lvbhIpCghtZXNzYWdlcxgCIAMoCzIXLmdpdGNoYXQudjEuQ2hhdE1lc3NhZ2UiRwoSU2VuZE1lc3NhZ2VSZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDwoHcmVwb19pZBgCIAEoCRIMCgR0ZXh0GAMgASgJInsKDE1lc3NhZ2VDaHVuaxIPCgV0b2tlbhgBIAEoCUgAEiAKBGRvbmUYAiABKAsyEC5naXRjaGF0LnYxLkRvbmVIABIwCghjYXJkX2hpdBgDIAEoCzIcLmdpdGNoYXQudjEuS25vd2xlZGdlQ2FyZEhpdEgAQgYKBGtpbmQicAoQS25vd2xlZGdlQ2FyZEhpdBIPCgdjYXJkX2lkGAEgASgJEhEKCWFuc3dlcl9tZBgCIAEoCRINCgVtb2RlbBgDIAEoCRIRCgloaXRfY291bnQYBCABKAUSFgoOY3JlYXRlZF9jb21taXQYBSABKAkioAEKBERvbmUSEgoKc2Vzc2lvbl9pZBgBIAEoCRIXCg91c2VyX21lc3NhZ2VfaWQYAiABKAkSHAoUYXNzaXN0YW50X21lc3NhZ2VfaWQYAyABKAkSFgoOdG9rZW5fY291bnRfaW4YBCABKAUSFwoPdG9rZW5fY291bnRfb3V0GAUgASgFEg0KBW1vZGVsGAYgASgJEg0KBWVycm9yGAcgASgJIjkKFFJlbmFtZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDQoFdGl0bGUYAiABKAkiFwoVUmVuYW1lU2Vzc2lvblJlc3BvbnNlIioKFERlbGV0ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiFwoVRGVsZXRlU2Vzc2lvblJlc3BvbnNlIjcKEVBpblNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDgoGcGlubmVkGAIgASgIIhQKElBpblNlc3Npb25SZXNwb25zZSp3CgtNZXNzYWdlUm9sZRIcChhNRVNTQUdFX1JPTEVfVU5TUEVDSUZJRUQQABIVChFNRVNTQUdFX1JPTEVfVVNFUhABEhoKFk1FU1NBR0VfUk9MRV9BU1NJU1RBTlQQAhIXChNNRVNTQUdFX1JPTEVfU1lTVEVNEAMysgQKC0NoYXRTZXJ2aWNlElEKDExpc3RTZXNzaW9ucxIfLmdpdGNoYXQudjEuTGlzdFNlc3Npb25zUmVxdWVzdBogLmdpdGNoYXQudjEuTGlzdFNlc3Npb25zUmVzcG9uc2USSwoKR2V0U2Vzc2lvbhIdLmdpdGNoYXQudjEuR2V0U2Vzc2lvblJlcXVlc3QaHi5naXRjaGF0LnYxLkdldFNlc3Npb25SZXNwb25zZRJJCgtTZW5kTWVzc2FnZRIeLmdpdGNoYXQudjEuU2VuZE1lc3NhZ2VSZXF1ZXN0GhguZ2l0Y2hhdC52MS5NZXNzYWdlQ2h1bmswARI/CgZTZWFyY2gSGS5naXRjaGF0LnYxLlNlYXJjaFJlcXVlc3QaGi5naXRjaGF0LnYxLlNlYXJjaFJlc3BvbnNlElQKDVJlbmFtZVNlc3Npb24SIC5naXRjaGF0LnYxLlJlbmFtZVNlc3Npb25SZXF1ZXN0GiEuZ2l0Y2hhdC52MS5SZW5hbWVTZXNzaW9uUmVzcG9uc2USVAoNRGVsZXRlU2Vzc2lvbhIgLmdpdGNoYXQudjEuRGVsZXRlU2Vzc2lvblJlcXVlc3QaIS5naXRjaGF0LnYxLkRlbGV0ZVNlc3Npb25SZXNwb25zZRJLCgpQaW5TZXNzaW9uEh0uZ2l0Y2hhdC52MS5QaW5TZXNzaW9uUmVxdWVzdBoeLmdpdGNoYXQudjEuUGluU2Vzc2lvblJlc3BvbnNlQp0BCg5jb20uZ2l0Y2hhdC52MUIJQ2hhdFByb3RvUAFaN2dpdGh1Yi5jb20vcGRlcnMwMS9naXQtY2hhdC9nZW4vZ28vZ2l0Y2hhdC92MTtnaXRjaGF0djGiAgNHWFiqAgpHaXRjaGF0LlYxygIKR2l0Y2hhdFxWMeICFkdpdGNoYXRcVjFcR1BCTWV0YWRhdGHqAgtHaXRjaGF0OjpWMWIGcHJvdG8z");
+  fileDesc("ChVnaXRjaGF0L3YxL2NoYXQucHJvdG8SCmdpdGNoYXQudjEiPgoNU2VhcmNoUmVxdWVzdBINCgVxdWVyeRgBIAEoCRIPCgdyZXBvX2lkGAIgASgJEg0KBWxpbWl0GAMgASgFIjUKDlNlYXJjaFJlc3BvbnNlEiMKBGhpdHMYASADKAsyFS5naXRjaGF0LnYxLlNlYXJjaEhpdCJECglTZWFyY2hIaXQSDgoGc291cmNlGAEgASgJEgoKAmlkGAIgASgJEg0KBXRpdGxlGAMgASgJEgwKBGJvZHkYBCABKAkiiAEKC0NoYXRTZXNzaW9uEgoKAmlkGAEgASgJEg8KB3JlcG9faWQYAiABKAkSDQoFdGl0bGUYAyABKAkSEgoKY3JlYXRlZF9hdBgEIAEoAxISCgp1cGRhdGVkX2F0GAUgASgDEhUKDW1lc3NhZ2VfY291bnQYBiABKAUSDgoGcGlubmVkGAcgASgIIrkBCgtDaGF0TWVzc2FnZRIKCgJpZBgBIAEoCRISCgpzZXNzaW9uX2lkGAIgASgJEiUKBHJvbGUYAyABKA4yFy5naXRjaGF0LnYxLk1lc3NhZ2VSb2xlEg8KB2NvbnRlbnQYBCABKAkSDQoFbW9kZWwYBSABKAkSFgoOdG9rZW5fY291bnRfaW4YBiABKAUSFwoPdG9rZW5fY291bnRfb3V0GAcgASgFEhIKCmNyZWF0ZWRfYXQYCCABKAMiJgoTTGlzdFNlc3Npb25zUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJIkEKFExpc3RTZXNzaW9uc1Jlc3BvbnNlEikKCHNlc3Npb25zGAEgAygLMhcuZ2l0Y2hhdC52MS5DaGF0U2Vzc2lvbiInChFHZXRTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJImkKEkdldFNlc3Npb25SZXNwb25zZRIoCgdzZXNzaW9uGAEgASgLMhcuZ2l0Y2hhdC52MS5DaGF0U2Vzc2lvbhIpCghtZXNzYWdlcxgCIAMoCzIXLmdpdGNoYXQudjEuQ2hhdE1lc3NhZ2UiRwoSU2VuZE1lc3NhZ2VSZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDwoHcmVwb19pZBgCIAEoCRIMCgR0ZXh0GAMgASgJInsKDE1lc3NhZ2VDaHVuaxIPCgV0b2tlbhgBIAEoCUgAEiAKBGRvbmUYAiABKAsyEC5naXRjaGF0LnYxLkRvbmVIABIwCghjYXJkX2hpdBgDIAEoCzIcLmdpdGNoYXQudjEuS25vd2xlZGdlQ2FyZEhpdEgAQgYKBGtpbmQicAoQS25vd2xlZGdlQ2FyZEhpdBIPCgdjYXJkX2lkGAEgASgJEhEKCWFuc3dlcl9tZBgCIAEoCRINCgVtb2RlbBgDIAEoCRIRCgloaXRfY291bnQYBCABKAUSFgoOY3JlYXRlZF9jb21taXQYBSABKAkioAEKBERvbmUSEgoKc2Vzc2lvbl9pZBgBIAEoCRIXCg91c2VyX21lc3NhZ2VfaWQYAiABKAkSHAoUYXNzaXN0YW50X21lc3NhZ2VfaWQYAyABKAkSFgoOdG9rZW5fY291bnRfaW4YBCABKAUSFwoPdG9rZW5fY291bnRfb3V0GAUgASgFEg0KBW1vZGVsGAYgASgJEg0KBWVycm9yGAcgASgJIjkKFFJlbmFtZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDQoFdGl0bGUYAiABKAkiFwoVUmVuYW1lU2Vzc2lvblJlc3BvbnNlIioKFERlbGV0ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiFwoVRGVsZXRlU2Vzc2lvblJlc3BvbnNlIjcKEVBpblNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDgoGcGlubmVkGAIgASgIIhQKElBpblNlc3Npb25SZXNwb25zZSIjChBMaXN0Q2FyZHNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkinQEKBktCQ2FyZBIKCgJpZBgBIAEoCRIQCghxdWVzdGlvbhgCIAEoCRIWCg5hbnN3ZXJfcHJldmlldxgDIAEoCRINCgVtb2RlbBgEIAEoCRISCgpjcmVhdGVkX2J5GAUgASgJEhEKCWhpdF9jb3VudBgGIAEoBRISCgpjcmVhdGVkX2F0GAcgASgDEhMKC2ludmFsaWRhdGVkGAggASgIIjYKEUxpc3RDYXJkc1Jlc3BvbnNlEiEKBWNhcmRzGAEgAygLMhIuZ2l0Y2hhdC52MS5LQkNhcmQiJAoRRGVsZXRlQ2FyZFJlcXVlc3QSDwoHY2FyZF9pZBgBIAEoCSIUChJEZWxldGVDYXJkUmVzcG9uc2UqdwoLTWVzc2FnZVJvbGUSHAoYTUVTU0FHRV9ST0xFX1VOU1BFQ0lGSUVEEAASFQoRTUVTU0FHRV9ST0xFX1VTRVIQARIaChZNRVNTQUdFX1JPTEVfQVNTSVNUQU5UEAISFwoTTUVTU0FHRV9ST0xFX1NZU1RFTRADMskFCgtDaGF0U2VydmljZRJRCgxMaXN0U2Vzc2lvbnMSHy5naXRjaGF0LnYxLkxpc3RTZXNzaW9uc1JlcXVlc3QaIC5naXRjaGF0LnYxLkxpc3RTZXNzaW9uc1Jlc3BvbnNlEksKCkdldFNlc3Npb24SHS5naXRjaGF0LnYxLkdldFNlc3Npb25SZXF1ZXN0Gh4uZ2l0Y2hhdC52MS5HZXRTZXNzaW9uUmVzcG9uc2USSQoLU2VuZE1lc3NhZ2USHi5naXRjaGF0LnYxLlNlbmRNZXNzYWdlUmVxdWVzdBoYLmdpdGNoYXQudjEuTWVzc2FnZUNodW5rMAESPwoGU2VhcmNoEhkuZ2l0Y2hhdC52MS5TZWFyY2hSZXF1ZXN0GhouZ2l0Y2hhdC52MS5TZWFyY2hSZXNwb25zZRJUCg1SZW5hbWVTZXNzaW9uEiAuZ2l0Y2hhdC52MS5SZW5hbWVTZXNzaW9uUmVxdWVzdBohLmdpdGNoYXQudjEuUmVuYW1lU2Vzc2lvblJlc3BvbnNlElQKDURlbGV0ZVNlc3Npb24SIC5naXRjaGF0LnYxLkRlbGV0ZVNlc3Npb25SZXF1ZXN0GiEuZ2l0Y2hhdC52MS5EZWxldGVTZXNzaW9uUmVzcG9uc2USSwoKUGluU2Vzc2lvbhIdLmdpdGNoYXQudjEuUGluU2Vzc2lvblJlcXVlc3QaHi5naXRjaGF0LnYxLlBpblNlc3Npb25SZXNwb25zZRJICglMaXN0Q2FyZHMSHC5naXRjaGF0LnYxLkxpc3RDYXJkc1JlcXVlc3QaHS5naXRjaGF0LnYxLkxpc3RDYXJkc1Jlc3BvbnNlEksKCkRlbGV0ZUNhcmQSHS5naXRjaGF0LnYxLkRlbGV0ZUNhcmRSZXF1ZXN0Gh4uZ2l0Y2hhdC52MS5EZWxldGVDYXJkUmVzcG9uc2VCnQEKDmNvbS5naXRjaGF0LnYxQglDaGF0UHJvdG9QAVo3Z2l0aHViLmNvbS9wZGVyczAxL2dpdC1jaGF0L2dlbi9nby9naXRjaGF0L3YxO2dpdGNoYXR2MaICA0dYWKoCCkdpdGNoYXQuVjHKAgpHaXRjaGF0XFYx4gIWR2l0Y2hhdFxWMVxHUEJNZXRhZGF0YeoCC0dpdGNoYXQ6OlYxYgZwcm90bzM");
 
 /**
  * ─── Search ─────────────────────────────────────────────────────────────
@@ -564,6 +564,128 @@ export const PinSessionResponseSchema: GenMessage<PinSessionResponse> = /*@__PUR
   messageDesc(file_gitchat_v1_chat, 18);
 
 /**
+ * ─── ListCards ──────────────────────────────────────────────────────
+ *
+ * @generated from message gitchat.v1.ListCardsRequest
+ */
+export type ListCardsRequest = Message<"gitchat.v1.ListCardsRequest"> & {
+  /**
+   * @generated from field: string repo_id = 1;
+   */
+  repoId: string;
+};
+
+/**
+ * Describes the message gitchat.v1.ListCardsRequest.
+ * Use `create(ListCardsRequestSchema)` to create a new message.
+ */
+export const ListCardsRequestSchema: GenMessage<ListCardsRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 19);
+
+/**
+ * @generated from message gitchat.v1.KBCard
+ */
+export type KBCard = Message<"gitchat.v1.KBCard"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string question = 2;
+   */
+  question: string;
+
+  /**
+   * first 200 chars of answer_md
+   *
+   * @generated from field: string answer_preview = 3;
+   */
+  answerPreview: string;
+
+  /**
+   * @generated from field: string model = 4;
+   */
+  model: string;
+
+  /**
+   * @generated from field: string created_by = 5;
+   */
+  createdBy: string;
+
+  /**
+   * @generated from field: int32 hit_count = 6;
+   */
+  hitCount: number;
+
+  /**
+   * @generated from field: int64 created_at = 7;
+   */
+  createdAt: bigint;
+
+  /**
+   * @generated from field: bool invalidated = 8;
+   */
+  invalidated: boolean;
+};
+
+/**
+ * Describes the message gitchat.v1.KBCard.
+ * Use `create(KBCardSchema)` to create a new message.
+ */
+export const KBCardSchema: GenMessage<KBCard> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 20);
+
+/**
+ * @generated from message gitchat.v1.ListCardsResponse
+ */
+export type ListCardsResponse = Message<"gitchat.v1.ListCardsResponse"> & {
+  /**
+   * @generated from field: repeated gitchat.v1.KBCard cards = 1;
+   */
+  cards: KBCard[];
+};
+
+/**
+ * Describes the message gitchat.v1.ListCardsResponse.
+ * Use `create(ListCardsResponseSchema)` to create a new message.
+ */
+export const ListCardsResponseSchema: GenMessage<ListCardsResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 21);
+
+/**
+ * ─── DeleteCard ─────────────────────────────────────────────────────
+ *
+ * @generated from message gitchat.v1.DeleteCardRequest
+ */
+export type DeleteCardRequest = Message<"gitchat.v1.DeleteCardRequest"> & {
+  /**
+   * @generated from field: string card_id = 1;
+   */
+  cardId: string;
+};
+
+/**
+ * Describes the message gitchat.v1.DeleteCardRequest.
+ * Use `create(DeleteCardRequestSchema)` to create a new message.
+ */
+export const DeleteCardRequestSchema: GenMessage<DeleteCardRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 22);
+
+/**
+ * @generated from message gitchat.v1.DeleteCardResponse
+ */
+export type DeleteCardResponse = Message<"gitchat.v1.DeleteCardResponse"> & {
+};
+
+/**
+ * Describes the message gitchat.v1.DeleteCardResponse.
+ * Use `create(DeleteCardResponseSchema)` to create a new message.
+ */
+export const DeleteCardResponseSchema: GenMessage<DeleteCardResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 23);
+
+/**
  * Role mirrors the OpenAI chat completions roles for wire-level
  * simplicity. We do not expose `tool` because tool use is a higher-level
  * concept that lives in the LLM adapter, not in the wire protocol.
@@ -686,6 +808,26 @@ export const ChatService: GenService<{
     methodKind: "unary";
     input: typeof PinSessionRequestSchema;
     output: typeof PinSessionResponseSchema;
+  },
+  /**
+   * ListCards returns all knowledge cards for a repository.
+   *
+   * @generated from rpc gitchat.v1.ChatService.ListCards
+   */
+  listCards: {
+    methodKind: "unary";
+    input: typeof ListCardsRequestSchema;
+    output: typeof ListCardsResponseSchema;
+  },
+  /**
+   * DeleteCard removes a knowledge card by ID.
+   *
+   * @generated from rpc gitchat.v1.ChatService.DeleteCard
+   */
+  deleteCard: {
+    methodKind: "unary";
+    input: typeof DeleteCardRequestSchema;
+    output: typeof DeleteCardResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_gitchat_v1_chat, 0);
