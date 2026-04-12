@@ -19,16 +19,17 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: "127.0.0.1",
     proxy: {
       // Connect RPC routes and the M0 health endpoint all live on :8080.
       // The regex key covers every current *and* future service generated
       // under the gitchat.v1 package, so we don't have to remember to add
       // a proxy entry every time a new service lands.
       "^/gitchat\\.v1\\.[A-Za-z0-9]+Service/.*": {
-        target: "http://localhost:8080",
+        target: "http://localhost:18081",
         changeOrigin: true,
       },
-      "/api": "http://localhost:8080",
+      "/api": "http://localhost:18081",
     },
   },
 });
