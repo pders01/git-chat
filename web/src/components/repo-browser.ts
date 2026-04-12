@@ -223,7 +223,6 @@ export class GcRepoBrowser extends LitElement {
         ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
         <aside>
           <div class="repo-hd">
-            <span class="label">${s.repo.label}</span>
             ${this.comparing
               ? html`
                   <select class="ref-select" .value=${this.baseRef} @change=${(e: Event) => { this.baseRef = (e.target as HTMLSelectElement).value; }} aria-label="Base branch">
@@ -515,9 +514,12 @@ export class GcRepoBrowser extends LitElement {
       gap: var(--space-2);
       background: var(--surface-1);
       box-sizing: border-box;
+      overflow: hidden;
     }
     .label {
       font-weight: 500;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     .branch {
       opacity: 0.55;

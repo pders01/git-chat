@@ -254,8 +254,12 @@ export class GcCodeCity extends LitElement {
     this.error = "";
 
     try {
-      const params: Record<string, unknown> = { repoId: this.repoId, ref: this.branch };
-      if (sinceTimestamp !== undefined) params.sinceTimestamp = sinceTimestamp;
+      const params = {
+        repoId: this.repoId,
+        ref: this.branch,
+        sinceTimestamp: BigInt(sinceTimestamp ?? 0),
+        untilTimestamp: BigInt(0),
+      };
 
       const resp = await (repoClient as any).getFileChurnMap(params);
       const files: FileNode[] = (resp.files ?? []).map((f: any) => ({
