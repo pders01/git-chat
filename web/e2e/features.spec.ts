@@ -263,7 +263,7 @@ test.describe("features", () => {
     await page.waitForTimeout(1500);
 
     // Should be on browse tab.
-    await expect(page).toHaveURL(/#\/.*\/browse$/);
+    await expect(page).toHaveURL(/#\/.*\/browse/);
 
     // File should be selected (file-view header visible).
     const hasFileHeader = await page.evaluate(() => {
@@ -414,7 +414,7 @@ test.describe("features", () => {
     await page.waitForTimeout(4000);
 
     // Should be on log tab now.
-    await expect(page).toHaveURL(/#\/.*\/log$/);
+    await expect(page).toHaveURL(/#\/.*\/log/);
 
     // Wait for commit list to load and selection to apply.
     await page.waitForTimeout(1000);

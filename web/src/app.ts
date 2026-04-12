@@ -293,7 +293,6 @@ export class GcApp extends LitElement {
           ? parsed.repoId
           : (repos[0]?.id ?? "");
       parsed.repoId = validRepo;
-      this.currentRoute = parsed;
       this.state = {
         phase: "authenticated",
         principal,
@@ -302,7 +301,13 @@ export class GcApp extends LitElement {
         selectedRepo: validRepo,
         tab: parsed.tab,
       };
-      this.applyRoute(this.currentRoute);
+      // Force-write the initial URL (applyRoute guards against no-ops,
+      // so set currentRoute after to avoid the equality check).
+      const url = buildRoute(parsed);
+      if (window.location.hash !== url) {
+        window.history.pushState(null, "", url);
+      }
+      this.currentRoute = parsed;
       // Load branches for the selected repo.
       void this.loadBranches(validRepo);
     } catch (e) {
