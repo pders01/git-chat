@@ -398,34 +398,52 @@ export class GcCommitLog extends LitElement {
     // Only apply if there's a meaningful diff (not everything changed).
     if (delChanged.size > delWords.length * 0.8 && addChanged.size > addWords.length * 0.8) return;
 
-    const wrapWords = (el: Element, words: string[], changed: Set<number>) => {
-      // Build new innerHTML preserving the first character (- or +).
-      const prefix = (el.textContent ?? "")[0] ?? "";
-      let result = "";
+    // Find character ranges that changed.
+    const findChangedRanges = (words: string[], changed: Set<number>): Array<[number, number]> => {
+      const ranges: Array<[number, number]> = [];
+      let pos = 0;
       for (let i = 0; i < words.length; i++) {
         if (changed.has(i) && words[i].trim()) {
-          result += `<mark>${this.escapeHtml(words[i])}</mark>`;
-        } else {
-          result += this.escapeHtml(words[i]);
+          ranges.push([pos, pos + words[i].length]);
         }
+        pos += words[i].length;
       }
-      // Replace inner content but preserve span structure — fall back to simple replacement.
-      const spans = el.querySelectorAll("span");
-      if (spans.length === 0) {
-        el.innerHTML = this.escapeHtml(prefix) + result;
-      }
-      // For Shiki-highlighted content, append marks via overlay approach:
-      // wrap the whole line content and add marks after.
-      // Simpler: just set text content with marks.
-      el.innerHTML = `<span style="color:inherit">${this.escapeHtml(prefix)}${result}</span>`;
+      return ranges;
     };
 
-    wrapWords(delEl, delWords, delChanged);
-    wrapWords(addEl, addWords, addChanged);
-  }
+    const wrapTextNodes = (el: Element, ranges: Array<[number, number]>) => {
+      if (ranges.length === 0) return;
+      // Walk text nodes, track global offset, wrap ranges in <mark>.
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const nodes: Array<{ node: Text; start: number; end: number }> = [];
+      let offset = 0;
+      while (walker.nextNode()) {
+        const t = walker.currentNode as Text;
+        nodes.push({ node: t, start: offset, end: offset + t.length });
+        offset += t.length;
+      }
+      // Skip the first character (- or +) by shifting ranges by 1.
+      const shifted = ranges.map(([s, e]) => [s + 1, e + 1] as [number, number]);
+      // Process in reverse to not invalidate offsets.
+      for (const [rs, re] of shifted.reverse()) {
+        for (const n of nodes) {
+          if (rs >= n.end || re <= n.start) continue;
+          const localStart = Math.max(0, rs - n.start);
+          const localEnd = Math.min(n.node.length, re - n.start);
+          if (localStart >= localEnd) continue;
+          const before = n.node.splitText(localStart);
+          const marked = before.splitText(localEnd - localStart);
+          const mark = document.createElement("mark");
+          before.parentNode!.insertBefore(mark, before);
+          mark.appendChild(before);
+          void marked; // remainder stays in place
+          break; // each range handled once
+        }
+      }
+    };
 
-  private escapeHtml(s: string): string {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    wrapTextNodes(delEl, findChangedRanges(delWords, delChanged));
+    wrapTextNodes(addEl, findChangedRanges(addWords, addChanged));
   }
 
   private selectedFileEntry(): ChangedFile | undefined {
