@@ -98,7 +98,7 @@ export class GcChatView extends LitElement {
   @state() private sessionTokensIn = 0;
   @state() private sessionTokensOut = 0;
   // Dashboard: recent commits + auto-generated suggestions.
-  @state() private recentCommits: Array<{ shortSha: string; message: string; authorName: string; age: string }> = [];
+  @state() private recentCommits: Array<{ shortSha: string; message: string; authorName: string; age: string; timestamp: number }> = [];
   @state() private suggestions: Array<{ label: string; prompt: string }> = [];
 
   private toggleFocus = () => {
@@ -222,7 +222,7 @@ export class GcChatView extends LitElement {
         if (diff < 3600) age = Math.floor(diff / 60) + "m ago";
         else if (diff < 86400) age = Math.floor(diff / 3600) + "h ago";
         else age = Math.floor(diff / 86400) + "d ago";
-        return { shortSha: c.shortSha, message: c.message, authorName: c.authorName, age };
+        return { shortSha: c.shortSha, message: c.message, authorName: c.authorName, age, timestamp: Number(c.authorTime) };
       });
 
       // Auto-generate suggestions from recent activity.
@@ -259,6 +259,60 @@ export class GcChatView extends LitElement {
         { label: "architecture", prompt: "Summarize the architecture in @docs/ARCHITECTURE.md" },
       ];
     }
+  }
+
+  private renderGroupedActivity() {
+    const now = Math.floor(Date.now() / 1000);
+    const groups: Array<{ label: string; commits: typeof this.recentCommits }> = [];
+    const buckets = [
+      { max: 3600, label: "last hour" },
+      { max: 86400, label: "earlier today" },
+      { max: 604800, label: "this week" },
+      { max: Infinity, label: "older" },
+    ];
+
+    for (const bucket of buckets) {
+      const matching = this.recentCommits.filter((c) => {
+        const age = now - c.timestamp;
+        const prevMax = buckets[buckets.indexOf(bucket) - 1]?.max ?? 0;
+        return age < bucket.max && age >= prevMax;
+      });
+      if (matching.length > 0) {
+        groups.push({ label: bucket.label, commits: matching });
+      }
+    }
+
+    return groups.map((g) => {
+      // Summarize: group by commit type prefix (feat, fix, chore, etc.)
+      const types = new Map<string, string[]>();
+      for (const c of g.commits) {
+        const match = c.message.match(/^(\w+)(?:\(.*?\))?:\s*(.+)/);
+        const type = match ? match[1] : "other";
+        const desc = match ? match[2] : c.message;
+        if (!types.has(type)) types.set(type, []);
+        types.get(type)!.push(desc);
+      }
+      const summaries: string[] = [];
+      for (const [type, descs] of types) {
+        if (descs.length === 1) {
+          summaries.push(`${type}: ${descs[0]}`);
+        } else {
+          summaries.push(`${type}: ${descs.length} changes — ${descs.slice(0, 2).join(", ")}${descs.length > 2 ? ", …" : ""}`);
+        }
+      }
+
+      return html`
+        <div class="activity-group">
+          <div class="activity-period">${g.label}</div>
+          ${summaries.map((s) => html`<div class="activity-summary">${s}</div>`)}
+          <div class="activity-commits">
+            ${g.commits.map((c) => html`
+              <span class="activity-sha">${c.shortSha}</span>
+            `)}
+          </div>
+        </div>
+      `;
+    });
   }
 
   private startRename(sessionId: string) {
@@ -857,13 +911,7 @@ export class GcChatView extends LitElement {
         ${this.recentCommits.length > 0 ? html`
           <div class="recent-activity">
             <div class="recent-title">recent activity</div>
-            ${this.recentCommits.map((c) => html`
-              <div class="recent-commit">
-                <span class="recent-sha">${c.shortSha}</span>
-                <span class="recent-msg">${c.message}</span>
-                <span class="recent-meta">${c.authorName} · ${c.age}</span>
-              </div>
-            `)}
+            ${this.renderGroupedActivity()}
           </div>
         ` : nothing}
       </div>
@@ -1274,30 +1322,34 @@ export class GcChatView extends LitElement {
       opacity: 0.4;
       margin-bottom: var(--space-2);
     }
-    .recent-commit {
-      display: flex;
-      align-items: baseline;
-      gap: var(--space-2);
-      padding: var(--space-1) 0;
-      font-size: var(--text-xs);
+    .activity-group {
+      margin-bottom: var(--space-3);
+    }
+    .activity-period {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      opacity: 0.35;
+      padding-bottom: var(--space-1);
       border-bottom: 1px solid var(--surface-4);
+      margin-bottom: var(--space-1);
     }
-    .recent-commit:last-child { border-bottom: none; }
-    .recent-sha {
+    .activity-summary {
+      font-size: var(--text-xs);
+      padding: 2px 0;
+      line-height: 1.5;
+    }
+    .activity-commits {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      margin-top: var(--space-1);
+    }
+    .activity-sha {
+      font-size: 0.6rem;
       color: var(--accent-user);
+      opacity: 0.5;
       font-variant-numeric: tabular-nums;
-      flex-shrink: 0;
-    }
-    .recent-msg {
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .recent-meta {
-      flex-shrink: 0;
-      opacity: 0.4;
-      font-size: 0.65rem;
     }
 
     /* ── Turns ───────────────────────────────────────────────────── */
