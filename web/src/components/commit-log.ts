@@ -28,6 +28,9 @@ type LogState =
 export class GcCommitLog extends LitElement {
   @property({ type: String }) repoId = "";
   @property({ type: String }) branch = "";
+  @property({ type: String }) initialCommitSha = "";
+  @property({ type: String }) initialLogFile = "";
+  @property({ type: Boolean }) initialSplitView = false;
   @state() private state: LogState = { phase: "loading" };
   @state() private selectedSha = "";
   @state() private diffHtml = "";
@@ -91,12 +94,29 @@ export class GcCommitLog extends LitElement {
     this.filterPath = "";
   }
 
+  private _lastRestoredSha = "";
+
   override updated(changed: Map<string, unknown>) {
     if (
       (changed.has("repoId") || changed.has("branch") || changed.has("filterPath")) &&
       this.repoId
     ) {
       void this.load(0);
+    }
+    if (
+      changed.has("initialCommitSha") &&
+      this.initialCommitSha &&
+      this.initialCommitSha !== this._lastRestoredSha
+    ) {
+      this._lastRestoredSha = this.initialCommitSha;
+      if (this.state.phase === "ready") {
+        void this.selectCommit(this.initialCommitSha);
+      } else {
+        this.pendingSha = this.initialCommitSha;
+      }
+    }
+    if (changed.has("initialSplitView")) {
+      this.splitView = this.initialSplitView;
     }
   }
 
@@ -240,6 +260,11 @@ export class GcCommitLog extends LitElement {
     } finally {
       if (this.selectedSha === requestedSha) this.diffLoading = false;
     }
+    this.dispatchNav({ commitSha: this.selectedSha || undefined, logFile: undefined });
+  }
+
+  private dispatchNav(detail: Record<string, string | boolean | undefined>) {
+    this.dispatchEvent(new CustomEvent("gc:nav", { bubbles: true, composed: true, detail }));
   }
 
   private async selectFile(path: string) {
@@ -283,6 +308,7 @@ export class GcCommitLog extends LitElement {
     } finally {
       this.diffLoading = false;
     }
+    this.dispatchNav({ logFile: this.selectedFile || undefined });
   }
 
   // ── Split diff helpers ──────────────────────────────────────────

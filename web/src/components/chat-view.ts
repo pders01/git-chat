@@ -70,6 +70,7 @@ type ViewState =
 export class GcChatView extends LitElement {
   @property({ type: String }) repoId = "";
   @property({ type: String }) branch = "";
+  @property({ type: String }) initialSessionId = "";
 
   @state() private state: ViewState = { phase: "loading" };
   @state() private turns: Turn[] = [];
@@ -104,9 +105,21 @@ export class GcChatView extends LitElement {
     writeFocus(this.focused);
   };
 
+  private _lastRestoredSession = "";
+
   override updated(changed: Map<string, unknown>) {
     if (changed.has("repoId") && this.repoId) {
       void this.loadSessions();
+    }
+    if (
+      changed.has("initialSessionId") &&
+      this.initialSessionId &&
+      this.initialSessionId !== this._lastRestoredSession
+    ) {
+      this._lastRestoredSession = this.initialSessionId;
+      if (this.state.phase === "ready") {
+        void this.selectSession(this.initialSessionId);
+      }
     }
   }
 
@@ -263,6 +276,7 @@ export class GcChatView extends LitElement {
     if (this.state.selected === sessionId) {
       this.state = { ...this.state, selected: null };
       this.turns = [];
+      this.dispatchNav({ sessionId: undefined });
       return;
     }
     this.drawerOpen = false;
@@ -281,10 +295,15 @@ export class GcChatView extends LitElement {
       // parallel. Each resolution triggers an incremental re-render
       // via the triggered state update inside renderTurnMarkdown.
       void this.renderHistoricalMarkdown();
+      this.dispatchNav({ sessionId });
     } catch (e) {
       this.error = messageOf(e);
       this.turns = [];
     }
+  }
+
+  private dispatchNav(detail: Record<string, string | undefined>) {
+    this.dispatchEvent(new CustomEvent("gc:nav", { bubbles: true, composed: true, detail }));
   }
 
   // renderHistoricalMarkdown walks the freshly-loaded transcript and

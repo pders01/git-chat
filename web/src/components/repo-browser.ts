@@ -28,6 +28,8 @@ type BrowserState =
 export class GcRepoBrowser extends LitElement {
   @property({ type: String }) repoId = "";
   @property({ type: String }) branch = "";
+  @property({ type: String }) initialFilePath = "";
+  @property({ type: Boolean }) initialBlame = false;
 
   @state() private state: BrowserState = { phase: "loading" };
   @state() private selectedFile = "";
@@ -120,10 +122,29 @@ export class GcRepoBrowser extends LitElement {
     this.removeEventListener("gc:open-file", this.onOpenFile);
   }
 
+  private _lastRestoredFile = "";
+
   override updated(changed: Map<string, unknown>) {
     if ((changed.has("repoId") || changed.has("branch")) && this.repoId) {
       void this.boot();
     }
+    if (
+      changed.has("initialFilePath") &&
+      this.initialFilePath &&
+      this.initialFilePath !== this._lastRestoredFile
+    ) {
+      this._lastRestoredFile = this.initialFilePath;
+      if (this.state.phase === "ready") {
+        void this.revealAndSelect(this.initialFilePath);
+      } else {
+        this.pendingFile = this.initialFilePath;
+      }
+    }
+  }
+
+  private async revealAndSelect(path: string) {
+    await this.revealPath(path);
+    this.selectedFile = path;
   }
 
   private async boot() {
@@ -192,6 +213,13 @@ export class GcRepoBrowser extends LitElement {
   private selectFile(node: TreeNode) {
     this.selectedFile = node.fullPath;
     this.requestUpdate();
+    this.dispatchEvent(
+      new CustomEvent("gc:nav", {
+        bubbles: true,
+        composed: true,
+        detail: { filePath: node.fullPath },
+      }),
+    );
   }
 
   /** Expand all ancestor directories for a given file path. */

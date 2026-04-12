@@ -30,6 +30,7 @@ type CardDetail = {
 @customElement("gc-kb-view")
 export class GcKbView extends LitElement {
   @property({ type: String }) repoId = "";
+  @property({ type: String }) initialCardId = "";
 
   @state() private cards: KBCard[] = [];
   @state() private selectedCardId = "";
@@ -56,9 +57,19 @@ export class GcKbView extends LitElement {
     this.removeEventListener("gc:select-card", this.onSelectCard);
   }
 
+  private _lastRestoredCard = "";
+
   override updated(changed: Map<string, unknown>) {
     if (changed.has("repoId") && this.repoId) {
       void this.loadCards();
+    }
+    if (
+      changed.has("initialCardId") &&
+      this.initialCardId &&
+      this.initialCardId !== this._lastRestoredCard
+    ) {
+      this._lastRestoredCard = this.initialCardId;
+      void this.selectCard(this.initialCardId);
     }
   }
 
@@ -82,6 +93,13 @@ export class GcKbView extends LitElement {
 
   private async selectCard(cardId: string) {
     this.selectedCardId = cardId;
+    this.dispatchEvent(
+      new CustomEvent("gc:nav", {
+        bubbles: true,
+        composed: true,
+        detail: { cardId },
+      }),
+    );
     this.detailLoading = true;
     this.cardDetail = null;
     this.detailHtml = "";

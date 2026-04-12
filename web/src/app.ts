@@ -11,8 +11,15 @@ import "./components/toast.js";
 import "./components/kb-view.js";
 import * as settings from "./lib/settings.js";
 import { readFocus, writeFocus } from "./lib/focus.js";
-
-type Tab = "chat" | "browse" | "log" | "kb";
+import {
+  type Tab,
+  type ParsedRoute,
+  type NavState,
+  parseRoute,
+  buildRoute,
+  routesEqual,
+  clearStaleState,
+} from "./lib/routing.js";
 
 type AppState =
   | { phase: "booting" }
@@ -48,6 +55,10 @@ export class GcApp extends LitElement {
   @state() private currentBranch = ""; // empty = repo default branch
   @state() private branches: Array<{ name: string }> = [];
 
+  // Deep-link routing state
+  private currentRoute: ParsedRoute = { repoId: "", tab: "chat" };
+  private _routing = false;
+
   // Server config state
   @state() private configEntries: any[] = [];
   @state() private configLoading = false;
@@ -57,9 +68,9 @@ export class GcApp extends LitElement {
   override async connectedCallback() {
     super.connectedCallback();
     window.addEventListener("hashchange", this.onHashChange);
+    window.addEventListener("popstate", this.onHashChange);
     window.addEventListener("keydown", this.onGlobalKeydown);
-    // Cross-view bridge: any child can dispatch gc:ask-about to
-    // switch to chat and pre-fill the composer.
+    this.addEventListener("gc:nav", this.onNavEvent as EventListener);
     this.addEventListener("gc:ask-about", this.onAskAbout as EventListener);
     this.addEventListener("gc:view-commit", this.onViewCommit as EventListener);
     this.addEventListener("gc:open-file", this.onOpenFile as EventListener);
@@ -70,7 +81,9 @@ export class GcApp extends LitElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("hashchange", this.onHashChange);
+    window.removeEventListener("popstate", this.onHashChange);
     window.removeEventListener("keydown", this.onGlobalKeydown);
+    this.removeEventListener("gc:nav", this.onNavEvent as EventListener);
     this.removeEventListener("gc:ask-about", this.onAskAbout as EventListener);
     this.removeEventListener("gc:view-commit", this.onViewCommit as EventListener);
     this.removeEventListener("gc:open-file", this.onOpenFile as EventListener);
@@ -98,37 +111,21 @@ export class GcApp extends LitElement {
   // to switch to the log tab and select the commit.
   private onViewCommit = (e: CustomEvent<{ sha: string }>) => {
     if (this.state.phase !== "authenticated") return;
-    this.switchTab("log");
-    const log = this.renderRoot.querySelector("gc-commit-log");
-    log?.dispatchEvent(
-      new CustomEvent("gc:select-commit", {
-        detail: { sha: e.detail.sha },
-      }),
-    );
+    this.navigateTo({ tab: "log", commitSha: e.detail.sha });
   };
 
   // Bridge: any view can dispatch gc:open-file to switch to browse
   // tab and open a specific file.
   private onOpenFile = (e: CustomEvent<{ path: string }>) => {
     if (this.state.phase !== "authenticated") return;
-    this.switchTab("browse");
-    requestAnimationFrame(() => {
-      const browser = this.renderRoot.querySelector("gc-repo-browser");
-      browser?.dispatchEvent(new CustomEvent("gc:open-file", { detail: { path: e.detail.path } }));
-    });
+    this.navigateTo({ tab: "browse", filePath: e.detail.path });
   };
 
   // Bridge: file-view "history" button dispatches gc:view-file-history
   // to switch to log tab and filter by file path.
   private onViewFileHistory = (e: CustomEvent<{ path: string }>) => {
     if (this.state.phase !== "authenticated") return;
-    this.switchTab("log");
-    requestAnimationFrame(() => {
-      const log = this.renderRoot.querySelector("gc-commit-log");
-      log?.dispatchEvent(
-        new CustomEvent("gc:set-filter-path", { detail: { path: e.detail.path } }),
-      );
-    });
+    this.navigateTo({ tab: "log", filterPath: e.detail.path });
   };
 
   // ── Modal focus management ───────────────────────────────────
@@ -290,19 +287,22 @@ export class GcApp extends LitElement {
     try {
       const list = await repoClient.listRepos({});
       const repos = list.repos;
-      // Restore repo + tab from hash if available.
-      const { repoId, tab } = this.readHash();
+      const parsed = parseRoute(new URL(window.location.href));
       const validRepo =
-        repoId && repos.some((r) => r.id === repoId) ? repoId : (repos[0]?.id ?? "");
+        parsed.repoId && repos.some((r) => r.id === parsed.repoId)
+          ? parsed.repoId
+          : (repos[0]?.id ?? "");
+      parsed.repoId = validRepo;
+      this.currentRoute = parsed;
       this.state = {
         phase: "authenticated",
         principal,
         mode,
         repos,
         selectedRepo: validRepo,
-        tab: tab ?? "chat",
+        tab: parsed.tab,
       };
-      this.pushHash();
+      this.applyRoute(this.currentRoute);
       // Load branches for the selected repo.
       void this.loadBranches(validRepo);
     } catch (e) {
@@ -326,7 +326,7 @@ export class GcApp extends LitElement {
   private switchTab(tab: Tab) {
     if (this.state.phase !== "authenticated") return;
     this.state = { ...this.state, tab };
-    this.pushHash();
+    this.navigateTo({ tab });
     // Move focus to newly-active tab for keyboard users.
     requestAnimationFrame(() => {
       const btn = this.renderRoot.querySelector<HTMLElement>(`#tab-${tab}`);
@@ -352,7 +352,7 @@ export class GcApp extends LitElement {
   private switchRepo(repoId: string) {
     if (this.state.phase !== "authenticated") return;
     this.state = { ...this.state, selectedRepo: repoId };
-    this.pushHash();
+    this.navigateTo({ repoId, tab: this.state.tab });
     // Reset branch and reload branches for the new repo.
     this.currentBranch = "";
     void this.loadBranches(repoId);
@@ -375,35 +375,52 @@ export class GcApp extends LitElement {
     }
   }
 
-  // ── Hash routing ─────────────────────────────────────────────
-  // Shape: #/:repoId/:tab  (e.g. #/git-chat/chat)
-  // Defaults: first repo, "chat" tab.
-  private pushHash() {
-    if (this.state.phase !== "authenticated") return;
-    const { selectedRepo, tab } = this.state;
-    const hash = `#/${selectedRepo}/${tab}`;
-    if (window.location.hash !== hash) {
-      window.location.hash = hash;
+  // ── Deep-link routing ────────────────────────────────────────
+  // Shape: #/{repoId}/{tab}[/{subPath}]?{queryParams}
+
+  private navigateTo(partial: Partial<ParsedRoute>) {
+    if (this._routing) return;
+    let base = { ...this.currentRoute };
+    if (partial.tab && partial.tab !== base.tab) {
+      base = clearStaleState({ repoId: base.repoId, tab: partial.tab });
     }
+    const next = { ...base, ...partial };
+    this.applyRoute(next);
   }
 
-  private readHash(): { repoId?: string; tab?: Tab } {
-    const hash = window.location.hash;
-    const m = hash.match(/^#\/([^/]+)(?:\/(chat|browse|log|kb))?$/);
-    if (!m) return {};
-    return { repoId: m[1], tab: (m[2] as Tab) || "chat" };
+  private applyRoute(route: ParsedRoute) {
+    if (routesEqual(route, this.currentRoute) && this.currentRoute.repoId) return;
+    this.currentRoute = route;
+    const url = buildRoute(route);
+    if (window.location.hash + window.location.search !== url) {
+      window.history.pushState(null, "", url);
+    }
+    this.requestUpdate();
   }
 
   private onHashChange = () => {
     if (this.state.phase !== "authenticated") return;
-    const { repoId, tab } = this.readHash();
+    const parsed = parseRoute(new URL(window.location.href));
     const { repos } = this.state;
-    const validRepo = repoId && repos.some((r) => r.id === repoId);
+    const validRepo = parsed.repoId && repos.some((r) => r.id === parsed.repoId);
+    if (!validRepo) parsed.repoId = this.state.selectedRepo;
+    this._routing = true;
+    this.currentRoute = parsed;
     this.state = {
       ...this.state,
-      selectedRepo: validRepo ? repoId! : this.state.selectedRepo,
-      tab: tab ?? this.state.tab,
+      selectedRepo: parsed.repoId,
+      tab: parsed.tab,
     };
+    this._routing = false;
+  };
+
+  private onNavEvent = (e: Event) => {
+    if (this._routing || this.state.phase !== "authenticated") return;
+    const detail = (e as CustomEvent<NavState>).detail;
+    if (detail.tab && detail.tab !== this.state.tab) {
+      this.state = { ...this.state, tab: detail.tab };
+    }
+    this.navigateTo(detail);
   };
 
   override render() {
@@ -545,23 +562,31 @@ export class GcApp extends LitElement {
           <gc-chat-view
             .repoId=${selectedRepo}
             .branch=${this.currentBranch}
+            .initialSessionId=${this.currentRoute.sessionId ?? ""}
             class="tab-panel"
             ?hidden=${tab !== "chat"}
           ></gc-chat-view>
           <gc-repo-browser
             .repoId=${selectedRepo}
             .branch=${this.currentBranch}
+            .initialFilePath=${this.currentRoute.filePath ?? ""}
+            .initialBlame=${this.currentRoute.blame ?? false}
             class="tab-panel"
             ?hidden=${tab !== "browse"}
           ></gc-repo-browser>
           <gc-commit-log
             .repoId=${selectedRepo}
             .branch=${this.currentBranch}
+            .initialCommitSha=${this.currentRoute.commitSha ?? ""}
+            .initialLogFile=${this.currentRoute.logFile ?? ""}
+            .initialSplitView=${this.currentRoute.splitView ?? false}
+            .filterPath=${this.currentRoute.filterPath ?? ""}
             class="tab-panel"
             ?hidden=${tab !== "log"}
           ></gc-commit-log>
           <gc-kb-view
             .repoId=${selectedRepo}
+            .initialCardId=${this.currentRoute.cardId ?? ""}
             class="tab-panel"
             ?hidden=${tab !== "kb"}
           ></gc-kb-view>
