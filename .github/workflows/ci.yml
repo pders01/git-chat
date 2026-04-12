@@ -22,11 +22,8 @@ jobs:
           go vet ./...
           go test ./...
 
-      - name: Web type-check
-        run: |
-          cd web
-          bun install --frozen-lockfile
-          bunx tsc --noEmit
+      - name: Web check (tsc + oxlint + oxfmt)
+        run: make check-web
 
       - name: Build binary
         run: make all
