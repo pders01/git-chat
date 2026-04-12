@@ -184,7 +184,7 @@ export class GcRepoBrowser extends LitElement {
             </button>
           </div>
 
-          <ul class="entries">
+          <ul class="entries" @keydown=${this.onTreeKeydown}>
             ${this.renderNodes(s.roots, 0)}
           </ul>
         </aside>
@@ -199,6 +199,48 @@ export class GcRepoBrowser extends LitElement {
       </div>
     `;
   }
+
+  private onTreeKeydown = (e: KeyboardEvent) => {
+    const btn = (e.target as HTMLElement).closest?.(".entry") as HTMLElement | null;
+    if (!btn) return;
+    const all = [...this.renderRoot.querySelectorAll<HTMLElement>(".entry")];
+    const idx = all.indexOf(btn);
+    if (idx < 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      all[idx + 1]?.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      all[idx - 1]?.focus();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      if (btn.classList.contains("dir")) {
+        // If next visible entry is a child (inside nested ul), dir is open → move into it.
+        // Otherwise dir is closed → expand it.
+        const next = all[idx + 1];
+        const isChild = btn.closest("li")?.querySelector("ul.nested")?.contains(next ?? null);
+        if (next && isChild) {
+          next.focus();
+        } else {
+          btn.click();
+        }
+      }
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      // Dir that's open → collapse. Otherwise → move to parent dir.
+      const isOpenDir = btn.classList.contains("dir") && btn.closest("li")?.querySelector("ul.nested");
+      if (isOpenDir) {
+        btn.click();
+      } else {
+        const parentUl = btn.closest("ul.nested");
+        if (parentUl) {
+          const parent = parentUl.parentElement?.querySelector(":scope > .entry") as HTMLElement | null;
+          parent?.focus();
+        }
+      }
+    }
+  };
 
   private renderNodes(nodes: TreeNode[], depth: number): unknown {
     return nodes.map((node) => {
@@ -354,6 +396,10 @@ export class GcRepoBrowser extends LitElement {
       width: 1ch;
       text-align: center;
       opacity: 0.55;
+    }
+    .entry:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: -2px;
     }
     .entry.dir {
       color: var(--accent-user);
