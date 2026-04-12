@@ -10,7 +10,85 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file gitchat/v1/chat.proto.
  */
 export const file_gitchat_v1_chat: GenFile = /*@__PURE__*/
-  fileDesc("ChVnaXRjaGF0L3YxL2NoYXQucHJvdG8SCmdpdGNoYXQudjEieAoLQ2hhdFNlc3Npb24SCgoCaWQYASABKAkSDwoHcmVwb19pZBgCIAEoCRINCgV0aXRsZRgDIAEoCRISCgpjcmVhdGVkX2F0GAQgASgDEhIKCnVwZGF0ZWRfYXQYBSABKAMSFQoNbWVzc2FnZV9jb3VudBgGIAEoBSK5AQoLQ2hhdE1lc3NhZ2USCgoCaWQYASABKAkSEgoKc2Vzc2lvbl9pZBgCIAEoCRIlCgRyb2xlGAMgASgOMhcuZ2l0Y2hhdC52MS5NZXNzYWdlUm9sZRIPCgdjb250ZW50GAQgASgJEg0KBW1vZGVsGAUgASgJEhYKDnRva2VuX2NvdW50X2luGAYgASgFEhcKD3Rva2VuX2NvdW50X291dBgHIAEoBRISCgpjcmVhdGVkX2F0GAggASgDIiYKE0xpc3RTZXNzaW9uc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCSJBChRMaXN0U2Vzc2lvbnNSZXNwb25zZRIpCghzZXNzaW9ucxgBIAMoCzIXLmdpdGNoYXQudjEuQ2hhdFNlc3Npb24iJwoRR2V0U2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCSJpChJHZXRTZXNzaW9uUmVzcG9uc2USKAoHc2Vzc2lvbhgBIAEoCzIXLmdpdGNoYXQudjEuQ2hhdFNlc3Npb24SKQoIbWVzc2FnZXMYAiADKAsyFy5naXRjaGF0LnYxLkNoYXRNZXNzYWdlIkcKElNlbmRNZXNzYWdlUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg8KB3JlcG9faWQYAiABKAkSDAoEdGV4dBgDIAEoCSJ7CgxNZXNzYWdlQ2h1bmsSDwoFdG9rZW4YASABKAlIABIgCgRkb25lGAIgASgLMhAuZ2l0Y2hhdC52MS5Eb25lSAASMAoIY2FyZF9oaXQYAyABKAsyHC5naXRjaGF0LnYxLktub3dsZWRnZUNhcmRIaXRIAEIGCgRraW5kInAKEEtub3dsZWRnZUNhcmRIaXQSDwoHY2FyZF9pZBgBIAEoCRIRCglhbnN3ZXJfbWQYAiABKAkSDQoFbW9kZWwYAyABKAkSEQoJaGl0X2NvdW50GAQgASgFEhYKDmNyZWF0ZWRfY29tbWl0GAUgASgJIqABCgREb25lEhIKCnNlc3Npb25faWQYASABKAkSFwoPdXNlcl9tZXNzYWdlX2lkGAIgASgJEhwKFGFzc2lzdGFudF9tZXNzYWdlX2lkGAMgASgJEhYKDnRva2VuX2NvdW50X2luGAQgASgFEhcKD3Rva2VuX2NvdW50X291dBgFIAEoBRINCgVtb2RlbBgGIAEoCRINCgVlcnJvchgHIAEoCSI5ChRSZW5hbWVTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJIhcKFVJlbmFtZVNlc3Npb25SZXNwb25zZSIqChREZWxldGVTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJIhcKFURlbGV0ZVNlc3Npb25SZXNwb25zZSp3CgtNZXNzYWdlUm9sZRIcChhNRVNTQUdFX1JPTEVfVU5TUEVDSUZJRUQQABIVChFNRVNTQUdFX1JPTEVfVVNFUhABEhoKFk1FU1NBR0VfUk9MRV9BU1NJU1RBTlQQAhIXChNNRVNTQUdFX1JPTEVfU1lTVEVNEAMypAMKC0NoYXRTZXJ2aWNlElEKDExpc3RTZXNzaW9ucxIfLmdpdGNoYXQudjEuTGlzdFNlc3Npb25zUmVxdWVzdBogLmdpdGNoYXQudjEuTGlzdFNlc3Npb25zUmVzcG9uc2USSwoKR2V0U2Vzc2lvbhIdLmdpdGNoYXQudjEuR2V0U2Vzc2lvblJlcXVlc3QaHi5naXRjaGF0LnYxLkdldFNlc3Npb25SZXNwb25zZRJJCgtTZW5kTWVzc2FnZRIeLmdpdGNoYXQudjEuU2VuZE1lc3NhZ2VSZXF1ZXN0GhguZ2l0Y2hhdC52MS5NZXNzYWdlQ2h1bmswARJUCg1SZW5hbWVTZXNzaW9uEiAuZ2l0Y2hhdC52MS5SZW5hbWVTZXNzaW9uUmVxdWVzdBohLmdpdGNoYXQudjEuUmVuYW1lU2Vzc2lvblJlc3BvbnNlElQKDURlbGV0ZVNlc3Npb24SIC5naXRjaGF0LnYxLkRlbGV0ZVNlc3Npb25SZXF1ZXN0GiEuZ2l0Y2hhdC52MS5EZWxldGVTZXNzaW9uUmVzcG9uc2VCnQEKDmNvbS5naXRjaGF0LnYxQglDaGF0UHJvdG9QAVo3Z2l0aHViLmNvbS9wZGVyczAxL2dpdC1jaGF0L2dlbi9nby9naXRjaGF0L3YxO2dpdGNoYXR2MaICA0dYWKoCCkdpdGNoYXQuVjHKAgpHaXRjaGF0XFYx4gIWR2l0Y2hhdFxWMVxHUEJNZXRhZGF0YeoCC0dpdGNoYXQ6OlYxYgZwcm90bzM");
+  fileDesc("ChVnaXRjaGF0L3YxL2NoYXQucHJvdG8SCmdpdGNoYXQudjEiPgoNU2VhcmNoUmVxdWVzdBINCgVxdWVyeRgBIAEoCRIPCgdyZXBvX2lkGAIgASgJEg0KBWxpbWl0GAMgASgFIjUKDlNlYXJjaFJlc3BvbnNlEiMKBGhpdHMYASADKAsyFS5naXRjaGF0LnYxLlNlYXJjaEhpdCJECglTZWFyY2hIaXQSDgoGc291cmNlGAEgASgJEgoKAmlkGAIgASgJEg0KBXRpdGxlGAMgASgJEgwKBGJvZHkYBCABKAkieAoLQ2hhdFNlc3Npb24SCgoCaWQYASABKAkSDwoHcmVwb19pZBgCIAEoCRINCgV0aXRsZRgDIAEoCRISCgpjcmVhdGVkX2F0GAQgASgDEhIKCnVwZGF0ZWRfYXQYBSABKAMSFQoNbWVzc2FnZV9jb3VudBgGIAEoBSK5AQoLQ2hhdE1lc3NhZ2USCgoCaWQYASABKAkSEgoKc2Vzc2lvbl9pZBgCIAEoCRIlCgRyb2xlGAMgASgOMhcuZ2l0Y2hhdC52MS5NZXNzYWdlUm9sZRIPCgdjb250ZW50GAQgASgJEg0KBW1vZGVsGAUgASgJEhYKDnRva2VuX2NvdW50X2luGAYgASgFEhcKD3Rva2VuX2NvdW50X291dBgHIAEoBRISCgpjcmVhdGVkX2F0GAggASgDIiYKE0xpc3RTZXNzaW9uc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCSJBChRMaXN0U2Vzc2lvbnNSZXNwb25zZRIpCghzZXNzaW9ucxgBIAMoCzIXLmdpdGNoYXQudjEuQ2hhdFNlc3Npb24iJwoRR2V0U2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCSJpChJHZXRTZXNzaW9uUmVzcG9uc2USKAoHc2Vzc2lvbhgBIAEoCzIXLmdpdGNoYXQudjEuQ2hhdFNlc3Npb24SKQoIbWVzc2FnZXMYAiADKAsyFy5naXRjaGF0LnYxLkNoYXRNZXNzYWdlIkcKElNlbmRNZXNzYWdlUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg8KB3JlcG9faWQYAiABKAkSDAoEdGV4dBgDIAEoCSJ7CgxNZXNzYWdlQ2h1bmsSDwoFdG9rZW4YASABKAlIABIgCgRkb25lGAIgASgLMhAuZ2l0Y2hhdC52MS5Eb25lSAASMAoIY2FyZF9oaXQYAyABKAsyHC5naXRjaGF0LnYxLktub3dsZWRnZUNhcmRIaXRIAEIGCgRraW5kInAKEEtub3dsZWRnZUNhcmRIaXQSDwoHY2FyZF9pZBgBIAEoCRIRCglhbnN3ZXJfbWQYAiABKAkSDQoFbW9kZWwYAyABKAkSEQoJaGl0X2NvdW50GAQgASgFEhYKDmNyZWF0ZWRfY29tbWl0GAUgASgJIqABCgREb25lEhIKCnNlc3Npb25faWQYASABKAkSFwoPdXNlcl9tZXNzYWdlX2lkGAIgASgJEhwKFGFzc2lzdGFudF9tZXNzYWdlX2lkGAMgASgJEhYKDnRva2VuX2NvdW50X2luGAQgASgFEhcKD3Rva2VuX2NvdW50X291dBgFIAEoBRINCgVtb2RlbBgGIAEoCRINCgVlcnJvchgHIAEoCSI5ChRSZW5hbWVTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJIhcKFVJlbmFtZVNlc3Npb25SZXNwb25zZSIqChREZWxldGVTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJIhcKFURlbGV0ZVNlc3Npb25SZXNwb25zZSp3CgtNZXNzYWdlUm9sZRIcChhNRVNTQUdFX1JPTEVfVU5TUEVDSUZJRUQQABIVChFNRVNTQUdFX1JPTEVfVVNFUhABEhoKFk1FU1NBR0VfUk9MRV9BU1NJU1RBTlQQAhIXChNNRVNTQUdFX1JPTEVfU1lTVEVNEAMy5QMKC0NoYXRTZXJ2aWNlElEKDExpc3RTZXNzaW9ucxIfLmdpdGNoYXQudjEuTGlzdFNlc3Npb25zUmVxdWVzdBogLmdpdGNoYXQudjEuTGlzdFNlc3Npb25zUmVzcG9uc2USSwoKR2V0U2Vzc2lvbhIdLmdpdGNoYXQudjEuR2V0U2Vzc2lvblJlcXVlc3QaHi5naXRjaGF0LnYxLkdldFNlc3Npb25SZXNwb25zZRJJCgtTZW5kTWVzc2FnZRIeLmdpdGNoYXQudjEuU2VuZE1lc3NhZ2VSZXF1ZXN0GhguZ2l0Y2hhdC52MS5NZXNzYWdlQ2h1bmswARI/CgZTZWFyY2gSGS5naXRjaGF0LnYxLlNlYXJjaFJlcXVlc3QaGi5naXRjaGF0LnYxLlNlYXJjaFJlc3BvbnNlElQKDVJlbmFtZVNlc3Npb24SIC5naXRjaGF0LnYxLlJlbmFtZVNlc3Npb25SZXF1ZXN0GiEuZ2l0Y2hhdC52MS5SZW5hbWVTZXNzaW9uUmVzcG9uc2USVAoNRGVsZXRlU2Vzc2lvbhIgLmdpdGNoYXQudjEuRGVsZXRlU2Vzc2lvblJlcXVlc3QaIS5naXRjaGF0LnYxLkRlbGV0ZVNlc3Npb25SZXNwb25zZUKdAQoOY29tLmdpdGNoYXQudjFCCUNoYXRQcm90b1ABWjdnaXRodWIuY29tL3BkZXJzMDEvZ2l0LWNoYXQvZ2VuL2dvL2dpdGNoYXQvdjE7Z2l0Y2hhdHYxogIDR1hYqgIKR2l0Y2hhdC5WMcoCCkdpdGNoYXRcVjHiAhZHaXRjaGF0XFYxXEdQQk1ldGFkYXRh6gILR2l0Y2hhdDo6VjFiBnByb3RvMw");
+
+/**
+ * ─── Search ─────────────────────────────────────────────────────────────
+ *
+ * @generated from message gitchat.v1.SearchRequest
+ */
+export type SearchRequest = Message<"gitchat.v1.SearchRequest"> & {
+  /**
+   * @generated from field: string query = 1;
+   */
+  query: string;
+
+  /**
+   * @generated from field: string repo_id = 2;
+   */
+  repoId: string;
+
+  /**
+   * @generated from field: int32 limit = 3;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message gitchat.v1.SearchRequest.
+ * Use `create(SearchRequestSchema)` to create a new message.
+ */
+export const SearchRequestSchema: GenMessage<SearchRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 0);
+
+/**
+ * @generated from message gitchat.v1.SearchResponse
+ */
+export type SearchResponse = Message<"gitchat.v1.SearchResponse"> & {
+  /**
+   * @generated from field: repeated gitchat.v1.SearchHit hits = 1;
+   */
+  hits: SearchHit[];
+};
+
+/**
+ * Describes the message gitchat.v1.SearchResponse.
+ * Use `create(SearchResponseSchema)` to create a new message.
+ */
+export const SearchResponseSchema: GenMessage<SearchResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 1);
+
+/**
+ * @generated from message gitchat.v1.SearchHit
+ */
+export type SearchHit = Message<"gitchat.v1.SearchHit"> & {
+  /**
+   * @generated from field: string source = 1;
+   */
+  source: string;
+
+  /**
+   * @generated from field: string id = 2;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string title = 3;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string body = 4;
+   */
+  body: string;
+};
+
+/**
+ * Describes the message gitchat.v1.SearchHit.
+ * Use `create(SearchHitSchema)` to create a new message.
+ */
+export const SearchHitSchema: GenMessage<SearchHit> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 2);
 
 /**
  * @generated from message gitchat.v1.ChatSession
@@ -56,7 +134,7 @@ export type ChatSession = Message<"gitchat.v1.ChatSession"> & {
  * Use `create(ChatSessionSchema)` to create a new message.
  */
 export const ChatSessionSchema: GenMessage<ChatSession> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 0);
+  messageDesc(file_gitchat_v1_chat, 3);
 
 /**
  * @generated from message gitchat.v1.ChatMessage
@@ -112,7 +190,7 @@ export type ChatMessage = Message<"gitchat.v1.ChatMessage"> & {
  * Use `create(ChatMessageSchema)` to create a new message.
  */
 export const ChatMessageSchema: GenMessage<ChatMessage> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 1);
+  messageDesc(file_gitchat_v1_chat, 4);
 
 /**
  * ─── ListSessions ───────────────────────────────────────────────────────
@@ -133,7 +211,7 @@ export type ListSessionsRequest = Message<"gitchat.v1.ListSessionsRequest"> & {
  * Use `create(ListSessionsRequestSchema)` to create a new message.
  */
 export const ListSessionsRequestSchema: GenMessage<ListSessionsRequest> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 2);
+  messageDesc(file_gitchat_v1_chat, 5);
 
 /**
  * @generated from message gitchat.v1.ListSessionsResponse
@@ -150,7 +228,7 @@ export type ListSessionsResponse = Message<"gitchat.v1.ListSessionsResponse"> & 
  * Use `create(ListSessionsResponseSchema)` to create a new message.
  */
 export const ListSessionsResponseSchema: GenMessage<ListSessionsResponse> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 3);
+  messageDesc(file_gitchat_v1_chat, 6);
 
 /**
  * ─── GetSession ─────────────────────────────────────────────────────────
@@ -169,7 +247,7 @@ export type GetSessionRequest = Message<"gitchat.v1.GetSessionRequest"> & {
  * Use `create(GetSessionRequestSchema)` to create a new message.
  */
 export const GetSessionRequestSchema: GenMessage<GetSessionRequest> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 4);
+  messageDesc(file_gitchat_v1_chat, 7);
 
 /**
  * @generated from message gitchat.v1.GetSessionResponse
@@ -191,7 +269,7 @@ export type GetSessionResponse = Message<"gitchat.v1.GetSessionResponse"> & {
  * Use `create(GetSessionResponseSchema)` to create a new message.
  */
 export const GetSessionResponseSchema: GenMessage<GetSessionResponse> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 5);
+  messageDesc(file_gitchat_v1_chat, 8);
 
 /**
  * ─── SendMessage ────────────────────────────────────────────────────────
@@ -223,7 +301,7 @@ export type SendMessageRequest = Message<"gitchat.v1.SendMessageRequest"> & {
  * Use `create(SendMessageRequestSchema)` to create a new message.
  */
 export const SendMessageRequestSchema: GenMessage<SendMessageRequest> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 6);
+  messageDesc(file_gitchat_v1_chat, 9);
 
 /**
  * MessageChunk is the server-streamed response shape. Exactly one chunk
@@ -268,7 +346,7 @@ export type MessageChunk = Message<"gitchat.v1.MessageChunk"> & {
  * Use `create(MessageChunkSchema)` to create a new message.
  */
 export const MessageChunkSchema: GenMessage<MessageChunk> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 7);
+  messageDesc(file_gitchat_v1_chat, 10);
 
 /**
  * KnowledgeCardHit carries a cached answer from the knowledge base.
@@ -317,7 +395,7 @@ export type KnowledgeCardHit = Message<"gitchat.v1.KnowledgeCardHit"> & {
  * Use `create(KnowledgeCardHitSchema)` to create a new message.
  */
 export const KnowledgeCardHitSchema: GenMessage<KnowledgeCardHit> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 8);
+  messageDesc(file_gitchat_v1_chat, 11);
 
 /**
  * @generated from message gitchat.v1.Done
@@ -372,7 +450,7 @@ export type Done = Message<"gitchat.v1.Done"> & {
  * Use `create(DoneSchema)` to create a new message.
  */
 export const DoneSchema: GenMessage<Done> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 9);
+  messageDesc(file_gitchat_v1_chat, 12);
 
 /**
  * ─── RenameSession ──────────────────────────────────────────────────────
@@ -396,7 +474,7 @@ export type RenameSessionRequest = Message<"gitchat.v1.RenameSessionRequest"> & 
  * Use `create(RenameSessionRequestSchema)` to create a new message.
  */
 export const RenameSessionRequestSchema: GenMessage<RenameSessionRequest> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 10);
+  messageDesc(file_gitchat_v1_chat, 13);
 
 /**
  * @generated from message gitchat.v1.RenameSessionResponse
@@ -409,7 +487,7 @@ export type RenameSessionResponse = Message<"gitchat.v1.RenameSessionResponse"> 
  * Use `create(RenameSessionResponseSchema)` to create a new message.
  */
 export const RenameSessionResponseSchema: GenMessage<RenameSessionResponse> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 11);
+  messageDesc(file_gitchat_v1_chat, 14);
 
 /**
  * ─── DeleteSession ──────────────────────────────────────────────────────
@@ -428,7 +506,7 @@ export type DeleteSessionRequest = Message<"gitchat.v1.DeleteSessionRequest"> & 
  * Use `create(DeleteSessionRequestSchema)` to create a new message.
  */
 export const DeleteSessionRequestSchema: GenMessage<DeleteSessionRequest> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 12);
+  messageDesc(file_gitchat_v1_chat, 15);
 
 /**
  * @generated from message gitchat.v1.DeleteSessionResponse
@@ -441,7 +519,7 @@ export type DeleteSessionResponse = Message<"gitchat.v1.DeleteSessionResponse"> 
  * Use `create(DeleteSessionResponseSchema)` to create a new message.
  */
 export const DeleteSessionResponseSchema: GenMessage<DeleteSessionResponse> = /*@__PURE__*/
-  messageDesc(file_gitchat_v1_chat, 13);
+  messageDesc(file_gitchat_v1_chat, 16);
 
 /**
  * Role mirrors the OpenAI chat completions roles for wire-level
@@ -526,6 +604,16 @@ export const ChatService: GenService<{
     methodKind: "server_streaming";
     input: typeof SendMessageRequestSchema;
     output: typeof MessageChunkSchema;
+  },
+  /**
+   * Search performs a unified search across KB cards and chat messages.
+   *
+   * @generated from rpc gitchat.v1.ChatService.Search
+   */
+  search: {
+    methodKind: "unary";
+    input: typeof SearchRequestSchema;
+    output: typeof SearchResponseSchema;
   },
   /**
    * RenameSession updates a session's title.

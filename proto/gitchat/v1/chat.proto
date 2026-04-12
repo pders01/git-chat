@@ -28,11 +28,32 @@ service ChatService {
   // usage stats and the persisted session / message IDs.
   rpc SendMessage(SendMessageRequest) returns (stream MessageChunk);
 
+  // Search performs a unified search across KB cards and chat messages.
+  rpc Search(SearchRequest) returns (SearchResponse);
+
   // RenameSession updates a session's title.
   rpc RenameSession(RenameSessionRequest) returns (RenameSessionResponse);
 
   // DeleteSession removes a session and cascades to its messages.
   rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
+}
+
+// ─── Search ─────────────────────────────────────────────────────────────
+message SearchRequest {
+  string query = 1;
+  string repo_id = 2;
+  int32 limit = 3;
+}
+
+message SearchResponse {
+  repeated SearchHit hits = 1;
+}
+
+message SearchHit {
+  string source = 1;
+  string id = 2;
+  string title = 3;
+  string body = 4;
 }
 
 // ─── Session & Message ──────────────────────────────────────────────────

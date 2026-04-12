@@ -76,6 +76,179 @@ func (MessageRole) EnumDescriptor() ([]byte, []int) {
 	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{0}
 }
 
+// ─── Search ─────────────────────────────────────────────────────────────
+type SearchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	RepoId        string                 `protobuf:"bytes,2,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchRequest) Reset() {
+	*x = SearchRequest{}
+	mi := &file_gitchat_v1_chat_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchRequest) ProtoMessage() {}
+
+func (x *SearchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_chat_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchRequest.ProtoReflect.Descriptor instead.
+func (*SearchRequest) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *SearchRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *SearchRequest) GetRepoId() string {
+	if x != nil {
+		return x.RepoId
+	}
+	return ""
+}
+
+func (x *SearchRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type SearchResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Hits          []*SearchHit           `protobuf:"bytes,1,rep,name=hits,proto3" json:"hits,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchResponse) Reset() {
+	*x = SearchResponse{}
+	mi := &file_gitchat_v1_chat_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchResponse) ProtoMessage() {}
+
+func (x *SearchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_chat_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchResponse.ProtoReflect.Descriptor instead.
+func (*SearchResponse) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *SearchResponse) GetHits() []*SearchHit {
+	if x != nil {
+		return x.Hits
+	}
+	return nil
+}
+
+type SearchHit struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchHit) Reset() {
+	*x = SearchHit{}
+	mi := &file_gitchat_v1_chat_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchHit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchHit) ProtoMessage() {}
+
+func (x *SearchHit) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_chat_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchHit.ProtoReflect.Descriptor instead.
+func (*SearchHit) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *SearchHit) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *SearchHit) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *SearchHit) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *SearchHit) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
 type ChatSession struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -90,7 +263,7 @@ type ChatSession struct {
 
 func (x *ChatSession) Reset() {
 	*x = ChatSession{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[0]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -102,7 +275,7 @@ func (x *ChatSession) String() string {
 func (*ChatSession) ProtoMessage() {}
 
 func (x *ChatSession) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[0]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -115,7 +288,7 @@ func (x *ChatSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatSession.ProtoReflect.Descriptor instead.
 func (*ChatSession) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{0}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ChatSession) GetId() string {
@@ -176,7 +349,7 @@ type ChatMessage struct {
 
 func (x *ChatMessage) Reset() {
 	*x = ChatMessage{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[1]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -188,7 +361,7 @@ func (x *ChatMessage) String() string {
 func (*ChatMessage) ProtoMessage() {}
 
 func (x *ChatMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[1]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -201,7 +374,7 @@ func (x *ChatMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatMessage.ProtoReflect.Descriptor instead.
 func (*ChatMessage) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{1}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ChatMessage) GetId() string {
@@ -270,7 +443,7 @@ type ListSessionsRequest struct {
 
 func (x *ListSessionsRequest) Reset() {
 	*x = ListSessionsRequest{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[2]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -282,7 +455,7 @@ func (x *ListSessionsRequest) String() string {
 func (*ListSessionsRequest) ProtoMessage() {}
 
 func (x *ListSessionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[2]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -295,7 +468,7 @@ func (x *ListSessionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionsRequest.ProtoReflect.Descriptor instead.
 func (*ListSessionsRequest) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{2}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListSessionsRequest) GetRepoId() string {
@@ -314,7 +487,7 @@ type ListSessionsResponse struct {
 
 func (x *ListSessionsResponse) Reset() {
 	*x = ListSessionsResponse{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[3]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -326,7 +499,7 @@ func (x *ListSessionsResponse) String() string {
 func (*ListSessionsResponse) ProtoMessage() {}
 
 func (x *ListSessionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[3]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -339,7 +512,7 @@ func (x *ListSessionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionsResponse.ProtoReflect.Descriptor instead.
 func (*ListSessionsResponse) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{3}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListSessionsResponse) GetSessions() []*ChatSession {
@@ -359,7 +532,7 @@ type GetSessionRequest struct {
 
 func (x *GetSessionRequest) Reset() {
 	*x = GetSessionRequest{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[4]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -371,7 +544,7 @@ func (x *GetSessionRequest) String() string {
 func (*GetSessionRequest) ProtoMessage() {}
 
 func (x *GetSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[4]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -384,7 +557,7 @@ func (x *GetSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionRequest.ProtoReflect.Descriptor instead.
 func (*GetSessionRequest) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{4}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetSessionRequest) GetSessionId() string {
@@ -404,7 +577,7 @@ type GetSessionResponse struct {
 
 func (x *GetSessionResponse) Reset() {
 	*x = GetSessionResponse{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[5]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -416,7 +589,7 @@ func (x *GetSessionResponse) String() string {
 func (*GetSessionResponse) ProtoMessage() {}
 
 func (x *GetSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[5]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -429,7 +602,7 @@ func (x *GetSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionResponse.ProtoReflect.Descriptor instead.
 func (*GetSessionResponse) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{5}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetSessionResponse) GetSession() *ChatSession {
@@ -460,7 +633,7 @@ type SendMessageRequest struct {
 
 func (x *SendMessageRequest) Reset() {
 	*x = SendMessageRequest{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[6]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -472,7 +645,7 @@ func (x *SendMessageRequest) String() string {
 func (*SendMessageRequest) ProtoMessage() {}
 
 func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[6]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -485,7 +658,7 @@ func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageRequest.ProtoReflect.Descriptor instead.
 func (*SendMessageRequest) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{6}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SendMessageRequest) GetSessionId() string {
@@ -525,7 +698,7 @@ type MessageChunk struct {
 
 func (x *MessageChunk) Reset() {
 	*x = MessageChunk{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[7]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -537,7 +710,7 @@ func (x *MessageChunk) String() string {
 func (*MessageChunk) ProtoMessage() {}
 
 func (x *MessageChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[7]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -550,7 +723,7 @@ func (x *MessageChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MessageChunk.ProtoReflect.Descriptor instead.
 func (*MessageChunk) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{7}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *MessageChunk) GetKind() isMessageChunk_Kind {
@@ -627,7 +800,7 @@ type KnowledgeCardHit struct {
 
 func (x *KnowledgeCardHit) Reset() {
 	*x = KnowledgeCardHit{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[8]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -639,7 +812,7 @@ func (x *KnowledgeCardHit) String() string {
 func (*KnowledgeCardHit) ProtoMessage() {}
 
 func (x *KnowledgeCardHit) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[8]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -652,7 +825,7 @@ func (x *KnowledgeCardHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KnowledgeCardHit.ProtoReflect.Descriptor instead.
 func (*KnowledgeCardHit) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{8}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *KnowledgeCardHit) GetCardId() string {
@@ -710,7 +883,7 @@ type Done struct {
 
 func (x *Done) Reset() {
 	*x = Done{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[9]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -722,7 +895,7 @@ func (x *Done) String() string {
 func (*Done) ProtoMessage() {}
 
 func (x *Done) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[9]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -735,7 +908,7 @@ func (x *Done) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Done.ProtoReflect.Descriptor instead.
 func (*Done) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{9}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Done) GetSessionId() string {
@@ -798,7 +971,7 @@ type RenameSessionRequest struct {
 
 func (x *RenameSessionRequest) Reset() {
 	*x = RenameSessionRequest{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[10]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -810,7 +983,7 @@ func (x *RenameSessionRequest) String() string {
 func (*RenameSessionRequest) ProtoMessage() {}
 
 func (x *RenameSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[10]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -823,7 +996,7 @@ func (x *RenameSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenameSessionRequest.ProtoReflect.Descriptor instead.
 func (*RenameSessionRequest) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{10}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RenameSessionRequest) GetSessionId() string {
@@ -848,7 +1021,7 @@ type RenameSessionResponse struct {
 
 func (x *RenameSessionResponse) Reset() {
 	*x = RenameSessionResponse{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[11]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -860,7 +1033,7 @@ func (x *RenameSessionResponse) String() string {
 func (*RenameSessionResponse) ProtoMessage() {}
 
 func (x *RenameSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[11]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -873,7 +1046,7 @@ func (x *RenameSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenameSessionResponse.ProtoReflect.Descriptor instead.
 func (*RenameSessionResponse) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{11}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{14}
 }
 
 // ─── DeleteSession ──────────────────────────────────────────────────────
@@ -886,7 +1059,7 @@ type DeleteSessionRequest struct {
 
 func (x *DeleteSessionRequest) Reset() {
 	*x = DeleteSessionRequest{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[12]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -898,7 +1071,7 @@ func (x *DeleteSessionRequest) String() string {
 func (*DeleteSessionRequest) ProtoMessage() {}
 
 func (x *DeleteSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[12]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -911,7 +1084,7 @@ func (x *DeleteSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSessionRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSessionRequest) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{12}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DeleteSessionRequest) GetSessionId() string {
@@ -929,7 +1102,7 @@ type DeleteSessionResponse struct {
 
 func (x *DeleteSessionResponse) Reset() {
 	*x = DeleteSessionResponse{}
-	mi := &file_gitchat_v1_chat_proto_msgTypes[13]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -941,7 +1114,7 @@ func (x *DeleteSessionResponse) String() string {
 func (*DeleteSessionResponse) ProtoMessage() {}
 
 func (x *DeleteSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitchat_v1_chat_proto_msgTypes[13]
+	mi := &file_gitchat_v1_chat_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -954,7 +1127,7 @@ func (x *DeleteSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSessionResponse.ProtoReflect.Descriptor instead.
 func (*DeleteSessionResponse) Descriptor() ([]byte, []int) {
-	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{13}
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{16}
 }
 
 var File_gitchat_v1_chat_proto protoreflect.FileDescriptor
@@ -962,7 +1135,18 @@ var File_gitchat_v1_chat_proto protoreflect.FileDescriptor
 const file_gitchat_v1_chat_proto_rawDesc = "" +
 	"\n" +
 	"\x15gitchat/v1/chat.proto\x12\n" +
-	"gitchat.v1\"\xaf\x01\n" +
+	"gitchat.v1\"T\n" +
+	"\rSearchRequest\x12\x14\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\x12\x17\n" +
+	"\arepo_id\x18\x02 \x01(\tR\x06repoId\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\";\n" +
+	"\x0eSearchResponse\x12)\n" +
+	"\x04hits\x18\x01 \x03(\v2\x15.gitchat.v1.SearchHitR\x04hits\"]\n" +
+	"\tSearchHit\x12\x16\n" +
+	"\x06source\x18\x01 \x01(\tR\x06source\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\x12\x14\n" +
+	"\x05title\x18\x03 \x01(\tR\x05title\x12\x12\n" +
+	"\x04body\x18\x04 \x01(\tR\x04body\"\xaf\x01\n" +
 	"\vChatSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\arepo_id\x18\x02 \x01(\tR\x06repoId\x12\x14\n" +
@@ -1031,12 +1215,13 @@ const file_gitchat_v1_chat_proto_rawDesc = "" +
 	"\x18MESSAGE_ROLE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11MESSAGE_ROLE_USER\x10\x01\x12\x1a\n" +
 	"\x16MESSAGE_ROLE_ASSISTANT\x10\x02\x12\x17\n" +
-	"\x13MESSAGE_ROLE_SYSTEM\x10\x032\xa4\x03\n" +
+	"\x13MESSAGE_ROLE_SYSTEM\x10\x032\xe5\x03\n" +
 	"\vChatService\x12Q\n" +
 	"\fListSessions\x12\x1f.gitchat.v1.ListSessionsRequest\x1a .gitchat.v1.ListSessionsResponse\x12K\n" +
 	"\n" +
 	"GetSession\x12\x1d.gitchat.v1.GetSessionRequest\x1a\x1e.gitchat.v1.GetSessionResponse\x12I\n" +
-	"\vSendMessage\x12\x1e.gitchat.v1.SendMessageRequest\x1a\x18.gitchat.v1.MessageChunk0\x01\x12T\n" +
+	"\vSendMessage\x12\x1e.gitchat.v1.SendMessageRequest\x1a\x18.gitchat.v1.MessageChunk0\x01\x12?\n" +
+	"\x06Search\x12\x19.gitchat.v1.SearchRequest\x1a\x1a.gitchat.v1.SearchResponse\x12T\n" +
 	"\rRenameSession\x12 .gitchat.v1.RenameSessionRequest\x1a!.gitchat.v1.RenameSessionResponse\x12T\n" +
 	"\rDeleteSession\x12 .gitchat.v1.DeleteSessionRequest\x1a!.gitchat.v1.DeleteSessionResponseB\x9d\x01\n" +
 	"\x0ecom.gitchat.v1B\tChatProtoP\x01Z7github.com/pders01/git-chat/gen/go/gitchat/v1;gitchatv1\xa2\x02\x03GXX\xaa\x02\n" +
@@ -1056,46 +1241,52 @@ func file_gitchat_v1_chat_proto_rawDescGZIP() []byte {
 }
 
 var file_gitchat_v1_chat_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_gitchat_v1_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_gitchat_v1_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_gitchat_v1_chat_proto_goTypes = []any{
 	(MessageRole)(0),              // 0: gitchat.v1.MessageRole
-	(*ChatSession)(nil),           // 1: gitchat.v1.ChatSession
-	(*ChatMessage)(nil),           // 2: gitchat.v1.ChatMessage
-	(*ListSessionsRequest)(nil),   // 3: gitchat.v1.ListSessionsRequest
-	(*ListSessionsResponse)(nil),  // 4: gitchat.v1.ListSessionsResponse
-	(*GetSessionRequest)(nil),     // 5: gitchat.v1.GetSessionRequest
-	(*GetSessionResponse)(nil),    // 6: gitchat.v1.GetSessionResponse
-	(*SendMessageRequest)(nil),    // 7: gitchat.v1.SendMessageRequest
-	(*MessageChunk)(nil),          // 8: gitchat.v1.MessageChunk
-	(*KnowledgeCardHit)(nil),      // 9: gitchat.v1.KnowledgeCardHit
-	(*Done)(nil),                  // 10: gitchat.v1.Done
-	(*RenameSessionRequest)(nil),  // 11: gitchat.v1.RenameSessionRequest
-	(*RenameSessionResponse)(nil), // 12: gitchat.v1.RenameSessionResponse
-	(*DeleteSessionRequest)(nil),  // 13: gitchat.v1.DeleteSessionRequest
-	(*DeleteSessionResponse)(nil), // 14: gitchat.v1.DeleteSessionResponse
+	(*SearchRequest)(nil),         // 1: gitchat.v1.SearchRequest
+	(*SearchResponse)(nil),        // 2: gitchat.v1.SearchResponse
+	(*SearchHit)(nil),             // 3: gitchat.v1.SearchHit
+	(*ChatSession)(nil),           // 4: gitchat.v1.ChatSession
+	(*ChatMessage)(nil),           // 5: gitchat.v1.ChatMessage
+	(*ListSessionsRequest)(nil),   // 6: gitchat.v1.ListSessionsRequest
+	(*ListSessionsResponse)(nil),  // 7: gitchat.v1.ListSessionsResponse
+	(*GetSessionRequest)(nil),     // 8: gitchat.v1.GetSessionRequest
+	(*GetSessionResponse)(nil),    // 9: gitchat.v1.GetSessionResponse
+	(*SendMessageRequest)(nil),    // 10: gitchat.v1.SendMessageRequest
+	(*MessageChunk)(nil),          // 11: gitchat.v1.MessageChunk
+	(*KnowledgeCardHit)(nil),      // 12: gitchat.v1.KnowledgeCardHit
+	(*Done)(nil),                  // 13: gitchat.v1.Done
+	(*RenameSessionRequest)(nil),  // 14: gitchat.v1.RenameSessionRequest
+	(*RenameSessionResponse)(nil), // 15: gitchat.v1.RenameSessionResponse
+	(*DeleteSessionRequest)(nil),  // 16: gitchat.v1.DeleteSessionRequest
+	(*DeleteSessionResponse)(nil), // 17: gitchat.v1.DeleteSessionResponse
 }
 var file_gitchat_v1_chat_proto_depIdxs = []int32{
-	0,  // 0: gitchat.v1.ChatMessage.role:type_name -> gitchat.v1.MessageRole
-	1,  // 1: gitchat.v1.ListSessionsResponse.sessions:type_name -> gitchat.v1.ChatSession
-	1,  // 2: gitchat.v1.GetSessionResponse.session:type_name -> gitchat.v1.ChatSession
-	2,  // 3: gitchat.v1.GetSessionResponse.messages:type_name -> gitchat.v1.ChatMessage
-	10, // 4: gitchat.v1.MessageChunk.done:type_name -> gitchat.v1.Done
-	9,  // 5: gitchat.v1.MessageChunk.card_hit:type_name -> gitchat.v1.KnowledgeCardHit
-	3,  // 6: gitchat.v1.ChatService.ListSessions:input_type -> gitchat.v1.ListSessionsRequest
-	5,  // 7: gitchat.v1.ChatService.GetSession:input_type -> gitchat.v1.GetSessionRequest
-	7,  // 8: gitchat.v1.ChatService.SendMessage:input_type -> gitchat.v1.SendMessageRequest
-	11, // 9: gitchat.v1.ChatService.RenameSession:input_type -> gitchat.v1.RenameSessionRequest
-	13, // 10: gitchat.v1.ChatService.DeleteSession:input_type -> gitchat.v1.DeleteSessionRequest
-	4,  // 11: gitchat.v1.ChatService.ListSessions:output_type -> gitchat.v1.ListSessionsResponse
-	6,  // 12: gitchat.v1.ChatService.GetSession:output_type -> gitchat.v1.GetSessionResponse
-	8,  // 13: gitchat.v1.ChatService.SendMessage:output_type -> gitchat.v1.MessageChunk
-	12, // 14: gitchat.v1.ChatService.RenameSession:output_type -> gitchat.v1.RenameSessionResponse
-	14, // 15: gitchat.v1.ChatService.DeleteSession:output_type -> gitchat.v1.DeleteSessionResponse
-	11, // [11:16] is the sub-list for method output_type
-	6,  // [6:11] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	3,  // 0: gitchat.v1.SearchResponse.hits:type_name -> gitchat.v1.SearchHit
+	0,  // 1: gitchat.v1.ChatMessage.role:type_name -> gitchat.v1.MessageRole
+	4,  // 2: gitchat.v1.ListSessionsResponse.sessions:type_name -> gitchat.v1.ChatSession
+	4,  // 3: gitchat.v1.GetSessionResponse.session:type_name -> gitchat.v1.ChatSession
+	5,  // 4: gitchat.v1.GetSessionResponse.messages:type_name -> gitchat.v1.ChatMessage
+	13, // 5: gitchat.v1.MessageChunk.done:type_name -> gitchat.v1.Done
+	12, // 6: gitchat.v1.MessageChunk.card_hit:type_name -> gitchat.v1.KnowledgeCardHit
+	6,  // 7: gitchat.v1.ChatService.ListSessions:input_type -> gitchat.v1.ListSessionsRequest
+	8,  // 8: gitchat.v1.ChatService.GetSession:input_type -> gitchat.v1.GetSessionRequest
+	10, // 9: gitchat.v1.ChatService.SendMessage:input_type -> gitchat.v1.SendMessageRequest
+	1,  // 10: gitchat.v1.ChatService.Search:input_type -> gitchat.v1.SearchRequest
+	14, // 11: gitchat.v1.ChatService.RenameSession:input_type -> gitchat.v1.RenameSessionRequest
+	16, // 12: gitchat.v1.ChatService.DeleteSession:input_type -> gitchat.v1.DeleteSessionRequest
+	7,  // 13: gitchat.v1.ChatService.ListSessions:output_type -> gitchat.v1.ListSessionsResponse
+	9,  // 14: gitchat.v1.ChatService.GetSession:output_type -> gitchat.v1.GetSessionResponse
+	11, // 15: gitchat.v1.ChatService.SendMessage:output_type -> gitchat.v1.MessageChunk
+	2,  // 16: gitchat.v1.ChatService.Search:output_type -> gitchat.v1.SearchResponse
+	15, // 17: gitchat.v1.ChatService.RenameSession:output_type -> gitchat.v1.RenameSessionResponse
+	17, // 18: gitchat.v1.ChatService.DeleteSession:output_type -> gitchat.v1.DeleteSessionResponse
+	13, // [13:19] is the sub-list for method output_type
+	7,  // [7:13] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_gitchat_v1_chat_proto_init() }
@@ -1103,7 +1294,7 @@ func file_gitchat_v1_chat_proto_init() {
 	if File_gitchat_v1_chat_proto != nil {
 		return
 	}
-	file_gitchat_v1_chat_proto_msgTypes[7].OneofWrappers = []any{
+	file_gitchat_v1_chat_proto_msgTypes[10].OneofWrappers = []any{
 		(*MessageChunk_Token)(nil),
 		(*MessageChunk_Done)(nil),
 		(*MessageChunk_CardHit)(nil),
@@ -1114,7 +1305,7 @@ func file_gitchat_v1_chat_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gitchat_v1_chat_proto_rawDesc), len(file_gitchat_v1_chat_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   14,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

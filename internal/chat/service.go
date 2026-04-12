@@ -99,6 +99,61 @@ func (s *Service) GetSession(
 }
 
 // ─── DeleteSession ──────────────────────────────────────────────────────
+func (s *Service) Search(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.SearchRequest],
+) (*connect.Response[gitchatv1.SearchResponse], error) {
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 10
+	}
+	var hits []*gitchatv1.SearchHit
+
+	// Search KB cards.
+	cards, _ := s.DB.SearchCards(ctx, req.Msg.Query, limit)
+	for _, c := range cards {
+		hits = append(hits, &gitchatv1.SearchHit{
+			Source: c.Source,
+			Id:     c.ID,
+			Title:  c.Title,
+			Body:   c.Body,
+		})
+	}
+
+	// Search chat messages.
+	msgs, _ := s.DB.SearchMessages(ctx, req.Msg.Query, limit)
+	for _, m := range msgs {
+		hits = append(hits, &gitchatv1.SearchHit{
+			Source: m.Source,
+			Id:     m.ID,
+			Title:  m.Title,
+			Body:   m.Body,
+		})
+	}
+
+	// Search file paths in repo.
+	if r := s.Repos.Get(req.Msg.RepoId); r != nil {
+		paths, _ := r.AllFilePaths()
+		query := strings.ToLower(req.Msg.Query)
+		count := 0
+		for _, p := range paths {
+			if count >= limit {
+				break
+			}
+			if strings.Contains(strings.ToLower(p), query) {
+				hits = append(hits, &gitchatv1.SearchHit{
+					Source: "file",
+					Id:     p,
+					Title:  p,
+				})
+				count++
+			}
+		}
+	}
+
+	return connect.NewResponse(&gitchatv1.SearchResponse{Hits: hits}), nil
+}
+
 func (s *Service) RenameSession(
 	ctx context.Context,
 	req *connect.Request[gitchatv1.RenameSessionRequest],

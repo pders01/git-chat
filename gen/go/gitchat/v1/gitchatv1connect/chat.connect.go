@@ -40,6 +40,8 @@ const (
 	ChatServiceGetSessionProcedure = "/gitchat.v1.ChatService/GetSession"
 	// ChatServiceSendMessageProcedure is the fully-qualified name of the ChatService's SendMessage RPC.
 	ChatServiceSendMessageProcedure = "/gitchat.v1.ChatService/SendMessage"
+	// ChatServiceSearchProcedure is the fully-qualified name of the ChatService's Search RPC.
+	ChatServiceSearchProcedure = "/gitchat.v1.ChatService/Search"
 	// ChatServiceRenameSessionProcedure is the fully-qualified name of the ChatService's RenameSession
 	// RPC.
 	ChatServiceRenameSessionProcedure = "/gitchat.v1.ChatService/RenameSession"
@@ -61,6 +63,8 @@ type ChatServiceClient interface {
 	// MessageChunk at a time. The final chunk is always Done, carrying
 	// usage stats and the persisted session / message IDs.
 	SendMessage(context.Context, *connect.Request[v1.SendMessageRequest]) (*connect.ServerStreamForClient[v1.MessageChunk], error)
+	// Search performs a unified search across KB cards and chat messages.
+	Search(context.Context, *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error)
 	// RenameSession updates a session's title.
 	RenameSession(context.Context, *connect.Request[v1.RenameSessionRequest]) (*connect.Response[v1.RenameSessionResponse], error)
 	// DeleteSession removes a session and cascades to its messages.
@@ -96,6 +100,12 @@ func NewChatServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(chatServiceMethods.ByName("SendMessage")),
 			connect.WithClientOptions(opts...),
 		),
+		search: connect.NewClient[v1.SearchRequest, v1.SearchResponse](
+			httpClient,
+			baseURL+ChatServiceSearchProcedure,
+			connect.WithSchema(chatServiceMethods.ByName("Search")),
+			connect.WithClientOptions(opts...),
+		),
 		renameSession: connect.NewClient[v1.RenameSessionRequest, v1.RenameSessionResponse](
 			httpClient,
 			baseURL+ChatServiceRenameSessionProcedure,
@@ -116,6 +126,7 @@ type chatServiceClient struct {
 	listSessions  *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
 	getSession    *connect.Client[v1.GetSessionRequest, v1.GetSessionResponse]
 	sendMessage   *connect.Client[v1.SendMessageRequest, v1.MessageChunk]
+	search        *connect.Client[v1.SearchRequest, v1.SearchResponse]
 	renameSession *connect.Client[v1.RenameSessionRequest, v1.RenameSessionResponse]
 	deleteSession *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
 }
@@ -133,6 +144,11 @@ func (c *chatServiceClient) GetSession(ctx context.Context, req *connect.Request
 // SendMessage calls gitchat.v1.ChatService.SendMessage.
 func (c *chatServiceClient) SendMessage(ctx context.Context, req *connect.Request[v1.SendMessageRequest]) (*connect.ServerStreamForClient[v1.MessageChunk], error) {
 	return c.sendMessage.CallServerStream(ctx, req)
+}
+
+// Search calls gitchat.v1.ChatService.Search.
+func (c *chatServiceClient) Search(ctx context.Context, req *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error) {
+	return c.search.CallUnary(ctx, req)
 }
 
 // RenameSession calls gitchat.v1.ChatService.RenameSession.
@@ -158,6 +174,8 @@ type ChatServiceHandler interface {
 	// MessageChunk at a time. The final chunk is always Done, carrying
 	// usage stats and the persisted session / message IDs.
 	SendMessage(context.Context, *connect.Request[v1.SendMessageRequest], *connect.ServerStream[v1.MessageChunk]) error
+	// Search performs a unified search across KB cards and chat messages.
+	Search(context.Context, *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error)
 	// RenameSession updates a session's title.
 	RenameSession(context.Context, *connect.Request[v1.RenameSessionRequest]) (*connect.Response[v1.RenameSessionResponse], error)
 	// DeleteSession removes a session and cascades to its messages.
@@ -189,6 +207,12 @@ func NewChatServiceHandler(svc ChatServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(chatServiceMethods.ByName("SendMessage")),
 		connect.WithHandlerOptions(opts...),
 	)
+	chatServiceSearchHandler := connect.NewUnaryHandler(
+		ChatServiceSearchProcedure,
+		svc.Search,
+		connect.WithSchema(chatServiceMethods.ByName("Search")),
+		connect.WithHandlerOptions(opts...),
+	)
 	chatServiceRenameSessionHandler := connect.NewUnaryHandler(
 		ChatServiceRenameSessionProcedure,
 		svc.RenameSession,
@@ -209,6 +233,8 @@ func NewChatServiceHandler(svc ChatServiceHandler, opts ...connect.HandlerOption
 			chatServiceGetSessionHandler.ServeHTTP(w, r)
 		case ChatServiceSendMessageProcedure:
 			chatServiceSendMessageHandler.ServeHTTP(w, r)
+		case ChatServiceSearchProcedure:
+			chatServiceSearchHandler.ServeHTTP(w, r)
 		case ChatServiceRenameSessionProcedure:
 			chatServiceRenameSessionHandler.ServeHTTP(w, r)
 		case ChatServiceDeleteSessionProcedure:
@@ -232,6 +258,10 @@ func (UnimplementedChatServiceHandler) GetSession(context.Context, *connect.Requ
 
 func (UnimplementedChatServiceHandler) SendMessage(context.Context, *connect.Request[v1.SendMessageRequest], *connect.ServerStream[v1.MessageChunk]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.ChatService.SendMessage is not implemented"))
+}
+
+func (UnimplementedChatServiceHandler) Search(context.Context, *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.ChatService.Search is not implemented"))
 }
 
 func (UnimplementedChatServiceHandler) RenameSession(context.Context, *connect.Request[v1.RenameSessionRequest]) (*connect.Response[v1.RenameSessionResponse], error) {
