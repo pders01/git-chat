@@ -170,7 +170,7 @@ func expandHistoryDiffMarkers(r *repo.Entry, text string, cache map[string]strin
 		if cached, ok := cache[cacheKey]; ok {
 			return cached
 		}
-		diff, _, _, empty, err := r.GetDiff(from, to, path)
+		diff, _, _, empty, _, err := r.GetDiff(from, to, path)
 		if err != nil {
 			cache[cacheKey] = match
 			return match

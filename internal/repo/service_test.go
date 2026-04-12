@@ -285,6 +285,17 @@ func TestGetDiff(t *testing.T) {
 		t.Fatalf("unexpected README.md in whole-commit diff, got:\n%s",
 			whole.Msg.UnifiedDiff)
 	}
+	// Whole-commit diff should include per-file metadata.
+	if len(whole.Msg.Files) != 1 {
+		t.Fatalf("expected 1 changed file, got %d", len(whole.Msg.Files))
+	}
+	f := whole.Msg.Files[0]
+	if f.Path != "src/main.go" {
+		t.Fatalf("expected changed file src/main.go, got %s", f.Path)
+	}
+	if f.Status != "modified" {
+		t.Fatalf("expected status modified, got %s", f.Status)
+	}
 }
 
 func TestRepoServiceRequiresAuth(t *testing.T) {

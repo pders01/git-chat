@@ -225,6 +225,7 @@ func (e *Entry) ListCommits(ref string, limit, offset int) ([]*gitchatv1.CommitE
 			Sha:         c.Hash.String(),
 			ShortSha:    c.Hash.String()[:7],
 			Message:     firstLine(c.Message),
+			Body:        commitBody(c.Message),
 			AuthorName:  c.Author.Name,
 			AuthorEmail: c.Author.Email,
 			AuthorTime:  c.Author.When.Unix(),
@@ -391,11 +392,11 @@ func (e *Entry) GetBlame(ref, path string) ([]*gitchatv1.BlameLine, error) {
 // Empty fromRef defaults to the parent of toRef (i.e. "what did this
 // commit do"); empty toRef defaults to HEAD. Returns empty=true if
 // nothing changed between the two commits for the scope requested.
-func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA string, empty bool, err error) {
+func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA string, empty bool, files []*gitchatv1.ChangedFile, err error) {
 	// Resolve to-side first so we can default fromRef to its parent.
 	toCommit, toResolved, err := e.resolveCommit(toRef)
 	if err != nil {
-		return "", "", "", false, err
+		return "", "", "", false, nil, err
 	}
 
 	var fromCommit *object.Commit
@@ -406,7 +407,7 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 		if toCommit.NumParents() > 0 {
 			parent, perr := toCommit.Parents().Next()
 			if perr != nil {
-				return "", "", "", false, fmt.Errorf("get parent: %w", perr)
+				return "", "", "", false, nil, fmt.Errorf("get parent: %w", perr)
 			}
 			fromCommit = parent
 			fromResolved = parent.Hash.String()
@@ -414,7 +415,7 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 	} else {
 		fc, resolved, rerr := e.resolveCommit(fromRef)
 		if rerr != nil {
-			return "", "", "", false, rerr
+			return "", "", "", false, nil, rerr
 		}
 		fromCommit = fc
 		fromResolved = resolved
@@ -425,13 +426,13 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 		fromContent, fromErr := fileContent(fromCommit, path)
 		toContent, toErr := fileContent(toCommit, path)
 		if fromErr != nil && toErr != nil {
-			return "", fromResolved, toResolved, false, ErrNotFound
+			return "", fromResolved, toResolved, false, nil, ErrNotFound
 		}
 		if fromContent == toContent {
-			return "", fromResolved, toResolved, true, nil
+			return "", fromResolved, toResolved, true, nil, nil
 		}
 		patch := renderUnifiedDiff(path, fromResolved, toResolved, fromContent, toContent)
-		return patch, fromResolved, toResolved, false, nil
+		return patch, fromResolved, toResolved, false, nil, nil
 	}
 
 	// ── Whole-commit path ──────────────────────────────────────────
@@ -439,11 +440,14 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 	// file's single-file patch, and concatenate. Sort for determinism.
 	changed, err := changedPaths(fromCommit, toCommit)
 	if err != nil {
-		return "", fromResolved, toResolved, false, err
+		return "", fromResolved, toResolved, false, nil, err
 	}
 	if len(changed) == 0 {
-		return "", fromResolved, toResolved, true, nil
+		return "", fromResolved, toResolved, true, nil, nil
 	}
+
+	// Build per-file metadata using tree diff stats.
+	files = buildChangedFiles(fromCommit, toCommit)
 
 	var sb bytes.Buffer
 	truncated := 0
@@ -464,9 +468,72 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 		fmt.Fprintf(&sb, "\n… (%d more file(s) truncated)\n", truncated)
 	}
 	if sb.Len() == 0 {
-		return "", fromResolved, toResolved, true, nil
+		return "", fromResolved, toResolved, true, files, nil
 	}
-	return sb.String(), fromResolved, toResolved, false, nil
+	return sb.String(), fromResolved, toResolved, false, files, nil
+}
+
+// buildChangedFiles computes per-file metadata (path, status, additions,
+// deletions) between two commits. Returns nil on error (best-effort).
+func buildChangedFiles(from, to *object.Commit) []*gitchatv1.ChangedFile {
+	var fromTree, toTree *object.Tree
+	if from != nil {
+		var err error
+		fromTree, err = from.Tree()
+		if err != nil {
+			return nil
+		}
+	}
+	if to != nil {
+		var err error
+		toTree, err = to.Tree()
+		if err != nil {
+			return nil
+		}
+	}
+	// Nil fromTree means root commit — everything is new.
+	if fromTree == nil {
+		fromTree = &object.Tree{}
+	}
+	if toTree == nil {
+		toTree = &object.Tree{}
+	}
+	changes, err := fromTree.Diff(toTree)
+	if err != nil {
+		return nil
+	}
+	patch, err := changes.Patch()
+	if err != nil {
+		return nil
+	}
+	stats := patch.Stats()
+	out := make([]*gitchatv1.ChangedFile, 0, len(stats))
+	for _, s := range stats {
+		status := "modified"
+		for _, c := range changes {
+			name := c.To.Name
+			if name == "" {
+				name = c.From.Name
+			}
+			if name == s.Name {
+				if c.From.Name == "" {
+					status = "added"
+				} else if c.To.Name == "" {
+					status = "deleted"
+				} else if c.From.Name != c.To.Name {
+					status = "renamed"
+				}
+				break
+			}
+		}
+		out = append(out, &gitchatv1.ChangedFile{
+			Path:      s.Name,
+			Status:    status,
+			Additions: int32(s.Addition),
+			Deletions: int32(s.Deletion),
+		})
+	}
+	return out
 }
 
 // changedPaths returns every path that differs between two commits.
@@ -836,6 +903,15 @@ func isBinary(content []byte) bool {
 		check = check[:8192]
 	}
 	return bytes.IndexByte(check, 0) >= 0
+}
+
+func commitBody(s string) string {
+	// Body is everything after the subject + blank separator line.
+	idx := strings.Index(s, "\n\n")
+	if idx < 0 {
+		return ""
+	}
+	return strings.TrimSpace(s[idx+2:])
 }
 
 func firstLine(s string) string {

@@ -2,7 +2,7 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
-import type { CommitEntry } from "../gen/gitchat/v1/repo_pb.js";
+import type { CommitEntry, ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { copyText } from "../lib/clipboard.js";
 
 // Lazy-load highlight for diff rendering.
@@ -30,6 +30,9 @@ export class GcCommitLog extends LitElement {
   @state() private diffHtml = "";
   @state() private diffLoading = false;
   @state() private drawerOpen = false;
+  @state() private files: ChangedFile[] = [];
+  @state() private selectedFile = ""; // "" = all files
+  private fullDiffHtml = ""; // cached full-commit diff
   private pendingSha = "";
 
   private onSelectCommit = ((e: CustomEvent<{ sha: string }>) => {
@@ -120,14 +123,20 @@ export class GcCommitLog extends LitElement {
     if (this.selectedSha === sha) {
       this.selectedSha = "";
       this.diffHtml = "";
+      this.fullDiffHtml = "";
       this.diffError = "";
+      this.files = [];
+      this.selectedFile = "";
       return;
     }
     const requestedSha = sha;
     this.selectedSha = sha;
+    this.selectedFile = "";
     this.drawerOpen = false;
     this.diffHtml = "";
+    this.fullDiffHtml = "";
     this.diffError = "";
+    this.files = [];
     this.diffLoading = true;
 
     try {
@@ -136,13 +145,16 @@ export class GcCommitLog extends LitElement {
         toRef: sha,
       });
       if (this.selectedSha !== requestedSha) return; // stale
+      this.files = resp.files;
       if (resp.empty) {
-        this.diffHtml = "<p style='opacity:0.5'>no changes</p>";
+        this.diffHtml = "";
+        this.fullDiffHtml = this.diffHtml;
       } else {
         const { highlight } = await loadHighlight();
-        const html = await highlight(resp.unifiedDiff, "diff");
+        const highlighted = await highlight(resp.unifiedDiff, "diff");
         if (this.selectedSha !== requestedSha) return; // stale
-        this.diffHtml = html;
+        this.diffHtml = highlighted;
+        this.fullDiffHtml = highlighted;
       }
     } catch (e) {
       if (this.selectedSha !== requestedSha) return;
@@ -150,6 +162,48 @@ export class GcCommitLog extends LitElement {
     } finally {
       this.diffLoading = false;
     }
+  }
+
+  private async selectFile(path: string) {
+    if (this.selectedFile === path) return;
+    this.selectedFile = path;
+    this.diffError = "";
+
+    // "All files" — restore cached full diff.
+    if (path === "") {
+      this.diffHtml = this.fullDiffHtml;
+      return;
+    }
+
+    const requestedSha = this.selectedSha;
+    this.diffHtml = "";
+    this.diffLoading = true;
+
+    try {
+      const resp = await repoClient.getDiff({
+        repoId: this.repoId,
+        toRef: this.selectedSha,
+        path,
+      });
+      if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
+      if (resp.empty) {
+        this.diffHtml = "";
+      } else {
+        const { highlight } = await loadHighlight();
+        const highlighted = await highlight(resp.unifiedDiff, "diff");
+        if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
+        this.diffHtml = highlighted;
+      }
+    } catch (e) {
+      if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
+      this.diffError = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.diffLoading = false;
+    }
+  }
+
+  private selectedFileEntry(): ChangedFile | undefined {
+    return this.files.find((f) => f.path === this.selectedFile);
   }
 
   private selectedCommit(): CommitEntry | undefined {
@@ -217,65 +271,113 @@ export class GcCommitLog extends LitElement {
             : nothing}
         </aside>
 
-        <!-- Right: diff detail panel -->
-        <section class="detail-panel">
+        <!-- Middle: commit info pane -->
+        <section class="info-pane">
           ${sel
             ? html`
-                <div class="detail-header">
-                  <div class="detail-title">
-                    <span
-                      class="detail-sha copyable"
-                      tabindex="0"
-                      role="button"
-                      @click=${(e: Event) => {
-                        e.stopPropagation();
-                        copyText(this, sel.sha, "SHA copied");
-                      }}
-                      @keydown=${(e: KeyboardEvent) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          copyText(this, sel.sha, "SHA copied");
-                        }
-                      }}
-                      title="Press Enter to copy full SHA"
-                    >${sel.shortSha}</span>
-                    <span class="detail-msg">${sel.message}</span>
-                  </div>
-                  <div class="detail-meta">
-                    <span class="detail-author">${sel.authorName}</span>
-                    <span class="detail-age">${formatAge(Number(sel.authorTime))}</span>
-                    ${sel.filesChanged
-                      ? html`<span class="detail-stats">
-                          <span class="adds">+${sel.additions}</span>
-                          <span class="dels">-${sel.deletions}</span>
-                          <span class="files">${sel.filesChanged} files</span>
-                        </span>`
-                      : nothing}
-                    <button
-                      class="action-btn"
-                      @click=${() => this.askAboutCommit(sel)}
-                      aria-label="Explain commit ${sel.shortSha} in chat"
-                    >
-                      explain in chat
-                    </button>
-                  </div>
+                <div class="info-sha">
+                  <span
+                    class="detail-sha copyable"
+                    tabindex="0"
+                    role="button"
+                    @click=${(e: Event) => { e.stopPropagation(); copyText(this, sel.sha, "SHA copied"); }}
+                    @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copyText(this, sel.sha, "SHA copied"); } }}
+                    title="Press Enter to copy full SHA"
+                  >${sel.shortSha}</span>
                 </div>
-                <div class="detail-body">
+                <div class="info-subject">${sel.message}</div>
+                ${sel.body ? html`<pre class="info-body">${sel.body}</pre>` : nothing}
+                <div class="info-meta">
+                  <span>${sel.authorName}</span>
+                  <span class="info-age">${formatAge(Number(sel.authorTime))}</span>
+                </div>
+                <button
+                  class="action-btn"
+                  @click=${() => this.askAboutCommit(sel)}
+                  aria-label="Explain commit ${sel.shortSha} in chat"
+                >explain in chat</button>
+                ${this.files.length
+                  ? html`
+                    <div class="file-list-header">
+                      <span>files</span>
+                      <span class="info-files">${this.files.length}</span>
+                    </div>
+                    <ul class="file-list" role="list">
+                      <li>
+                        <button
+                          class="file-entry ${this.selectedFile === "" ? "selected" : ""}"
+                          @click=${() => this.selectFile("")}
+                        >
+                          <span class="file-status all">∗</span>
+                          <span class="file-path">all files</span>
+                          <span class="file-stats">
+                            <span class="adds">+${sel.additions}</span>
+                            <span class="dels">-${sel.deletions}</span>
+                          </span>
+                        </button>
+                      </li>
+                      ${this.files.map((f) => html`
+                        <li>
+                          <button
+                            class="file-entry ${this.selectedFile === f.path ? "selected" : ""}"
+                            @click=${() => this.selectFile(f.path)}
+                            title=${f.path}
+                          >
+                            <span class="file-status ${f.status}">${statusLabel(f.status)}</span>
+                            <span class="file-path">${fileName(f.path)}</span>
+                            <span class="file-stats">
+                              <span class="adds">+${f.additions}</span>
+                              <span class="dels">-${f.deletions}</span>
+                            </span>
+                          </button>
+                        </li>
+                      `)}
+                    </ul>`
+                  : nothing}
+              `
+            : html`<div class="info-empty">select a commit</div>`}
+        </section>
+
+        <!-- Right: diff pane -->
+        <section class="diff-pane">
+          ${sel
+            ? html`
+                <div class="diff-header">
+                  ${this.selectedFile
+                    ? html`
+                        <span class="file-status ${this.selectedFileEntry()?.status ?? ""}">${statusLabel(this.selectedFileEntry()?.status ?? "")}</span>
+                        <span class="diff-filepath">${this.selectedFile}</span>
+                        <span class="diff-spacer"></span>
+                        ${this.selectedFileEntry()
+                          ? html`<span class="detail-stats">
+                              <span class="adds">+${this.selectedFileEntry()!.additions}</span>
+                              <span class="dels">-${this.selectedFileEntry()!.deletions}</span>
+                            </span>`
+                          : nothing}`
+                    : html`
+                        <span class="detail-sha">${sel.shortSha}</span>
+                        <span class="diff-label">diff</span>
+                        <span class="diff-spacer"></span>
+                        ${sel.filesChanged
+                          ? html`<span class="detail-stats">
+                              <span class="info-files">${sel.filesChanged} file${sel.filesChanged > 1 ? "s" : ""}</span>
+                              <span class="adds">+${sel.additions}</span>
+                              <span class="dels">-${sel.deletions}</span>
+                            </span>`
+                          : nothing}`}
+                </div>
+                <div class="diff-body">
                   ${this.diffLoading
                     ? html`<div class="diff-loading">loading diff…</div>`
                     : this.diffError
                       ? html`<p style="color:var(--danger);padding:var(--space-4)">${this.diffError}</p>`
                       : this.diffHtml
                         ? html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
-                        : nothing}
-                </div>
-              `
-            : html`
-                <div class="empty-detail">
-                  <div class="empty-title">select a commit</div>
-                  <p class="empty-sub">click a commit to view its diff</p>
-                </div>
-              `}
+                        : html`<div class="diff-empty">no changes</div>`}
+                </div>`
+            : html`<div class="empty-detail">
+                <p class="empty-sub">click a commit to view its diff</p>
+              </div>`}
         </section>
       </div>
     `;
@@ -320,7 +422,7 @@ export class GcCommitLog extends LitElement {
     /* ── Sidebar + panel grid (matches chat/browse) ──────────── */
     .layout {
       display: grid;
-      grid-template-columns: var(--sidebar-width) 1fr;
+      grid-template-columns: var(--sidebar-width) 280px 1fr;
       flex: 1;
       min-height: 0;
       min-width: 0;
@@ -433,29 +535,168 @@ export class GcCommitLog extends LitElement {
       background: var(--surface-3);
     }
 
-    /* ── Right: detail panel ─────────────────────────────────── */
-    .detail-panel {
+    /* ── Right: diff pane ─────────────────────────────────────── */
+    .diff-pane {
       display: flex;
       flex-direction: column;
       min-height: 0;
       min-width: 0;
       overflow: hidden;
     }
-    .detail-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-3) var(--space-5);
-      border-bottom: 1px solid var(--surface-4);
-      background: var(--surface-1);
-      flex-shrink: 0;
-    }
-    .detail-title {
+    .diff-header {
       display: flex;
       align-items: center;
       gap: var(--space-3);
-      overflow: hidden;
+      padding: 0 var(--space-4);
+      height: 36px;
+      box-sizing: border-box;
+      border-bottom: 1px solid var(--surface-4);
+      background: var(--surface-1);
+      flex-shrink: 0;
+      font-size: var(--text-sm);
     }
+    .diff-label {
+      opacity: 0.4;
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .diff-spacer { flex: 1; }
+    .diff-body {
+      flex: 1;
+      overflow: auto;
+      min-height: 0;
+    }
+    /* ── Middle: commit info pane ──────────────────────────────── */
+    .info-pane {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      padding: var(--space-4);
+      border-right: 1px solid var(--surface-4);
+      background: var(--surface-1);
+      overflow-y: auto;
+      min-height: 0;
+    }
+    .info-sha .detail-sha {
+      font-size: var(--text-sm);
+    }
+    .info-subject {
+      font-size: var(--text-sm);
+      font-weight: 500;
+      line-height: 1.4;
+    }
+    .info-body {
+      margin: 0;
+      padding: var(--space-2) 0 var(--space-2) var(--space-3);
+      border-left: 2px solid var(--surface-4);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      white-space: pre-wrap;
+      opacity: 0.75;
+      line-height: 1.6;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .info-meta {
+      display: flex;
+      gap: var(--space-2);
+      font-size: var(--text-xs);
+      opacity: 0.6;
+    }
+    .info-stats {
+      display: flex;
+      gap: var(--space-2);
+      font-size: var(--text-xs);
+    }
+    .info-files {
+      opacity: 0.5;
+    }
+    .info-empty {
+      opacity: 0.4;
+      padding: var(--space-4);
+    }
+
+    /* ── File list ──────────────────────────────────────────────── */
+    .file-list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: var(--space-3);
+      margin-top: var(--space-2);
+      border-top: 1px solid var(--surface-4);
+      font-size: var(--text-xs);
+      opacity: 0.5;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .file-list {
+      list-style: none;
+      padding: 0;
+      margin: var(--space-1) 0 0;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+    }
+    .file-entry {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      width: 100%;
+      padding: var(--space-1) var(--space-2);
+      background: transparent;
+      border: none;
+      border-left: 2px solid transparent;
+      color: var(--text);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.08s ease;
+    }
+    .file-entry:hover {
+      background: var(--surface-2);
+    }
+    .file-entry.selected {
+      background: var(--surface-2);
+      border-left-color: var(--accent-assistant);
+    }
+    .file-entry:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: -2px;
+    }
+    .file-status {
+      flex-shrink: 0;
+      width: 1.2em;
+      text-align: center;
+      font-weight: 600;
+      font-size: 0.65rem;
+    }
+    .file-status.modified { color: var(--accent-user); }
+    .file-status.added { color: var(--accent-assistant); }
+    .file-status.deleted { color: var(--danger); }
+    .file-status.renamed { color: var(--warning, #e0a040); }
+    .file-status.all { color: var(--text); opacity: 0.5; }
+    .file-path {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-stats {
+      flex-shrink: 0;
+      display: flex;
+      gap: var(--space-1);
+      font-size: 0.6rem;
+      opacity: 0.7;
+    }
+    .diff-filepath {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: var(--text-xs);
+    }
+
     .copyable {
       cursor: copy;
     }
@@ -467,35 +708,11 @@ export class GcCommitLog extends LitElement {
       font-size: var(--text-sm);
       flex-shrink: 0;
     }
-    .detail-meta {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      font-size: var(--text-xs);
-      flex-shrink: 0;
-    }
-    .detail-author {
-      opacity: 0.65;
-    }
-    .detail-age {
-      opacity: 0.45;
-    }
     .detail-stats {
       display: flex;
       gap: var(--space-1);
-    }
-    .detail-stats .files {
-      opacity: 0.5;
-    }
-    .detail-msg {
-      font-size: var(--text-sm);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .detail-header {
-      flex-wrap: wrap;
-      gap: var(--space-2);
+      font-size: var(--text-xs);
+      flex-shrink: 0;
     }
     .action-btn {
       padding: var(--space-1) var(--space-3);
@@ -516,14 +733,18 @@ export class GcCommitLog extends LitElement {
     .action-btn:hover {
       background: var(--action-bg-hover);
     }
-    .detail-body {
-      flex: 1;
-      overflow: auto;
-      min-height: 0;
-    }
     .diff-loading {
       padding: var(--space-6);
       opacity: 0.5;
+    }
+    .diff-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      opacity: 0.4;
+      font-size: var(--text-sm);
+      font-style: italic;
     }
     .diff-content {
       font-size: var(--text-xs);
@@ -546,11 +767,6 @@ export class GcCommitLog extends LitElement {
       text-align: center;
       opacity: 0.55;
     }
-    .empty-title {
-      font-size: 1.1rem;
-      font-weight: 500;
-      margin-bottom: var(--space-2);
-    }
     .empty-sub {
       margin: 0;
       font-size: 0.82rem;
@@ -562,10 +778,30 @@ export class GcCommitLog extends LitElement {
         transition: none;
       }
     }
+    @media (max-width: 1100px) and (min-width: 769px) {
+      .layout {
+        grid-template-columns: var(--sidebar-width) 1fr;
+      }
+      .info-pane {
+        border-right: none;
+        border-bottom: 1px solid var(--surface-4);
+      }
+      .diff-pane {
+        grid-column: 2;
+      }
+    }
     .drawer-toggle { display: none; }
     .drawer-backdrop { display: none; }
     @media (max-width: 768px) {
-      .layout { grid-template-columns: 1fr; }
+      .layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+      .info-pane {
+        border-right: none;
+        border-bottom: 1px solid var(--surface-4);
+        max-height: 40vh;
+      }
       .drawer-toggle {
         display: block;
         position: fixed;
@@ -583,7 +819,7 @@ export class GcCommitLog extends LitElement {
       }
       .commit-list {
         position: fixed;
-        top: 44px; left: 0; bottom: 0;
+        top: 0; left: 0; bottom: 0;
         width: 280px;
         z-index: 40;
         transform: translateX(-100%);
@@ -600,6 +836,20 @@ export class GcCommitLog extends LitElement {
       .drawer-open .drawer-backdrop { display: block; }
     }
   `;
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case "added": return "A";
+    case "deleted": return "D";
+    case "renamed": return "R";
+    default: return "M";
+  }
+}
+
+function fileName(path: string): string {
+  const i = path.lastIndexOf("/");
+  return i >= 0 ? path.slice(i + 1) : path;
 }
 
 // Returns either a plain string or an {age, iso} object for tooltip.

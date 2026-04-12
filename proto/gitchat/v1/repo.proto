@@ -152,6 +152,7 @@ message CommitEntry {
   int32  files_changed = 7;   // number of files touched
   int32  additions = 8;       // total lines added
   int32  deletions = 9;       // total lines removed
+  string body = 10;           // full commit body (after subject + blank line)
 }
 
 // ─── GetBlame ───────────────────────────────────────────────────────────
@@ -207,4 +208,5 @@ message GetDiffResponse {
   string from_commit = 2;   // resolved from_ref
   string to_commit = 3;     // resolved to_ref
   bool   empty = 4;         // true if the file is unchanged between refs
+  repeated ChangedFile files = 5;  // per-file metadata (whole-commit diffs only)
 }

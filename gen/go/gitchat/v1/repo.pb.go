@@ -849,6 +849,7 @@ type CommitEntry struct {
 	FilesChanged  int32                  `protobuf:"varint,7,opt,name=files_changed,json=filesChanged,proto3" json:"files_changed,omitempty"` // number of files touched
 	Additions     int32                  `protobuf:"varint,8,opt,name=additions,proto3" json:"additions,omitempty"`                           // total lines added
 	Deletions     int32                  `protobuf:"varint,9,opt,name=deletions,proto3" json:"deletions,omitempty"`                           // total lines removed
+	Body          string                 `protobuf:"bytes,10,opt,name=body,proto3" json:"body,omitempty"`                                     // full commit body (after subject + blank line)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -944,6 +945,13 @@ func (x *CommitEntry) GetDeletions() int32 {
 		return x.Deletions
 	}
 	return 0
+}
+
+func (x *CommitEntry) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
 }
 
 // ─── GetBlame ───────────────────────────────────────────────────────────
@@ -1399,6 +1407,7 @@ type GetDiffResponse struct {
 	FromCommit    string                 `protobuf:"bytes,2,opt,name=from_commit,json=fromCommit,proto3" json:"from_commit,omitempty"`    // resolved from_ref
 	ToCommit      string                 `protobuf:"bytes,3,opt,name=to_commit,json=toCommit,proto3" json:"to_commit,omitempty"`          // resolved to_ref
 	Empty         bool                   `protobuf:"varint,4,opt,name=empty,proto3" json:"empty,omitempty"`                               // true if the file is unchanged between refs
+	Files         []*ChangedFile         `protobuf:"bytes,5,rep,name=files,proto3" json:"files,omitempty"`                                // per-file metadata (whole-commit diffs only)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1461,6 +1470,13 @@ func (x *GetDiffResponse) GetEmpty() bool {
 	return false
 }
 
+func (x *GetDiffResponse) GetFiles() []*ChangedFile {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
 var File_gitchat_v1_repo_proto protoreflect.FileDescriptor
 
 const file_gitchat_v1_repo_proto_rawDesc = "" +
@@ -1516,7 +1532,7 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x06offset\x18\x04 \x01(\x05R\x06offset\"c\n" +
 	"\x13ListCommitsResponse\x121\n" +
 	"\acommits\x18\x01 \x03(\v2\x17.gitchat.v1.CommitEntryR\acommits\x12\x19\n" +
-	"\bhas_more\x18\x02 \x01(\bR\ahasMore\"\x9c\x02\n" +
+	"\bhas_more\x18\x02 \x01(\bR\ahasMore\"\xb0\x02\n" +
 	"\vCommitEntry\x12\x10\n" +
 	"\x03sha\x18\x01 \x01(\tR\x03sha\x12\x1b\n" +
 	"\tshort_sha\x18\x02 \x01(\tR\bshortSha\x12\x18\n" +
@@ -1528,7 +1544,9 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"authorTime\x12#\n" +
 	"\rfiles_changed\x18\a \x01(\x05R\ffilesChanged\x12\x1c\n" +
 	"\tadditions\x18\b \x01(\x05R\tadditions\x12\x1c\n" +
-	"\tdeletions\x18\t \x01(\x05R\tdeletions\"P\n" +
+	"\tdeletions\x18\t \x01(\x05R\tdeletions\x12\x12\n" +
+	"\x04body\x18\n" +
+	" \x01(\tR\x04body\"P\n" +
 	"\x0fGetBlameRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x10\n" +
 	"\x03ref\x18\x02 \x01(\tR\x03ref\x12\x12\n" +
@@ -1561,13 +1579,14 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x19\n" +
 	"\bfrom_ref\x18\x02 \x01(\tR\afromRef\x12\x15\n" +
 	"\x06to_ref\x18\x03 \x01(\tR\x05toRef\x12\x12\n" +
-	"\x04path\x18\x04 \x01(\tR\x04path\"\x88\x01\n" +
+	"\x04path\x18\x04 \x01(\tR\x04path\"\xb7\x01\n" +
 	"\x0fGetDiffResponse\x12!\n" +
 	"\funified_diff\x18\x01 \x01(\tR\vunifiedDiff\x12\x1f\n" +
 	"\vfrom_commit\x18\x02 \x01(\tR\n" +
 	"fromCommit\x12\x1b\n" +
 	"\tto_commit\x18\x03 \x01(\tR\btoCommit\x12\x14\n" +
-	"\x05empty\x18\x04 \x01(\bR\x05empty*\x82\x01\n" +
+	"\x05empty\x18\x04 \x01(\bR\x05empty\x12-\n" +
+	"\x05files\x18\x05 \x03(\v2\x17.gitchat.v1.ChangedFileR\x05files*\x82\x01\n" +
 	"\tEntryType\x12\x1a\n" +
 	"\x16ENTRY_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fENTRY_TYPE_FILE\x10\x01\x12\x12\n" +
@@ -1634,27 +1653,28 @@ var file_gitchat_v1_repo_proto_depIdxs = []int32{
 	14, // 4: gitchat.v1.ListCommitsResponse.commits:type_name -> gitchat.v1.CommitEntry
 	17, // 5: gitchat.v1.GetBlameResponse.lines:type_name -> gitchat.v1.BlameLine
 	20, // 6: gitchat.v1.CompareBranchesResponse.files:type_name -> gitchat.v1.ChangedFile
-	2,  // 7: gitchat.v1.RepoService.ListRepos:input_type -> gitchat.v1.ListReposRequest
-	4,  // 8: gitchat.v1.RepoService.ListBranches:input_type -> gitchat.v1.ListBranchesRequest
-	7,  // 9: gitchat.v1.RepoService.ListTree:input_type -> gitchat.v1.ListTreeRequest
-	10, // 10: gitchat.v1.RepoService.GetFile:input_type -> gitchat.v1.GetFileRequest
-	12, // 11: gitchat.v1.RepoService.ListCommits:input_type -> gitchat.v1.ListCommitsRequest
-	15, // 12: gitchat.v1.RepoService.GetBlame:input_type -> gitchat.v1.GetBlameRequest
-	18, // 13: gitchat.v1.RepoService.CompareBranches:input_type -> gitchat.v1.CompareBranchesRequest
-	21, // 14: gitchat.v1.RepoService.GetDiff:input_type -> gitchat.v1.GetDiffRequest
-	3,  // 15: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
-	5,  // 16: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
-	8,  // 17: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
-	11, // 18: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
-	13, // 19: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
-	16, // 20: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
-	19, // 21: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
-	22, // 22: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
-	15, // [15:23] is the sub-list for method output_type
-	7,  // [7:15] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	20, // 7: gitchat.v1.GetDiffResponse.files:type_name -> gitchat.v1.ChangedFile
+	2,  // 8: gitchat.v1.RepoService.ListRepos:input_type -> gitchat.v1.ListReposRequest
+	4,  // 9: gitchat.v1.RepoService.ListBranches:input_type -> gitchat.v1.ListBranchesRequest
+	7,  // 10: gitchat.v1.RepoService.ListTree:input_type -> gitchat.v1.ListTreeRequest
+	10, // 11: gitchat.v1.RepoService.GetFile:input_type -> gitchat.v1.GetFileRequest
+	12, // 12: gitchat.v1.RepoService.ListCommits:input_type -> gitchat.v1.ListCommitsRequest
+	15, // 13: gitchat.v1.RepoService.GetBlame:input_type -> gitchat.v1.GetBlameRequest
+	18, // 14: gitchat.v1.RepoService.CompareBranches:input_type -> gitchat.v1.CompareBranchesRequest
+	21, // 15: gitchat.v1.RepoService.GetDiff:input_type -> gitchat.v1.GetDiffRequest
+	3,  // 16: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
+	5,  // 17: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
+	8,  // 18: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
+	11, // 19: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
+	13, // 20: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
+	16, // 21: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
+	19, // 22: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
+	22, // 23: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
+	16, // [16:24] is the sub-list for method output_type
+	8,  // [8:16] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_gitchat_v1_repo_proto_init() }
