@@ -4,9 +4,11 @@
 > automatically curated knowledge base of high-frequency queries that stays
 > honest against the repo via git-aware invalidation.
 
-Status: M0–M7 implemented. This document is the source of truth for
-architectural decisions. When code and this document disagree, update
-one of them — do not let drift accumulate.
+Status: M0–M7 implemented + MCP server, global search, blame, branch
+comparison RPCs, 23 e2e tests, CI pipeline. See HANDOFF.md for current
+state, known issues, and next priorities. This document is the source
+of truth for architectural decisions. When code and this document
+disagree, update one of them — do not let drift accumulate.
 
 ---
 
