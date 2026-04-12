@@ -443,6 +443,7 @@ export class GcFileView extends LitElement {
       border-radius: var(--radius-md);
       font-size: var(--text-xs);
       box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+      transition: top 0.12s ease-out, left 0.12s ease-out;
     }
     .bt-header {
       display: flex;
