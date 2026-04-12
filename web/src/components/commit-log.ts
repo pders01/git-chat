@@ -74,9 +74,11 @@ export class GcCommitLog extends LitElement {
   }
 
   private async rehighlight() {
-    if (!this.rawDiff) return;
+    const raw = this.rawDiff;
+    if (!raw) return;
     const { highlight } = await loadHighlight();
-    let highlighted = await highlight(this.rawDiff, "diff");
+    let highlighted = await highlight(raw, "diff");
+    if (this.rawDiff !== raw) return; // navigated away during highlight
     highlighted = this.highlightWordDiffs(highlighted);
     this.diffHtml = highlighted;
     // Also update full cache if viewing all files.
@@ -256,7 +258,7 @@ export class GcCommitLog extends LitElement {
       if (this.selectedSha !== requestedSha) return;
       this.diffError = e instanceof Error ? e.message : String(e);
     } finally {
-      this.diffLoading = false;
+      if (this.selectedSha === requestedSha) this.diffLoading = false;
     }
   }
 
@@ -470,21 +472,23 @@ export class GcCommitLog extends LitElement {
       }
       // Skip the first character (- or +) by shifting ranges by 1.
       const shifted = ranges.map(([s, e]) => [s + 1, e + 1] as [number, number]);
-      // Process in reverse to not invalidate offsets.
+      // Process ranges right-to-left; within each range, iterate nodes
+      // right-to-left so DOM mutations don't affect nodes we haven't
+      // visited yet. A single range may span multiple Shiki text nodes
+      // (e.g. "console.log" split across tokens).
       for (const [rs, re] of shifted.reverse()) {
-        for (const n of nodes) {
+        for (let ni = nodes.length - 1; ni >= 0; ni--) {
+          const n = nodes[ni];
           if (rs >= n.end || re <= n.start) continue;
           const localStart = Math.max(0, rs - n.start);
           const localEnd = Math.min(n.node.length, re - n.start);
           if (localStart >= localEnd) continue;
           const before = n.node.splitText(localStart);
-          const marked = before.splitText(localEnd - localStart);
+          before.splitText(localEnd - localStart);
           const mark = document.createElement("mark");
           mark.className = cssClass;
           before.parentNode!.insertBefore(mark, before);
           mark.appendChild(before);
-          void marked; // remainder stays in place
-          break; // each range handled once
         }
       }
     };

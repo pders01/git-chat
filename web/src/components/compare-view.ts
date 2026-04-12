@@ -59,11 +59,14 @@ export class GcCompareView extends LitElement {
   }
 
   private async rehighlight() {
-    if (!this.rawDiff) return;
+    const raw = this.rawDiff;
+    if (!raw) return;
     const { highlight } = await loadHighlight();
-    this.diffHtml = await highlight(this.rawDiff, "diff");
+    const highlighted = await highlight(raw, "diff");
+    if (this.rawDiff !== raw) return; // navigated away during highlight
+    this.diffHtml = highlighted;
     if (this.selectedFile === "" && this.fullRawDiff) {
-      this.fullDiffHtml = this.diffHtml;
+      this.fullDiffHtml = highlighted;
     }
   }
 

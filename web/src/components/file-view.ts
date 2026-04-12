@@ -66,9 +66,11 @@ export class GcFileView extends LitElement {
   }
 
   private async rehighlight() {
-    if (!this.rawText || !this.rawLang || this.view.phase !== "highlighted") return;
+    const text = this.rawText, lang = this.rawLang;
+    if (!text || !lang || this.view.phase !== "highlighted") return;
     const highlight = await loadHighlight();
-    const highlighted = await highlight(this.rawText, this.rawLang);
+    const highlighted = await highlight(text, lang);
+    if (this.rawText !== text || this.rawLang !== lang) return; // navigated away
     this.cachedShikiLines = null; // invalidate line cache
     this.cachedShikiSrc = "";
     this.view = { ...this.view, html: highlighted };
