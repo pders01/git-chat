@@ -58,6 +58,9 @@ export class GcFileView extends LitElement {
 
   private async load() {
     this.view = { phase: "loading" };
+    this.blameLines = [];
+    this.hoveredBlame = null;
+    this.showBlame = false;
     try {
       const resp = await repoClient.getFile({
         repoId: this.repoId,
@@ -196,14 +199,20 @@ export class GcFileView extends LitElement {
     this.hoverTimer = setTimeout(() => {
       this.hoveredBlame = this.blameLines[idx]!;
       // Position to the right of the gutter, clamped to viewport.
-      const gutterRect = target.getBoundingClientRect();
-      const tipW = 560, tipH = 120;
-      let left = gutterRect.right + 8;
-      let top = e.clientY - 20;
-      if (left + tipW > window.innerWidth) left = gutterRect.left - tipW - 8;
-      if (top + tipH > window.innerHeight) top = window.innerHeight - tipH - 8;
-      if (top < 8) top = 8;
-      this.blameTooltipStyle = `top:${top}px;left:${left}px`;
+      // Defer one frame so the tooltip DOM exists and we can measure it.
+      requestAnimationFrame(() => {
+        const tip = this.renderRoot.querySelector(".blame-tip") as HTMLElement | null;
+        const gutterRect = target.getBoundingClientRect();
+        const tipW = tip?.offsetWidth ?? 560;
+        const tipH = tip?.offsetHeight ?? 200;
+        let left = gutterRect.right + 8;
+        let top = e.clientY - 20;
+        if (left + tipW > window.innerWidth) left = gutterRect.left - tipW - 8;
+        // Flip above cursor if overflows bottom.
+        if (top + tipH > window.innerHeight - 8) top = e.clientY - tipH - 8;
+        if (top < 8) top = 8;
+        this.blameTooltipStyle = `top:${top}px;left:${left}px`;
+      });
     }, 200);
   };
 
@@ -242,16 +251,15 @@ export class GcFileView extends LitElement {
           <tbody>
             ${lines.map((line, i) => {
               const blame = this.blameLines[i];
-              const prev = i > 0 ? this.blameLines[i - 1] : null;
-              const isNewBlock = !prev || !blame || prev.commitSha !== blame?.commitSha;
+              const prev = i > 0 ? this.blameLines[i - 1] : undefined;
+              const isNewBlock = blame != null && (!prev || prev.commitSha !== blame.commitSha);
               if (isNewBlock) blockIdx++;
-              const band = blockIdx % 2 === 0 ? "band-even" : "band-odd";
               return html`
-                <tr class="${band} ${isNewBlock ? "blame-start" : ""}">
+                <tr class="${isNewBlock ? "blame-start" : ""}">
                   <td class="blame-cell" data-idx=${i}>
-                    ${blame && isNewBlock
+                    ${isNewBlock && blame
                       ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span> <span class="blame-msg">${(blame.commitMessage || "").split("\n")[0].slice(0, 20)}</span>`
-                      : html`<span class="blame-cont">│</span>`}
+                      : nothing}
                   </td>
                   <td class="lno-cell">${i + 1}</td>
                   <td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">${isHighlighted ? unsafeHTML(line) : line}</td>
@@ -383,11 +391,14 @@ export class GcFileView extends LitElement {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 0.55rem 0.95rem;
+      padding: 0 0.95rem;
+      height: 36px;
+      box-sizing: border-box;
       border-bottom: 1px solid var(--border-default);
       background: var(--surface-1);
       position: sticky;
       top: 0;
+      z-index: 10;
       gap: var(--space-3);
     }
     .hd-left {
@@ -461,7 +472,6 @@ export class GcFileView extends LitElement {
     }
     /* ── Blame table layout ──────────────────────── */
     .blame-table-wrap {
-      overflow: auto;
       font-size: 0.8rem;
     }
     .blame-table {
@@ -477,7 +487,7 @@ export class GcFileView extends LitElement {
     .lno-col {
       width: 3.5em;
     }
-    .blame-table tr.blame-start td {
+    .blame-table tr.blame-start:not(:first-child) td {
       border-top: 1px solid var(--surface-4);
     }
     .blame-cell {
@@ -486,9 +496,9 @@ export class GcFileView extends LitElement {
       overflow: hidden;
       text-overflow: ellipsis;
       font-size: 0.7rem;
-      background: var(--surface-0);
+      background: var(--surface-1-alt);
       border-right: 1px solid var(--surface-4);
-      cursor: default;
+      cursor: pointer;
       vertical-align: top;
     }
     .blame-cell:hover {
@@ -511,15 +521,12 @@ export class GcFileView extends LitElement {
     .code-cell {
       padding: 0 var(--space-4);
       white-space: pre;
-      overflow-x: auto;
       vertical-align: top;
     }
     .code-cell.plain-cell {
       white-space: pre-wrap;
       word-break: break-word;
     }
-    .band-even .blame-cell { background: var(--surface-0); }
-    .band-odd .blame-cell { background: var(--surface-1); }
     /* ── Blame info bar (below file header, inline) ─────────── */
     .blame-bar {
       display: flex;

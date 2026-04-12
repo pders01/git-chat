@@ -168,6 +168,13 @@ export class GcRepoBrowser extends LitElement {
           <div class="repo-hd">
             <span class="label">${s.repo.label}</span>
             <span class="branch">${s.repo.defaultBranch}@${s.repo.headCommit}</span>
+            <button
+              class="focus-btn"
+              @click=${this.toggleFocus}
+              title=${this.focused ? "show tree" : "hide tree"}
+            >
+              ${this.focused ? "◀" : "▶"}
+            </button>
           </div>
 
           <ul class="entries">
@@ -176,18 +183,6 @@ export class GcRepoBrowser extends LitElement {
         </aside>
 
         <section>
-          <div class="pane-hd">
-            <button
-              class="focus-btn"
-              @click=${this.toggleFocus}
-              title=${this.focused ? "show tree" : "hide tree"}
-            >
-              ${this.focused ? "◀" : "▶"}
-              <span class="focus-label">
-                ${this.focused ? "exit focus" : "focus"}
-              </span>
-            </button>
-          </div>
           <gc-file-view
             .repoId=${s.repo.id}
             .path=${this.selectedFile}
@@ -285,43 +280,29 @@ export class GcRepoBrowser extends LitElement {
       flex: 1;
       min-height: 0;
     }
-    .pane-hd {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      padding: 0.4rem var(--space-3) 0;
-      flex-shrink: 0;
-    }
     .focus-btn {
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      padding: var(--space-1) 0.55rem;
+      margin-left: auto;
+      padding: var(--space-1);
       background: transparent;
       color: var(--text);
-      border: 1px solid transparent;
-      border-radius: 3px;
+      border: none;
       font-family: inherit;
       font-size: var(--text-xs);
       cursor: pointer;
-      opacity: 0.4;
-      transition: opacity 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+      opacity: 0.35;
     }
     .focus-btn:hover {
       opacity: 0.9;
-      background: var(--surface-2);
-      border-color: var(--border-default);
-    }
-    .focus-label {
-      letter-spacing: 0.05em;
     }
     .repo-hd {
-      padding: 0.85rem 0.95rem;
+      padding: 0 0.95rem;
+      height: 36px;
       border-bottom: 1px solid var(--border-default);
       display: flex;
-      justify-content: space-between;
-      align-items: baseline;
+      align-items: center;
+      gap: var(--space-2);
       background: var(--surface-1);
+      box-sizing: border-box;
     }
     .label {
       font-weight: 500;
@@ -429,7 +410,6 @@ export class GcRepoBrowser extends LitElement {
         z-index: 35;
       }
       .drawer-open .drawer-backdrop { display: block; }
-      .pane-hd { display: none; }
     }
   `;
 }
