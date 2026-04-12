@@ -537,16 +537,16 @@ export class GcKbView extends LitElement {
     .action-btn {
       font-family: inherit;
       font-size: var(--text-xs);
-      padding: var(--space-2) var(--space-4);
-      background: var(--surface-2);
+      padding: var(--space-1) var(--space-3);
+      background: var(--action-bg);
       color: var(--text);
-      border: 1px solid var(--border-default);
+      border: 1px solid var(--border-accent);
       border-radius: var(--radius-md);
       cursor: pointer;
       transition: background 0.12s ease, border-color 0.12s ease;
     }
     .action-btn:hover {
-      background: var(--surface-3);
+      background: var(--action-bg-hover);
       border-color: var(--border-strong);
     }
     .action-btn.danger:hover {

@@ -524,7 +524,7 @@ export class GcCommitLog extends LitElement {
     }
     .retry-btn {
       margin-top: var(--space-3);
-      padding: var(--space-2) var(--space-4);
+      padding: var(--space-1) var(--space-3);
       background: var(--surface-2);
       color: var(--text);
       border: 1px solid var(--border-default);
@@ -661,6 +661,8 @@ export class GcCommitLog extends LitElement {
       padding: var(--space-1) var(--space-2);
       border-bottom: 1px solid var(--surface-4);
       flex-shrink: 0;
+      height: 36px;
+      box-sizing: border-box;
     }
     .graph-toggle {
       padding: 2px var(--space-2);
@@ -819,6 +821,8 @@ export class GcCommitLog extends LitElement {
       opacity: 0.5;
       text-transform: uppercase;
       letter-spacing: 0.05em;
+      height: 28px;
+      box-sizing: border-box;
     }
     .file-list {
       list-style: none;

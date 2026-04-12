@@ -280,6 +280,8 @@ export class GcCompareView extends LitElement {
       opacity: 0.5;
       text-transform: uppercase;
       letter-spacing: 0.05em;
+      height: 28px;
+      box-sizing: border-box;
     }
     .file-list {
       list-style: none;

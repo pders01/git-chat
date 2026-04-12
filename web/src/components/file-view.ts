@@ -609,10 +609,10 @@ export class GcFileView extends LitElement {
     }
     .hd-btn {
       flex-shrink: 0;
-      padding: var(--space-1) var(--space-3);
+      padding: var(--space-1) var(--space-2);
       background: transparent;
       color: var(--text);
-      border: 1px solid transparent;
+      border: 1px solid var(--border-default);
       border-radius: var(--radius-md);
       font-family: inherit;
       font-size: var(--text-xs);
