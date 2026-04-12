@@ -117,14 +117,16 @@ export class GcChatView extends LitElement {
     }
     // Listen for global shortcut events from gc-app.
     this.addEventListener("gc:new-chat", this.onNewChat);
-    this.addEventListener("gc:toggle-focus", this.onToggleFocus);
+    this.addEventListener("gc:toggle-focus", this.onSyncFocus);
     this.addEventListener("gc:select-session", this.onSelectSession as EventListener);
     this.addEventListener("gc:prefill", this.onPrefill as EventListener);
     this.addEventListener("keydown", this.onKeydownLocal);
   }
 
   private onNewChat = () => this.newChat();
-  private onToggleFocus = () => this.toggleFocus();
+  private onSyncFocus = () => {
+    this.focused = readFocus();
+  };
   private onSelectSession = ((e: CustomEvent<{ sessionId: string }>) => {
     void this.selectSession(e.detail.sessionId);
   }) as EventListener;
@@ -140,7 +142,7 @@ export class GcChatView extends LitElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.removeEventListener("gc:new-chat", this.onNewChat);
-    this.removeEventListener("gc:toggle-focus", this.onToggleFocus);
+    this.removeEventListener("gc:toggle-focus", this.onSyncFocus);
     this.removeEventListener("gc:select-session", this.onSelectSession as EventListener);
     this.removeEventListener("gc:prefill", this.onPrefill as EventListener);
     this.removeEventListener("keydown", this.onKeydownLocal);

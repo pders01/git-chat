@@ -49,6 +49,10 @@ export class GcRepoBrowser extends LitElement {
     writeFocus(this.focused);
   };
 
+  private onSyncFocus = () => {
+    this.focused = readFocus();
+  };
+
   private compareFetching = false;
 
   private async toggleCompare() {
@@ -106,13 +110,13 @@ export class GcRepoBrowser extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
     if (this.repoId) void this.boot();
-    this.addEventListener("gc:toggle-focus", this.onToggleFocus);
+    this.addEventListener("gc:toggle-focus", this.onSyncFocus);
     this.addEventListener("gc:open-file", this.onOpenFile);
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
-    this.removeEventListener("gc:toggle-focus", this.onToggleFocus);
+    this.removeEventListener("gc:toggle-focus", this.onSyncFocus);
     this.removeEventListener("gc:open-file", this.onOpenFile);
   }
 

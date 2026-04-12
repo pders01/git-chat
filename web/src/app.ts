@@ -10,6 +10,7 @@ import "./components/commit-log.js";
 import "./components/toast.js";
 import "./components/kb-view.js";
 import * as settings from "./lib/settings.js";
+import { readFocus, writeFocus } from "./lib/focus.js";
 
 type Tab = "chat" | "browse" | "log" | "kb";
 
@@ -160,12 +161,13 @@ export class GcApp extends LitElement {
   private onGlobalKeydown = (e: KeyboardEvent) => {
     if (this.state.phase !== "authenticated") return;
     // ? opens shortcut help (no modifier needed).
+    const origin = e.composedPath()[0];
     if (
       e.key === "?" &&
       !e.metaKey &&
       !e.ctrlKey &&
-      !(e.target instanceof HTMLTextAreaElement) &&
-      !(e.target instanceof HTMLInputElement)
+      !(origin instanceof HTMLTextAreaElement) &&
+      !(origin instanceof HTMLInputElement)
     ) {
       e.preventDefault();
       this.showShortcuts = !this.showShortcuts;
@@ -182,9 +184,8 @@ export class GcApp extends LitElement {
 
     switch (e.key) {
       case "k":
-        // ⌘K → new chat (dispatch to chat-view)
         e.preventDefault();
-        this.dispatchShortcut("gc:new-chat");
+        this.newChat();
         break;
       case "1":
         e.preventDefault();
@@ -203,9 +204,8 @@ export class GcApp extends LitElement {
         this.switchTab("kb");
         break;
       case "\\":
-        // ⌘\ → toggle focus mode
         e.preventDefault();
-        this.dispatchShortcut("gc:toggle-focus");
+        this.toggleFocus();
         break;
       case "f":
         // ⌘F → global search
@@ -221,10 +221,24 @@ export class GcApp extends LitElement {
     }
   };
 
-  // Broadcast a shortcut event so child components can react.
-  private dispatchShortcut(name: string) {
-    const target = this.renderRoot.querySelector("gc-chat-view, gc-repo-browser");
-    target?.dispatchEvent(new CustomEvent(name, { bubbles: false }));
+  // Toggle focus mode across all views that support it.
+  private toggleFocus() {
+    const next = !readFocus();
+    writeFocus(next);
+    // Notify all focus-aware components to re-read the shared state.
+    for (const sel of ["gc-chat-view", "gc-repo-browser"] as const) {
+      const el = this.renderRoot.querySelector(sel);
+      el?.dispatchEvent(new CustomEvent("gc:toggle-focus", { bubbles: false }));
+    }
+  }
+
+  // Create a new chat session.
+  private newChat() {
+    this.switchTab("chat");
+    requestAnimationFrame(() => {
+      const chat = this.renderRoot.querySelector("gc-chat-view");
+      chat?.dispatchEvent(new CustomEvent("gc:new-chat", { bubbles: false }));
+    });
   }
 
   // boot decides which auth flow applies: if the URL carries a ?t= param,
@@ -942,14 +956,12 @@ export class GcApp extends LitElement {
         );
       });
     } else if (r.source === "message") {
-      // r.title is the session_id for message hits.
       this.switchTab("chat");
-      // Defer so chat-view mounts, then select the session.
       requestAnimationFrame(() => {
         const chatView = this.renderRoot.querySelector("gc-chat-view");
         chatView?.dispatchEvent(
           new CustomEvent("gc:select-session", {
-            detail: { sessionId: r.title },
+            detail: { sessionId: r.id },
           }),
         );
       });

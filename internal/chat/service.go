@@ -125,8 +125,9 @@ func (s *Service) Search(
 		})
 	}
 
-	// Search chat messages.
-	msgs, err := s.DB.SearchMessages(ctx, req.Msg.Query, limit)
+	// Search chat messages (scoped to current principal).
+	principal, _, _ := auth.PrincipalFromContext(ctx)
+	msgs, err := s.DB.SearchMessages(ctx, req.Msg.Query, principal, limit)
 	if err != nil {
 		slog.Warn("search: messages query failed", "err", err)
 	}

@@ -56,7 +56,7 @@ func (d *DB) SearchCards(ctx context.Context, query string, limit int) ([]Search
 }
 
 // SearchMessages searches chat messages via FTS5.
-func (d *DB) SearchMessages(ctx context.Context, query string, limit int) ([]SearchResult, error) {
+func (d *DB) SearchMessages(ctx context.Context, query, principal string, limit int) ([]SearchResult, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -68,11 +68,11 @@ func (d *DB) SearchMessages(ctx context.Context, query string, limit int) ([]Sea
         SELECT m.id, m.content, m.session_id, COALESCE(s.title, m.session_id)
         FROM chat_message_fts f
         JOIN chat_message m ON m.rowid = f.rowid
-        LEFT JOIN chat_session s ON s.id = m.session_id
-        WHERE chat_message_fts MATCH ?
+        JOIN chat_session s ON s.id = m.session_id
+        WHERE chat_message_fts MATCH ? AND s.principal = ?
         ORDER BY f.rank
         LIMIT ?`,
-		sanitized, limit)
+		sanitized, principal, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -80,11 +80,12 @@ func (d *DB) SearchMessages(ctx context.Context, query string, limit int) ([]Sea
 	var out []SearchResult
 	for rows.Next() {
 		var r SearchResult
-		var content, sessionID, title string
-		if err := rows.Scan(&r.ID, &content, &sessionID, &title); err != nil {
+		var content, messageID, sessionID, title string
+		if err := rows.Scan(&messageID, &content, &sessionID, &title); err != nil {
 			return nil, err
 		}
 		r.Source = "message"
+		r.ID = sessionID
 		r.Title = title
 		if len(content) > 200 {
 			r.Body = content[:200] + "…"
