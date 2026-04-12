@@ -53,6 +53,7 @@ export class GcApp extends LitElement {
     // switch to chat and pre-fill the composer.
     this.addEventListener("gc:ask-about", this.onAskAbout as EventListener);
     this.addEventListener("gc:view-commit", this.onViewCommit as EventListener);
+    this.addEventListener("gc:open-file", this.onOpenFile as EventListener);
     await this.boot();
   }
 
@@ -62,6 +63,7 @@ export class GcApp extends LitElement {
     window.removeEventListener("keydown", this.onGlobalKeydown);
     this.removeEventListener("gc:ask-about", this.onAskAbout as EventListener);
     this.removeEventListener("gc:view-commit", this.onViewCommit as EventListener);
+    this.removeEventListener("gc:open-file", this.onOpenFile as EventListener);
   }
 
   // Bridge: any view can dispatch gc:ask-about to switch to chat
@@ -89,6 +91,19 @@ export class GcApp extends LitElement {
         detail: { sha: e.detail.sha },
       }),
     );
+  };
+
+  // Bridge: any view can dispatch gc:open-file to switch to browse
+  // tab and open a specific file.
+  private onOpenFile = (e: CustomEvent<{ path: string }>) => {
+    if (this.state.phase !== "authenticated") return;
+    this.switchTab("browse");
+    requestAnimationFrame(() => {
+      const browser = this.renderRoot.querySelector("gc-repo-browser");
+      browser?.dispatchEvent(
+        new CustomEvent("gc:open-file", { detail: { path: e.detail.path } }),
+      );
+    });
   };
 
   // ── Modal focus management ───────────────────────────────────

@@ -145,6 +145,12 @@ export class GcCompareView extends LitElement {
     }
   }
 
+  private openInBrowse(path: string) {
+    this.dispatchEvent(
+      new CustomEvent("gc:open-file", { bubbles: true, composed: true, detail: { path } }),
+    );
+  }
+
   private selectedFileEntry(): ChangedFile | undefined {
     return this.files.find((f) => f.path === this.selectedFile);
   }
@@ -181,8 +187,8 @@ export class GcCompareView extends LitElement {
                       <li>
                         <button
                           class="file-entry ${this.selectedFile === f.path ? "selected" : ""}"
-                          @click=${() => this.selectFile(f.path)}
-                          title=${f.path}
+                          @click=${(e: MouseEvent) => { if (e.metaKey || e.ctrlKey) { this.openInBrowse(f.path); } else { this.selectFile(f.path); } }}
+                          title="${f.path} (⌘+click to open in browse)"
                         >
                           <span class="file-status ${f.status}">${statusLabel(f.status)}</span>
                           <span class="file-path">${fileName(f.path)}</span>

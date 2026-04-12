@@ -121,6 +121,16 @@ export class GcKbView extends LitElement {
     }
   }
 
+  private viewInLog(sha: string) {
+    this.dispatchEvent(
+      new CustomEvent("gc:view-commit", {
+        bubbles: true,
+        composed: true,
+        detail: { sha },
+      }),
+    );
+  }
+
   private askAgain() {
     if (!this.cardDetail) return;
     this.dispatchEvent(
@@ -236,7 +246,7 @@ export class GcKbView extends LitElement {
           <span class="meta-sep">&middot;</span>
           <span>model: ${d.model}</span>
           ${d.invalidated ? html`<span class="meta-sep">&middot;</span><span class="stale-badge">stale</span>` : nothing}
-          ${d.createdCommit ? html`<span class="meta-sep">&middot;</span><span class="commit-sha" title=${d.createdCommit}>${d.createdCommit.slice(0, 7)}</span>` : nothing}
+          ${d.createdCommit ? html`<span class="meta-sep">&middot;</span><button class="commit-link" title="View in log" @click=${() => this.viewInLog(d.createdCommit)}>${d.createdCommit.slice(0, 7)}</button>` : nothing}
         </div>
         <div class="detail-answer">${unsafeHTML(this.detailHtml)}</div>
         ${d.provenance.length > 0
@@ -414,10 +424,18 @@ export class GcKbView extends LitElement {
       opacity: 1;
       font-weight: 600;
     }
-    .commit-sha {
+    .commit-link {
       font-family: inherit;
-      opacity: 0.7;
+      font-size: inherit;
+      color: var(--accent-user);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+      text-underline-offset: 2px;
     }
+    .commit-link:hover { opacity: 0.8; }
     .detail-answer {
       line-height: 1.65;
       overflow-wrap: break-word;
