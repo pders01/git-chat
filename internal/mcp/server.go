@@ -76,7 +76,7 @@ func NewServer(cfg Config) *server.MCPServer {
 			}
 			return mcp.NewToolResultText(fmt.Sprintf(
 				"**Knowledge Card** (hit #%d, model: %s, commit: %s)\n\n%s",
-				card.HitCount+1, card.Model, card.CreatedCommit[:7], card.AnswerMD,
+				card.HitCount+1, card.Model, shortSHA(card.CreatedCommit), card.AnswerMD,
 			)), nil
 		},
 	)
@@ -229,5 +229,12 @@ func NewServer(cfg Config) *server.MCPServer {
 		},
 	)
 
+	return s
+}
+
+func shortSHA(s string) string {
+	if len(s) > 7 {
+		return s[:7]
+	}
 	return s
 }

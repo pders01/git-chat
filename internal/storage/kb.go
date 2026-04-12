@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -187,18 +188,24 @@ func (d *DB) UpdateCardVerification(ctx context.Context, cardID, commitSHA strin
 // card creation matters — for M5.0 the eventual-consistency model
 // (rare race on concurrent writes to the same card) is acceptable.
 func (d *DB) ReplaceProvenance(ctx context.Context, cardID string, rows []ProvenanceRow) error {
-	if _, err := d.ExecContext(ctx, `DELETE FROM kb_card_provenance WHERE card_id = ?`, cardID); err != nil {
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM kb_card_provenance WHERE card_id = ?`, cardID); err != nil {
 		return err
 	}
 	for _, r := range rows {
-		if _, err := d.ExecContext(ctx, `
+		if _, err := tx.ExecContext(ctx, `
             INSERT INTO kb_card_provenance (card_id, path, blob_sha)
             VALUES (?, ?, ?)`,
 			cardID, r.Path, r.BlobSHA); err != nil {
 			return err
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 // ListProvenance returns all provenance rows for a card, sorted by path.

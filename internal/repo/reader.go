@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -166,7 +167,10 @@ func (e *Entry) GetFile(ref, path string, maxBytes int64) (*gitchatv1.GetFileRes
 	defer reader.Close()
 
 	buf := make([]byte, maxBytes+1)
-	n, _ := reader.Read(buf)
+	n, err := io.ReadFull(reader, buf)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("read blob: %w", err)
+	}
 	content := buf[:min64(int64(n), maxBytes)]
 	truncated := int64(n) > maxBytes || file.Size > maxBytes
 
@@ -254,14 +258,12 @@ func commitDiffStats(c *object.Commit) *diffStats {
 		}
 	}
 	if pTree == nil {
-		// Root commit: count all files as additions.
+		// Root commit: count files and estimate lines from size to avoid
+		// reading entire blob contents for every file.
 		var files, lines int
 		cTree.Files().ForEach(func(f *object.File) error {
 			files++
-			content, err := f.Contents()
-			if err == nil {
-				lines += strings.Count(content, "\n")
-			}
+			lines += int(f.Size) / 40 // rough estimate: ~40 bytes/line
 			return nil
 		})
 		return &diffStats{files: files, additions: lines}

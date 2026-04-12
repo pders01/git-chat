@@ -110,7 +110,10 @@ func (s *Service) Search(
 	var hits []*gitchatv1.SearchHit
 
 	// Search KB cards.
-	cards, _ := s.DB.SearchCards(ctx, req.Msg.Query, limit)
+	cards, err := s.DB.SearchCards(ctx, req.Msg.Query, limit)
+	if err != nil {
+		slog.Warn("search: cards query failed", "err", err)
+	}
 	for _, c := range cards {
 		hits = append(hits, &gitchatv1.SearchHit{
 			Source: c.Source,
@@ -121,7 +124,10 @@ func (s *Service) Search(
 	}
 
 	// Search chat messages.
-	msgs, _ := s.DB.SearchMessages(ctx, req.Msg.Query, limit)
+	msgs, err := s.DB.SearchMessages(ctx, req.Msg.Query, limit)
+	if err != nil {
+		slog.Warn("search: messages query failed", "err", err)
+	}
 	for _, m := range msgs {
 		hits = append(hits, &gitchatv1.SearchHit{
 			Source: m.Source,
@@ -133,7 +139,10 @@ func (s *Service) Search(
 
 	// Search file paths in repo.
 	if r := s.Repos.Get(req.Msg.RepoId); r != nil {
-		paths, _ := r.AllFilePaths()
+		paths, err := r.AllFilePaths()
+		if err != nil {
+			slog.Warn("search: file paths query failed", "err", err)
+		}
 		query := strings.ToLower(req.Msg.Query)
 		count := 0
 		for _, p := range paths {
@@ -293,14 +302,18 @@ func (s *Service) SendMessage(
 			}
 			// Persist as an assistant turn so the transcript is complete.
 			assistantID := newID()
-			_ = s.DB.CreateMessage(ctx, storage.MessageRow{
+			if err := s.DB.CreateMessage(ctx, storage.MessageRow{
 				ID:        assistantID,
 				SessionID: sess.ID,
 				Role:      "assistant",
 				Content:   card.AnswerMD,
 				Model:     card.Model,
-			})
-			_ = s.DB.TouchSession(ctx, sess.ID)
+			}); err != nil {
+				slog.Warn("KB cache hit: failed to persist assistant message", "err", err)
+			}
+			if err := s.DB.TouchSession(ctx, sess.ID); err != nil {
+				slog.Warn("KB cache hit: failed to touch session", "err", err)
+			}
 			return stream.Send(&gitchatv1.MessageChunk{
 				Kind: &gitchatv1.MessageChunk_Done{
 					Done: &gitchatv1.Done{
@@ -478,7 +491,9 @@ func (s *Service) generateSmartTitle(sessionID, userMsg, assistantMsg string) {
 		return // give up — keep the fallback
 	}
 
-	if err := s.DB.UpdateSessionTitle(ctx, sessionID, result); err != nil {
+	writeCtx, writeCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer writeCancel()
+	if err := s.DB.UpdateSessionTitle(writeCtx, sessionID, result); err != nil {
 		slog.Debug("title update failed", "err", err)
 	}
 }

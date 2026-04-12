@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -211,11 +212,10 @@ func randomHex(n int) (string, error) {
 }
 
 func randIndex(n int) int {
-	b := make([]byte, 4)
-	_, _ = rand.Read(b)
-	x := int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])
-	if x < 0 {
-		x = -x
+	max := big.NewInt(int64(n))
+	v, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		panic("crypto/rand failed: " + err.Error())
 	}
-	return x % n
+	return int(v.Int64())
 }
