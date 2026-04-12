@@ -36,6 +36,10 @@ func main() {
 		if err := runAddKey(args); err != nil {
 			fail(err)
 		}
+	case "mcp":
+		if err := runMCP(args); err != nil {
+			fail(err)
+		}
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -57,7 +61,11 @@ usage:
 
   git-chat add-key <principal>
       append an ssh pubkey from stdin to ~/.config/git-chat/allowed_signers
-      example: git-chat add-key paul@laptop < ~/.ssh/id_ed25519.pub`)
+      example: git-chat add-key paul@laptop < ~/.ssh/id_ed25519.pub
+
+  git-chat mcp [repo-path]
+      MCP server mode (stdio). Exposes tools: search_knowledge, get_file,
+      get_diff, list_commits, search_files.`)
 }
 
 func fail(err error) {
