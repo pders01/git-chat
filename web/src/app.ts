@@ -1117,9 +1117,9 @@ export class GcApp extends LitElement {
       border: 1px solid var(--border-default);
       border-radius: var(--radius-xl);
       padding: var(--space-6) var(--space-7);
-      max-width: 480px;
+      max-width: 720px;
       width: 90vw;
-      max-height: 80vh;
+      max-height: 85vh;
       overflow-y: auto;
     }
     .modal-title {
@@ -1371,16 +1371,21 @@ export class GcApp extends LitElement {
       opacity: 1;
     }
     .config-group-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-2) var(--space-4);
       padding: var(--space-2) 0 var(--space-2) var(--space-3);
+    }
+    @media (max-width: 560px) {
+      .config-group-body {
+        grid-template-columns: 1fr;
+      }
     }
     .config-entry {
       display: flex;
       flex-direction: column;
       gap: 2px;
       padding: var(--space-2) 0;
-    }
-    .config-entry + .config-entry {
-      border-top: 1px solid var(--surface-4);
     }
     .config-entry-header {
       display: flex;
