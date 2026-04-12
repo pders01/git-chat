@@ -282,6 +282,7 @@ export class GcRepoBrowser extends LitElement {
   }
 
   static override styles = css`
+    :host([hidden]) { display: none !important; }
     :host {
       /* Full-viewport mode: same scroll-chain discipline as chat-view —
          every ancestor in the flex/grid chain has min-height: 0 so the

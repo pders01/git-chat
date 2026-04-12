@@ -796,6 +796,7 @@ export class GcChatView extends LitElement {
        min-height:0, and .messages is flex:1 + overflow-y:auto. Every
        link in the chain has min-height:0 — that's what makes the
        messages region clamp and scroll instead of growing forever. */
+    :host([hidden]) { display: none !important; }
     :host {
       display: flex;
       flex: 1;

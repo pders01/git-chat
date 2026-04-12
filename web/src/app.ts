@@ -43,7 +43,7 @@ export class GcApp extends LitElement {
     // Cross-view bridge: any child can dispatch gc:ask-about to
     // switch to chat and pre-fill the composer.
     this.addEventListener("gc:ask-about", this.onAskAbout as EventListener);
-    this.addEventListener("gc:view-commit", this.onViewCommit as unknown as EventListener);
+    this.addEventListener("gc:view-commit", this.onViewCommit as EventListener);
     await this.boot();
   }
 
@@ -52,7 +52,7 @@ export class GcApp extends LitElement {
     window.removeEventListener("hashchange", this.onHashChange);
     window.removeEventListener("keydown", this.onGlobalKeydown);
     this.removeEventListener("gc:ask-about", this.onAskAbout as EventListener);
-    this.removeEventListener("gc:view-commit", this.onViewCommit as unknown as EventListener);
+    this.removeEventListener("gc:view-commit", this.onViewCommit as EventListener);
   }
 
   // Bridge: any view can dispatch gc:ask-about to switch to chat
@@ -61,23 +61,19 @@ export class GcApp extends LitElement {
   private onAskAbout = (e: CustomEvent<{ prompt: string }>) => {
     if (this.state.phase !== "authenticated") return;
     this.switchTab("chat");
-    // Defer so the chat-view mounts first, then inject the prompt.
-    requestAnimationFrame(() => {
-      const chatView = this.renderRoot.querySelector("gc-chat-view");
-      chatView?.dispatchEvent(
-        new CustomEvent("gc:prefill", {
-          detail: { text: e.detail.prompt },
-        }),
-      );
-    });
+    const chatView = this.renderRoot.querySelector("gc-chat-view");
+    chatView?.dispatchEvent(
+      new CustomEvent("gc:prefill", {
+        detail: { text: e.detail.prompt },
+      }),
+    );
   };
 
   // Bridge: blame tooltip "view in log" dispatches gc:view-commit
   // to switch to the log tab and select the commit.
-  private onViewCommit = async (e: CustomEvent<{ sha: string }>) => {
+  private onViewCommit = (e: CustomEvent<{ sha: string }>) => {
     if (this.state.phase !== "authenticated") return;
     this.switchTab("log");
-    await this.updateComplete;
     const log = this.renderRoot.querySelector("gc-commit-log");
     log?.dispatchEvent(
       new CustomEvent("gc:select-commit", {
@@ -414,12 +410,10 @@ export class GcApp extends LitElement {
             </button>
           </div>
         </header>
-        <main class="shell-main" id="main-content" role="tabpanel" aria-labelledby="tab-${tab}">
-          ${tab === "chat"
-            ? html`<gc-chat-view .repoId=${selectedRepo}></gc-chat-view>`
-            : tab === "browse"
-              ? html`<gc-repo-browser .repoId=${selectedRepo}></gc-repo-browser>`
-              : html`<gc-commit-log .repoId=${selectedRepo}></gc-commit-log>`}
+        <main class="shell-main" id="main-content">
+          <gc-chat-view .repoId=${selectedRepo} class="tab-panel" ?hidden=${tab !== "chat"}></gc-chat-view>
+          <gc-repo-browser .repoId=${selectedRepo} class="tab-panel" ?hidden=${tab !== "browse"}></gc-repo-browser>
+          <gc-commit-log .repoId=${selectedRepo} class="tab-panel" ?hidden=${tab !== "log"}></gc-commit-log>
         </main>
       </div>
       ${this.showShortcuts ? this.renderShortcutsModal() : nothing}
@@ -926,10 +920,7 @@ export class GcApp extends LitElement {
       display: flex;
       overflow: hidden;
     }
-    .shell-main > * {
-      /* Whatever renders as the main view (chat-view, repo-browser)
-         gets full remaining space. Nested components handle their own
-         scroll regions. */
+    .tab-panel {
       flex: 1;
       min-width: 0;
       min-height: 0;

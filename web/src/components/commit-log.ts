@@ -282,6 +282,7 @@ export class GcCommitLog extends LitElement {
   }
 
   static override styles = css`
+    :host([hidden]) { display: none !important; }
     :host {
       display: flex;
       flex: 1;
