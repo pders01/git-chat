@@ -13,6 +13,8 @@ export type SettingKey =
   | "content-max-width"
   | "font-size";
 
+export type ThemeChoice = "system" | "light" | "dark";
+
 const DEFAULTS: Record<SettingKey, string> = {
   "sidebar-width": "260px",
   "content-max-width": "820px",
@@ -25,6 +27,49 @@ const CSS_VAR: Record<SettingKey, string> = {
   "content-max-width": "--content-max-width",
   "font-size": "--text-base",
 };
+
+// ── Theme management ──────────────────────────────────────────
+
+const THEME_KEY = PREFIX + "theme";
+const darkMq = window.matchMedia("(prefers-color-scheme: dark)");
+
+function resolveTheme(choice: ThemeChoice): "dark" | "light" {
+  if (choice === "system") return darkMq.matches ? "dark" : "light";
+  return choice;
+}
+
+function applyTheme(resolved: "dark" | "light") {
+  const el = document.documentElement;
+  if (resolved === "light") {
+    el.setAttribute("data-theme", "light");
+  } else {
+    el.removeAttribute("data-theme");
+  }
+}
+
+export function getTheme(): ThemeChoice {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    if (v === "light" || v === "dark" || v === "system") return v;
+  } catch { /* */ }
+  return "system";
+}
+
+export function setTheme(choice: ThemeChoice) {
+  try {
+    localStorage.setItem(THEME_KEY, choice);
+  } catch { /* */ }
+  applyTheme(resolveTheme(choice));
+  notify();
+}
+
+// React to OS theme changes when in "system" mode.
+darkMq.addEventListener("change", () => {
+  if (getTheme() === "system") {
+    applyTheme(resolveTheme("system"));
+    notify();
+  }
+});
 
 type Listener = () => void;
 const listeners: Listener[] = [];
@@ -77,6 +122,7 @@ export function applyAll() {
       document.documentElement.style.setProperty(CSS_VAR[key], val);
     }
   }
+  applyTheme(resolveTheme(getTheme()));
 }
 
 export function allKeys(): SettingKey[] {

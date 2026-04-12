@@ -43,6 +43,7 @@ export class GcApp extends LitElement {
     // Cross-view bridge: any child can dispatch gc:ask-about to
     // switch to chat and pre-fill the composer.
     this.addEventListener("gc:ask-about", this.onAskAbout as EventListener);
+    this.addEventListener("gc:view-commit", this.onViewCommit as unknown as EventListener);
     await this.boot();
   }
 
@@ -51,6 +52,7 @@ export class GcApp extends LitElement {
     window.removeEventListener("hashchange", this.onHashChange);
     window.removeEventListener("keydown", this.onGlobalKeydown);
     this.removeEventListener("gc:ask-about", this.onAskAbout as EventListener);
+    this.removeEventListener("gc:view-commit", this.onViewCommit as unknown as EventListener);
   }
 
   // Bridge: any view can dispatch gc:ask-about to switch to chat
@@ -68,6 +70,20 @@ export class GcApp extends LitElement {
         }),
       );
     });
+  };
+
+  // Bridge: blame tooltip "view in log" dispatches gc:view-commit
+  // to switch to the log tab and select the commit.
+  private onViewCommit = async (e: CustomEvent<{ sha: string }>) => {
+    if (this.state.phase !== "authenticated") return;
+    this.switchTab("log");
+    await this.updateComplete;
+    const log = this.renderRoot.querySelector("gc-commit-log");
+    log?.dispatchEvent(
+      new CustomEvent("gc:select-commit", {
+        detail: { sha: e.detail.sha },
+      }),
+    );
   };
 
   // ── Global keyboard shortcuts ────────────────────────────────
@@ -316,7 +332,7 @@ export class GcApp extends LitElement {
                     )}
                   </select>
                 `
-              : html`<span class="repo-label">${repos[0]?.label ?? ""}</span>`}
+              : nothing}
             <nav class="tabs" role="tablist" aria-label="Views">
               <button
                 role="tab"
@@ -424,10 +440,25 @@ export class GcApp extends LitElement {
     const sidebarW = parseInt(settings.get("sidebar-width"));
     const contentW = parseInt(settings.get("content-max-width"));
     const fontSize = parseFloat(settings.get("font-size")) * 100;
+    const theme = settings.getTheme();
     return html`
       <div class="modal-backdrop" @click=${() => (this.showSettings = false)}>
         <div class="modal" role="dialog" aria-label="Settings" @click=${(e: Event) => e.stopPropagation()}>
           <h2 class="modal-title">Settings</h2>
+
+          <div class="setting-row">
+            <span class="setting-label">Theme</span>
+            <div class="theme-picker">
+              ${(["system", "light", "dark"] as const).map(
+                (t) => html`
+                  <button
+                    class="theme-btn ${theme === t ? "active" : ""}"
+                    @click=${() => { settings.setTheme(t); this.requestUpdate(); }}
+                  >${t}</button>
+                `,
+              )}
+            </div>
+          </div>
 
           <label class="setting-row">
             <span class="setting-label">Sidebar width</span>
@@ -487,6 +518,7 @@ export class GcApp extends LitElement {
           <div class="setting-actions">
             <button class="action-btn" @click=${() => {
               for (const k of settings.allKeys()) settings.reset(k);
+              settings.setTheme("system");
               this.requestUpdate();
             }}>
               reset defaults
@@ -1062,6 +1094,30 @@ export class GcApp extends LitElement {
       min-width: 4.5em;
       text-align: right;
       font-variant-numeric: tabular-nums;
+    }
+    .theme-picker {
+      display: flex;
+      gap: var(--space-1);
+    }
+    .theme-btn {
+      padding: var(--space-1) var(--space-3);
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+      opacity: 0.6;
+    }
+    .theme-btn:hover {
+      opacity: 1;
+      border-color: var(--border-strong);
+    }
+    .theme-btn.active {
+      opacity: 1;
+      background: var(--surface-3);
+      border-color: var(--accent-assistant);
     }
     .setting-actions {
       margin-top: var(--space-4);

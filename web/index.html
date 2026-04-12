@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <title>git-chat</title>
   <style>
     /* ── Design tokens ───────────────────────────────────────────────
@@ -79,6 +79,42 @@
       --space-6: 1.5rem;    /* 24px — section margin */
       --space-7: 2rem;      /* 32px — pane edge padding */
       --space-8: 3rem;      /* 48px — top-of-pane breathing */
+    }
+
+    /* ── Light theme ─────────────────────────────────────────────
+       Applied via data-theme="light" on <html>. Every variable
+       that differs from dark is overridden here. Layout, spacing,
+       radii, and typography stay the same. */
+    [data-theme="light"] {
+      --surface-0: #f0f1f3;
+      --surface-1: #f7f8fa;
+      --surface-1-alt: #f3f4f6;
+      --surface-2: #ebedf0;
+      --surface-3: #e2e4e8;
+      --surface-4: #d5d8de;
+      --surface-5: #cdd1d8;
+
+      --border-default: #d0d4db;
+      --border-strong: #b8bdc7;
+      --border-focus: #90979f;
+      --border-accent: #7bc4a5;
+      --border-user-rule: #90b8d8;
+
+      --text: #1a1d24;
+      --text-secondary: #3a3f4a;
+      --text-muted: #60666f;
+
+      --accent-assistant: #1a8a3e;
+      --accent-user: #2570a8;
+      --accent-link: #2570a8;
+      --accent-link-dim: #a0c4e0;
+
+      --danger: #c53030;
+      --danger-bg: #fff0f0;
+      --danger-border: #e8a0a0;
+
+      --action-bg: #d5efe0;
+      --action-bg-hover: #c0e5d0;
     }
 
     html, body {
