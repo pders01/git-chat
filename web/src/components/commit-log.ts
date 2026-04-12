@@ -406,20 +406,40 @@ export class GcCommitLog extends LitElement {
     const delWords = delText.split(/(\s+)/);
     const addWords = addText.split(/(\s+)/);
 
-    // Find changed word indices using a simple comparison.
-    const markIndices = (words: string[], other: string[]): Set<number> => {
-      const changed = new Set<number>();
-      const maxLen = Math.max(words.length, other.length);
-      for (let i = 0; i < maxLen; i++) {
-        if (words[i] !== other[i]) {
-          if (i < words.length) changed.add(i);
+    // LCS to find which words are common between the two lines.
+    const lcsSet = (a: string[], b: string[]): { inA: Set<number>; inB: Set<number> } => {
+      const m = a.length, n = b.length;
+      const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+      for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+          dp[i][j] = a[i - 1] === b[j - 1]
+            ? dp[i - 1][j - 1] + 1
+            : Math.max(dp[i - 1][j], dp[i][j - 1]);
         }
       }
-      return changed;
+      // Backtrack to find matched indices.
+      const inA = new Set<number>();
+      const inB = new Set<number>();
+      let i = m, j = n;
+      while (i > 0 && j > 0) {
+        if (a[i - 1] === b[j - 1]) {
+          inA.add(i - 1);
+          inB.add(j - 1);
+          i--; j--;
+        } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+          i--;
+        } else {
+          j--;
+        }
+      }
+      return { inA, inB };
     };
 
-    const delChanged = markIndices(delWords, addWords);
-    const addChanged = markIndices(addWords, delWords);
+    const { inA: commonDel, inB: commonAdd } = lcsSet(delWords, addWords);
+    const delChanged = new Set<number>();
+    const addChanged = new Set<number>();
+    for (let i = 0; i < delWords.length; i++) if (!commonDel.has(i)) delChanged.add(i);
+    for (let i = 0; i < addWords.length; i++) if (!commonAdd.has(i)) addChanged.add(i);
 
     // Only apply if there's a meaningful diff (not everything changed).
     if (delChanged.size > delWords.length * 0.8 && addChanged.size > addWords.length * 0.8) return;
