@@ -99,36 +99,13 @@ export class GcCommitLog extends LitElement {
 
   private async load(offset: number) {
     try {
-      let resp: { commits: CommitEntry[]; hasMore: boolean };
-      if (this.filterPath) {
-        // Use raw fetch to include `path` field which may not be in
-        // the regenerated proto descriptor yet.
-        const rawResp = await fetch("/gitchat.v1.RepoService/ListCommits", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            repoId: this.repoId,
-            ref: this.branch,
-            limit: 50,
-            offset,
-            path: this.filterPath,
-          }),
-        });
-        resp = await rawResp.json();
-        // Normalize: raw JSON uses snake_case, need to map.
-        resp = {
-          commits: (resp as any).commits ?? [],
-          hasMore: (resp as any).hasMore ?? (resp as any).has_more ?? false,
-        };
-      } else {
-        resp = await repoClient.listCommits({
-          repoId: this.repoId,
-          ref: this.branch,
-          limit: 50,
-          offset,
-        });
-      }
+      const resp = await repoClient.listCommits({
+        repoId: this.repoId,
+        ref: this.branch,
+        limit: 50,
+        offset,
+        path: this.filterPath,
+      });
       this.state = {
         phase: "ready",
         commits:
