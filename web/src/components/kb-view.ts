@@ -39,15 +39,21 @@ export class GcKbView extends LitElement {
   @state() private filter = "";
   @state() private loading = false;
 
+  private onSelectCard = ((e: CustomEvent<{ cardId: string }>) => {
+    void this.selectCard(e.detail.cardId);
+  }) as EventListener;
+
   override connectedCallback() {
     super.connectedCallback();
     if (this.repoId) {
       void this.loadCards();
     }
-    // Cross-view bridge: select a specific card (from search).
-    this.addEventListener("gc:select-card", ((e: CustomEvent<{ cardId: string }>) => {
-      void this.selectCard(e.detail.cardId);
-    }) as EventListener);
+    this.addEventListener("gc:select-card", this.onSelectCard);
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.removeEventListener("gc:select-card", this.onSelectCard);
   }
 
   override updated(changed: Map<string, unknown>) {
@@ -209,8 +215,10 @@ export class GcKbView extends LitElement {
                         <li
                           class="card-item ${c.id === this.selectedCardId ? "selected" : ""} ${c.invalidated ? "stale" : ""}"
                           role="option"
+                          tabindex="0"
                           aria-selected=${c.id === this.selectedCardId ? "true" : "false"}
                           @click=${() => this.selectCard(c.id)}
+                          @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this.selectCard(c.id); } }}
                         >
                           ${c.invalidated ? html`<span class="stale-icon" title="invalidated">!</span>` : html`<span class="valid-icon"></span>`}
                           <span class="card-question">${c.question}</span>
@@ -349,6 +357,10 @@ export class GcKbView extends LitElement {
     }
     .card-item.selected {
       background: var(--surface-3);
+    }
+    .card-item:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: -2px;
     }
     .card-item.stale {
       opacity: 0.55;

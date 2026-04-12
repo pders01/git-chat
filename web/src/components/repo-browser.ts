@@ -453,6 +453,10 @@ export class GcRepoBrowser extends LitElement {
     .focus-btn:hover {
       opacity: 0.9;
     }
+    .focus-btn:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
+    }
     .hd-btn {
       padding: var(--space-1);
       background: transparent;

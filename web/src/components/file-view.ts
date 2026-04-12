@@ -248,10 +248,6 @@ export class GcFileView extends LitElement {
     }
   };
 
-  private onGutterLeave = () => {
-    // No-op — blame selection is click-based, not hover-based.
-  };
-
   /** Cached wrapper — avoids re-parsing Shiki HTML on every render. */
   private getShikiLines(shikiHtml: string): string[] {
     if (this.cachedShikiSrc === shikiHtml && this.cachedShikiLines) {
@@ -571,14 +567,9 @@ export class GcFileView extends LitElement {
       outline: 2px solid var(--accent-user);
       outline-offset: -2px;
     }
-    .hd-btn:focus-visible,
-    .bt-btn:focus-visible {
+    .hd-btn:focus-visible {
       outline: 2px solid var(--accent-user);
       outline-offset: 1px;
-    }
-    .blame-cont {
-      opacity: 0.3;
-      color: var(--surface-4);
     }
     .lno-cell {
       padding: 0 var(--space-2);
@@ -602,10 +593,6 @@ export class GcFileView extends LitElement {
     .blame-sha {
       color: var(--accent-user);
       font-variant-numeric: tabular-nums;
-    }
-    .blame-msg {
-      color: var(--text);
-      opacity: 0.65;
     }
     .hd-btn {
       flex-shrink: 0;

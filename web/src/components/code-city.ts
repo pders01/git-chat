@@ -243,9 +243,13 @@ export class GcCodeCity extends LitElement {
 
   override disconnectedCallback() {
     super.disconnectedCallback();
+    const canvas = this.renderRoot.querySelector<HTMLCanvasElement>(".city-canvas");
+    canvas?.removeEventListener("click", this.onClick);
+    canvas?.removeEventListener("mousemove", this.onHover);
     this._resizeObserver?.disconnect();
     this.renderer?.dispose();
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
+    if (this.sliderTimer) clearTimeout(this.sliderTimer);
   }
 
   override updated(changed: Map<string, unknown>) {
@@ -572,27 +576,6 @@ export class GcCodeCity extends LitElement {
     }, 300);
   };
 
-  /* ---- tween blocks to new data ---- */
-
-  private tweenBlocks(newFiles: FileNode[]) {
-    if (!this.three) return;
-    const THREE = this.three;
-
-    const fileMap = new Map(newFiles.map((f) => [f.path, f]));
-
-    for (const [path, mesh] of this.blockMeshes) {
-      const file = fileMap.get(path);
-      if (!file) {
-        // File not in new data — shrink to 0
-        this.animateHeight(mesh, 0, 0x333333);
-        continue;
-      }
-      const targetHeight = Math.max(0.1, Math.log2(file.commitCount + 1) * 2);
-      const targetColor = churnColor(file.lastModified, file.commitCount, this._maxCommits);
-      this.animateHeight(mesh, targetHeight, targetColor);
-    }
-  }
-
   private animateHeight(
     mesh: InstanceType<THREE["Mesh"]>,
     targetHeight: number,
@@ -632,7 +615,7 @@ export class GcCodeCity extends LitElement {
     if (this.error && !this.scene) return html`<div class="hint err">${this.error}</div>`;
     return html`
       <div class="city-container">
-        <canvas class="city-canvas"></canvas>
+        <canvas class="city-canvas" role="img" aria-label="Code city visualization — file activity as 3D buildings"></canvas>
         ${this.loading ? html`<div class="city-loading">updating...</div>` : nothing}
         ${this.tooltipText ? html`<div class="city-tooltip" style="left:${this.tooltipX + 12}px;top:${this.tooltipY - 8}px">${this.tooltipText}</div>` : nothing}
         <div class="city-controls">
@@ -640,6 +623,7 @@ export class GcCodeCity extends LitElement {
           <input
             type="range"
             class="time-slider"
+            aria-label="Filter activity since date"
             min=${this.timeRange[0]}
             max=${this.timeRange[1]}
             .value=${String(this.currentSince)}

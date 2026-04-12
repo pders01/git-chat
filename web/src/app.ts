@@ -64,6 +64,9 @@ export class GcApp extends LitElement {
     this.removeEventListener("gc:ask-about", this.onAskAbout as EventListener);
     this.removeEventListener("gc:view-commit", this.onViewCommit as EventListener);
     this.removeEventListener("gc:open-file", this.onOpenFile as EventListener);
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    for (const t of this.configDebounceTimers.values()) clearTimeout(t);
+    this.configDebounceTimers.clear();
   }
 
   // Bridge: any view can dispatch gc:ask-about to switch to chat

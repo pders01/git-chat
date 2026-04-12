@@ -115,27 +115,33 @@ export class GcChatView extends LitElement {
       void this.loadSessions();
     }
     // Listen for global shortcut events from gc-app.
-    this.addEventListener("gc:new-chat", () => this.newChat());
-    this.addEventListener("gc:toggle-focus", () => this.toggleFocus());
-    // Cross-view bridge: select a specific session (from search).
-    this.addEventListener("gc:select-session", ((e: CustomEvent<{ sessionId: string }>) => {
-      void this.selectSession(e.detail.sessionId);
-    }) as EventListener);
-    // Cross-view bridge: prefill composer from other views.
-    this.addEventListener("gc:prefill", ((e: CustomEvent<{ text: string }>) => {
-      this.newChat();
-      this.input = e.detail.text;
-      requestAnimationFrame(() => {
-        const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
-        ta?.focus();
-      });
-    }) as EventListener);
-    // Component-local shortcuts (/, Escape, arrow keys in sidebar).
+    this.addEventListener("gc:new-chat", this.onNewChat);
+    this.addEventListener("gc:toggle-focus", this.onToggleFocus);
+    this.addEventListener("gc:select-session", this.onSelectSession as EventListener);
+    this.addEventListener("gc:prefill", this.onPrefill as EventListener);
     this.addEventListener("keydown", this.onKeydownLocal);
   }
 
+  private onNewChat = () => this.newChat();
+  private onToggleFocus = () => this.toggleFocus();
+  private onSelectSession = ((e: CustomEvent<{ sessionId: string }>) => {
+    void this.selectSession(e.detail.sessionId);
+  }) as EventListener;
+  private onPrefill = ((e: CustomEvent<{ text: string }>) => {
+    this.newChat();
+    this.input = e.detail.text;
+    requestAnimationFrame(() => {
+      const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
+      ta?.focus();
+    });
+  }) as EventListener;
+
   override disconnectedCallback() {
     super.disconnectedCallback();
+    this.removeEventListener("gc:new-chat", this.onNewChat);
+    this.removeEventListener("gc:toggle-focus", this.onToggleFocus);
+    this.removeEventListener("gc:select-session", this.onSelectSession as EventListener);
+    this.removeEventListener("gc:prefill", this.onPrefill as EventListener);
     this.removeEventListener("keydown", this.onKeydownLocal);
   }
 
