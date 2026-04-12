@@ -85,6 +85,7 @@ export class GcChatView extends LitElement {
   @state() private mentionIdx = -1;
   /** Cache of directory path → full entry paths (dirs suffixed with /). */
   private dirCache = new Map<string, string[]>();
+  private abortController: AbortController | null = null;
   // Focus mode hides the session sidebar and removes the messages
   // reader-width cap so the whole main area is chat content. Persisted
   // per-browser via localStorage.
@@ -422,8 +423,15 @@ export class GcChatView extends LitElement {
   }
 
   private onInput(e: Event) {
-    this.input = (e.target as HTMLTextAreaElement).value;
+    const ta = e.target as HTMLTextAreaElement;
+    this.input = ta.value;
+    this.autoResize(ta);
     this.checkMention();
+  }
+
+  private autoResize(ta: HTMLTextAreaElement) {
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, window.innerHeight * 0.4) + "px";
   }
 
   private async checkMention() {
@@ -507,8 +515,8 @@ export class GcChatView extends LitElement {
         return;
       }
     }
-    // Cmd+Enter / Ctrl+Enter sends; plain Enter inserts a newline.
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    // Enter sends; Shift+Enter inserts a newline.
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void this.send();
     }
@@ -535,13 +543,18 @@ export class GcChatView extends LitElement {
     this.sending = true;
     this.error = "";
     this.announce("Sending message");
+    // Reset textarea height after clearing input.
+    const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
+    if (ta) ta.style.height = "auto";
+
+    const ac = new AbortController();
+    this.abortController = ac;
 
     try {
-      const stream = chatClient.sendMessage({
-        sessionId,
-        repoId: this.repoId,
-        text,
-      });
+      const stream = chatClient.sendMessage(
+        { sessionId, repoId: this.repoId, text },
+        { signal: ac.signal },
+      );
       for await (const chunk of stream) {
         if (chunk.kind.case === "token") {
           assistantTurn.content += chunk.kind.value;
@@ -619,6 +632,7 @@ export class GcChatView extends LitElement {
       assistantTurn.streaming = false;
       this.turns = [...this.turns];
     } finally {
+      this.abortController = null;
       this.sending = false;
       if (this.error) {
         this.announce(`Error: ${this.error}`);
@@ -626,6 +640,10 @@ export class GcChatView extends LitElement {
         this.announce("Response complete");
       }
     }
+  }
+
+  private stop() {
+    this.abortController?.abort();
   }
 
   private scrollToBottom() {
@@ -830,7 +848,7 @@ export class GcChatView extends LitElement {
                 placeholder="ask about the repo — use @path/to/file to pin content"
                 ?disabled=${this.sending}
                 rows="1"
-                aria-label="Message input — type @ for file autocomplete, ⌘↵ to send"
+                aria-label="Message input — type @ for file autocomplete, Enter to send"
                 aria-describedby="composer-status"
                 aria-autocomplete="list"
                 aria-expanded=${this.showMentions ? "true" : "false"}
@@ -858,16 +876,39 @@ export class GcChatView extends LitElement {
                     ? html`<span class="err">⚠ ${this.error}</span>`
                     : this.sending
                       ? html`<span class="dim">streaming…</span>`
-                      : html`<span class="dim">⌘↵ or ctrl↵ to send</span>`}
+                      : html`<span class="dim">↵ send · shift+↵ newline</span>`}
                 </span>
-                <button
-                  type="submit"
-                  aria-label="Send message"
-                  class="send"
-                  ?disabled=${this.sending || !this.input.trim()}
-                >
-                  send
-                </button>
+                ${this.sending
+                  ? html`<button
+                      type="button"
+                      class="stop"
+                      aria-label="Stop generating"
+                      @click=${() => this.stop()}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                        <rect x="2" y="2" width="10" height="10" rx="1.5" />
+                      </svg>
+                      stop
+                    </button>`
+                  : html`<button
+                      type="submit"
+                      aria-label="Send message"
+                      class="send"
+                      ?disabled=${!this.input.trim()}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M8 12V4M4 7l4-4 4 4" />
+                      </svg>
+                    </button>`}
               </div>
             </div>
           </form>
@@ -1664,6 +1705,7 @@ export class GcChatView extends LitElement {
       min-height: 1.5em;
       max-height: 40vh;
       overflow-y: auto;
+      field-sizing: content;
     }
     textarea:focus {
       outline: none;
@@ -1711,22 +1753,44 @@ export class GcChatView extends LitElement {
       color: var(--danger);
     }
     .send {
-      padding: 0.3rem 0.95rem;
-      background: var(--action-bg);
-      color: var(--text);
-      border: 1px solid var(--border-accent);
-      border-radius: 4px;
-      font-family: inherit;
-      font-size: 0.76rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      background: var(--accent-user);
+      color: var(--surface-0);
+      border: none;
+      border-radius: 50%;
       cursor: pointer;
-      transition: background 0.12s ease;
+      transition: opacity 0.12s ease;
+      flex-shrink: 0;
     }
     .send:hover:not(:disabled) {
-      background: var(--action-bg-hover);
+      opacity: 0.85;
     }
     .send:disabled {
-      opacity: 0.35;
+      opacity: 0.25;
       cursor: not-allowed;
+    }
+    .stop {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.7rem;
+      background: var(--surface-3);
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: 0.72rem;
+      cursor: pointer;
+      transition: background 0.12s ease;
+      flex-shrink: 0;
+    }
+    .stop:hover {
+      background: var(--surface-4);
     }
 
     /* ── Scrollbar polish ────────────────────────────────────────── */
