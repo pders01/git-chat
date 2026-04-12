@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
+import { svg } from "lit";
 import { repoClient } from "../lib/transport.js";
 import type { CommitEntry, ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { copyText } from "../lib/clipboard.js";
@@ -264,24 +265,21 @@ export class GcCommitLog extends LitElement {
     const svgW = (maxLane + 1) * LANE_W + 8;
     const svgH = commits.length * ROW_H;
 
-    // Build SVG paths
-    const lines: string[] = [];
-    const dots: string[] = [];
+    // Build SVG elements using Lit's svg tagged template
+    const svgLines: ReturnType<typeof svg>[] = [];
+    const svgDots: ReturnType<typeof svg>[] = [];
 
     for (const node of nodes) {
       const x = node.lane * LANE_W + LANE_W / 2 + 4;
       const y = node.row * ROW_H + ROW_H / 2;
 
-      // Dot
       const isSelected = commits[node.row].sha === this.selectedSha;
-      dots.push(`<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="${isSelected ? "var(--accent-user)" : "var(--accent-assistant)"}" />`);
+      svgDots.push(svg`<circle cx=${x} cy=${y} r=${DOT_R} fill=${isSelected ? "var(--accent-user)" : "var(--accent-assistant)"} />`);
 
-      // Lines to parents
       for (const pSha of node.parents) {
         const pRow = shaToRow.get(pSha);
         if (pRow === undefined) {
-          // Parent not in loaded commits — draw line to bottom
-          lines.push(`<line x1="${x}" y1="${y}" x2="${x}" y2="${svgH}" stroke="var(--surface-4)" stroke-width="1.5" />`);
+          svgLines.push(svg`<line x1=${x} y1=${y} x2=${x} y2=${svgH} stroke="var(--surface-4)" stroke-width="1.5" />`);
           continue;
         }
         const pNode = nodes[pRow];
@@ -289,24 +287,27 @@ export class GcCommitLog extends LitElement {
         const py = pRow * ROW_H + ROW_H / 2;
 
         if (px === x) {
-          // Same lane — straight line
-          lines.push(`<line x1="${x}" y1="${y}" x2="${px}" y2="${py}" stroke="var(--surface-4)" stroke-width="1.5" />`);
+          svgLines.push(svg`<line x1=${x} y1=${y} x2=${px} y2=${py} stroke="var(--surface-4)" stroke-width="1.5" />`);
         } else {
-          // Different lane — bezier curve
           const midY = (y + py) / 2;
-          lines.push(`<path d="M${x},${y} C${x},${midY} ${px},${midY} ${px},${py}" fill="none" stroke="var(--accent-user)" stroke-width="1.5" opacity="0.4" />`);
+          svgLines.push(svg`<path d=${"M" + x + "," + y + " C" + x + "," + midY + " " + px + "," + midY + " " + px + "," + py} fill="none" stroke="var(--accent-user)" stroke-width="1.5" opacity="0.4" />`);
         }
       }
     }
 
     return html`
-      <div class="graph-view" @keydown=${this.onListKeydown}>
+      <div class="graph-scroll">
+      <div class="graph-view" @keydown=${this.onListKeydown} style="height:${svgH}px">
+        <svg class="graph-svg" width="${svgW}" height="${svgH}">
+          ${svgLines}
+          ${svgDots}
+        </svg>
         ${commits.map((c, i) => {
           const y = i * ROW_H;
           return html`
             <button
               class="graph-row ${c.sha === this.selectedSha ? "selected" : ""}"
-              style="height:${ROW_H}px; top:${y}px"
+              style="height:${ROW_H}px; top:${y}px; padding-left:${svgW + 4}px"
               @click=${() => this.selectCommit(c.sha)}
               title="${c.message} — ${c.authorName}"
             >
@@ -314,10 +315,7 @@ export class GcCommitLog extends LitElement {
               <span class="graph-age">${formatAge(Number(c.authorTime))}</span>
             </button>`;
         })}
-        <svg class="graph-svg" width="${svgW}" height="${svgH}" style="left:0">
-          ${unsafeHTML(lines.join(""))}
-          ${unsafeHTML(dots.join(""))}
-        </svg>
+      </div>
       </div>
     `;
   }
@@ -682,15 +680,19 @@ export class GcCommitLog extends LitElement {
     }
 
     /* ── Graph view ──────────────────────────────────────────── */
-    .graph-view {
-      position: relative;
+    .graph-scroll {
       flex: 1;
       overflow-y: auto;
       min-height: 0;
     }
+    .graph-view {
+      position: relative;
+    }
     .graph-svg {
       position: absolute;
       top: 0;
+      left: 0;
+      z-index: 1;
       pointer-events: none;
     }
     .graph-row {
@@ -699,7 +701,8 @@ export class GcCommitLog extends LitElement {
       position: absolute;
       left: 0;
       right: 0;
-      padding: 0 var(--space-2) 0 calc(var(--space-2) + 40px);
+      z-index: 2;
+      padding: 0 var(--space-2) 0 48px;
       background: transparent;
       border: none;
       border-left: 2px solid transparent;

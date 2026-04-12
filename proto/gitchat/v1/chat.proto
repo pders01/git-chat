@@ -45,6 +45,10 @@ service ChatService {
 
   // DeleteCard removes a knowledge card by ID.
   rpc DeleteCard(DeleteCardRequest) returns (DeleteCardResponse);
+
+  // GetCard returns the full detail of a single knowledge card, including
+  // provenance (file dependencies).
+  rpc GetCard(GetCardRequest) returns (GetCardResponse);
 }
 
 // ─── Search ─────────────────────────────────────────────────────────────
@@ -215,3 +219,26 @@ message DeleteCardRequest {
 }
 
 message DeleteCardResponse {}
+
+// ─── GetCard ────────────────────────────────────────────────────────
+message GetCardRequest {
+  string card_id = 1;
+}
+
+message CardProvenance {
+  string path = 1;
+  string blob_sha = 2;
+}
+
+message GetCardResponse {
+  string id = 1;
+  string question = 2;
+  string answer_md = 3;
+  string model = 4;
+  string created_by = 5;
+  int32 hit_count = 6;
+  int64 created_at = 7;
+  bool invalidated = 8;
+  string created_commit = 9;
+  repeated CardProvenance provenance = 10;
+}

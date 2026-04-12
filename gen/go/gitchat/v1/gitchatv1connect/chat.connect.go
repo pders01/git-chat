@@ -54,6 +54,8 @@ const (
 	ChatServiceListCardsProcedure = "/gitchat.v1.ChatService/ListCards"
 	// ChatServiceDeleteCardProcedure is the fully-qualified name of the ChatService's DeleteCard RPC.
 	ChatServiceDeleteCardProcedure = "/gitchat.v1.ChatService/DeleteCard"
+	// ChatServiceGetCardProcedure is the fully-qualified name of the ChatService's GetCard RPC.
+	ChatServiceGetCardProcedure = "/gitchat.v1.ChatService/GetCard"
 )
 
 // ChatServiceClient is a client for the gitchat.v1.ChatService service.
@@ -81,6 +83,9 @@ type ChatServiceClient interface {
 	ListCards(context.Context, *connect.Request[v1.ListCardsRequest]) (*connect.Response[v1.ListCardsResponse], error)
 	// DeleteCard removes a knowledge card by ID.
 	DeleteCard(context.Context, *connect.Request[v1.DeleteCardRequest]) (*connect.Response[v1.DeleteCardResponse], error)
+	// GetCard returns the full detail of a single knowledge card, including
+	// provenance (file dependencies).
+	GetCard(context.Context, *connect.Request[v1.GetCardRequest]) (*connect.Response[v1.GetCardResponse], error)
 }
 
 // NewChatServiceClient constructs a client for the gitchat.v1.ChatService service. By default, it
@@ -148,6 +153,12 @@ func NewChatServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(chatServiceMethods.ByName("DeleteCard")),
 			connect.WithClientOptions(opts...),
 		),
+		getCard: connect.NewClient[v1.GetCardRequest, v1.GetCardResponse](
+			httpClient,
+			baseURL+ChatServiceGetCardProcedure,
+			connect.WithSchema(chatServiceMethods.ByName("GetCard")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -162,6 +173,7 @@ type chatServiceClient struct {
 	pinSession    *connect.Client[v1.PinSessionRequest, v1.PinSessionResponse]
 	listCards     *connect.Client[v1.ListCardsRequest, v1.ListCardsResponse]
 	deleteCard    *connect.Client[v1.DeleteCardRequest, v1.DeleteCardResponse]
+	getCard       *connect.Client[v1.GetCardRequest, v1.GetCardResponse]
 }
 
 // ListSessions calls gitchat.v1.ChatService.ListSessions.
@@ -209,6 +221,11 @@ func (c *chatServiceClient) DeleteCard(ctx context.Context, req *connect.Request
 	return c.deleteCard.CallUnary(ctx, req)
 }
 
+// GetCard calls gitchat.v1.ChatService.GetCard.
+func (c *chatServiceClient) GetCard(ctx context.Context, req *connect.Request[v1.GetCardRequest]) (*connect.Response[v1.GetCardResponse], error) {
+	return c.getCard.CallUnary(ctx, req)
+}
+
 // ChatServiceHandler is an implementation of the gitchat.v1.ChatService service.
 type ChatServiceHandler interface {
 	// ListSessions returns every chat session for the authenticated
@@ -234,6 +251,9 @@ type ChatServiceHandler interface {
 	ListCards(context.Context, *connect.Request[v1.ListCardsRequest]) (*connect.Response[v1.ListCardsResponse], error)
 	// DeleteCard removes a knowledge card by ID.
 	DeleteCard(context.Context, *connect.Request[v1.DeleteCardRequest]) (*connect.Response[v1.DeleteCardResponse], error)
+	// GetCard returns the full detail of a single knowledge card, including
+	// provenance (file dependencies).
+	GetCard(context.Context, *connect.Request[v1.GetCardRequest]) (*connect.Response[v1.GetCardResponse], error)
 }
 
 // NewChatServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -297,6 +317,12 @@ func NewChatServiceHandler(svc ChatServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(chatServiceMethods.ByName("DeleteCard")),
 		connect.WithHandlerOptions(opts...),
 	)
+	chatServiceGetCardHandler := connect.NewUnaryHandler(
+		ChatServiceGetCardProcedure,
+		svc.GetCard,
+		connect.WithSchema(chatServiceMethods.ByName("GetCard")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/gitchat.v1.ChatService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ChatServiceListSessionsProcedure:
@@ -317,6 +343,8 @@ func NewChatServiceHandler(svc ChatServiceHandler, opts ...connect.HandlerOption
 			chatServiceListCardsHandler.ServeHTTP(w, r)
 		case ChatServiceDeleteCardProcedure:
 			chatServiceDeleteCardHandler.ServeHTTP(w, r)
+		case ChatServiceGetCardProcedure:
+			chatServiceGetCardHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -360,4 +388,8 @@ func (UnimplementedChatServiceHandler) ListCards(context.Context, *connect.Reque
 
 func (UnimplementedChatServiceHandler) DeleteCard(context.Context, *connect.Request[v1.DeleteCardRequest]) (*connect.Response[v1.DeleteCardResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.ChatService.DeleteCard is not implemented"))
+}
+
+func (UnimplementedChatServiceHandler) GetCard(context.Context, *connect.Request[v1.GetCardRequest]) (*connect.Response[v1.GetCardResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.ChatService.GetCard is not implemented"))
 }

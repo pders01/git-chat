@@ -210,6 +210,25 @@ func (d *DB) ReplaceProvenance(ctx context.Context, cardID string, rows []Proven
 	return tx.Commit()
 }
 
+// GetCard returns a single card by ID.
+func (d *DB) GetCard(ctx context.Context, cardID string) (*CardRow, error) {
+	row := d.QueryRowContext(ctx, `
+        SELECT id, repo_id, question_normalized, answer_md, model,
+               hit_count, created_commit, last_verified_commit,
+               COALESCE(invalidated_at, 0), created_at, updated_at, created_by
+        FROM kb_card
+        WHERE id = ?`,
+		cardID)
+	c := &CardRow{}
+	err := row.Scan(&c.ID, &c.RepoID, &c.QuestionNormalized, &c.AnswerMD,
+		&c.Model, &c.HitCount, &c.CreatedCommit, &c.LastVerifiedCommit,
+		&c.InvalidatedAt, &c.CreatedAt, &c.UpdatedAt, &c.CreatedBy)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return c, err
+}
+
 // ListCards returns all cards for a given repo, ordered by hit_count DESC.
 func (d *DB) ListCards(ctx context.Context, repoID string) ([]*CardRow, error) {
 	rows, err := d.QueryContext(ctx, `

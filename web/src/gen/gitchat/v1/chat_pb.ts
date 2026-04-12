@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file gitchat/v1/chat.proto.
  */
 export const file_gitchat_v1_chat: GenFile = /*@__PURE__*/
-  fileDesc("ChVnaXRjaGF0L3YxL2NoYXQucHJvdG8SCmdpdGNoYXQudjEiPgoNU2VhcmNoUmVxdWVzdBINCgVxdWVyeRgBIAEoCRIPCgdyZXBvX2lkGAIgASgJEg0KBWxpbWl0GAMgASgFIjUKDlNlYXJjaFJlc3BvbnNlEiMKBGhpdHMYASADKAsyFS5naXRjaGF0LnYxLlNlYXJjaEhpdCJECglTZWFyY2hIaXQSDgoGc291cmNlGAEgASgJEgoKAmlkGAIgASgJEg0KBXRpdGxlGAMgASgJEgwKBGJvZHkYBCABKAkiiAEKC0NoYXRTZXNzaW9uEgoKAmlkGAEgASgJEg8KB3JlcG9faWQYAiABKAkSDQoFdGl0bGUYAyABKAkSEgoKY3JlYXRlZF9hdBgEIAEoAxISCgp1cGRhdGVkX2F0GAUgASgDEhUKDW1lc3NhZ2VfY291bnQYBiABKAUSDgoGcGlubmVkGAcgASgIIrkBCgtDaGF0TWVzc2FnZRIKCgJpZBgBIAEoCRISCgpzZXNzaW9uX2lkGAIgASgJEiUKBHJvbGUYAyABKA4yFy5naXRjaGF0LnYxLk1lc3NhZ2VSb2xlEg8KB2NvbnRlbnQYBCABKAkSDQoFbW9kZWwYBSABKAkSFgoOdG9rZW5fY291bnRfaW4YBiABKAUSFwoPdG9rZW5fY291bnRfb3V0GAcgASgFEhIKCmNyZWF0ZWRfYXQYCCABKAMiJgoTTGlzdFNlc3Npb25zUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJIkEKFExpc3RTZXNzaW9uc1Jlc3BvbnNlEikKCHNlc3Npb25zGAEgAygLMhcuZ2l0Y2hhdC52MS5DaGF0U2Vzc2lvbiInChFHZXRTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJImkKEkdldFNlc3Npb25SZXNwb25zZRIoCgdzZXNzaW9uGAEgASgLMhcuZ2l0Y2hhdC52MS5DaGF0U2Vzc2lvbhIpCghtZXNzYWdlcxgCIAMoCzIXLmdpdGNoYXQudjEuQ2hhdE1lc3NhZ2UiRwoSU2VuZE1lc3NhZ2VSZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDwoHcmVwb19pZBgCIAEoCRIMCgR0ZXh0GAMgASgJInsKDE1lc3NhZ2VDaHVuaxIPCgV0b2tlbhgBIAEoCUgAEiAKBGRvbmUYAiABKAsyEC5naXRjaGF0LnYxLkRvbmVIABIwCghjYXJkX2hpdBgDIAEoCzIcLmdpdGNoYXQudjEuS25vd2xlZGdlQ2FyZEhpdEgAQgYKBGtpbmQicAoQS25vd2xlZGdlQ2FyZEhpdBIPCgdjYXJkX2lkGAEgASgJEhEKCWFuc3dlcl9tZBgCIAEoCRINCgVtb2RlbBgDIAEoCRIRCgloaXRfY291bnQYBCABKAUSFgoOY3JlYXRlZF9jb21taXQYBSABKAkioAEKBERvbmUSEgoKc2Vzc2lvbl9pZBgBIAEoCRIXCg91c2VyX21lc3NhZ2VfaWQYAiABKAkSHAoUYXNzaXN0YW50X21lc3NhZ2VfaWQYAyABKAkSFgoOdG9rZW5fY291bnRfaW4YBCABKAUSFwoPdG9rZW5fY291bnRfb3V0GAUgASgFEg0KBW1vZGVsGAYgASgJEg0KBWVycm9yGAcgASgJIjkKFFJlbmFtZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDQoFdGl0bGUYAiABKAkiFwoVUmVuYW1lU2Vzc2lvblJlc3BvbnNlIioKFERlbGV0ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiFwoVRGVsZXRlU2Vzc2lvblJlc3BvbnNlIjcKEVBpblNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDgoGcGlubmVkGAIgASgIIhQKElBpblNlc3Npb25SZXNwb25zZSIjChBMaXN0Q2FyZHNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkinQEKBktCQ2FyZBIKCgJpZBgBIAEoCRIQCghxdWVzdGlvbhgCIAEoCRIWCg5hbnN3ZXJfcHJldmlldxgDIAEoCRINCgVtb2RlbBgEIAEoCRISCgpjcmVhdGVkX2J5GAUgASgJEhEKCWhpdF9jb3VudBgGIAEoBRISCgpjcmVhdGVkX2F0GAcgASgDEhMKC2ludmFsaWRhdGVkGAggASgIIjYKEUxpc3RDYXJkc1Jlc3BvbnNlEiEKBWNhcmRzGAEgAygLMhIuZ2l0Y2hhdC52MS5LQkNhcmQiJAoRRGVsZXRlQ2FyZFJlcXVlc3QSDwoHY2FyZF9pZBgBIAEoCSIUChJEZWxldGVDYXJkUmVzcG9uc2UqdwoLTWVzc2FnZVJvbGUSHAoYTUVTU0FHRV9ST0xFX1VOU1BFQ0lGSUVEEAASFQoRTUVTU0FHRV9ST0xFX1VTRVIQARIaChZNRVNTQUdFX1JPTEVfQVNTSVNUQU5UEAISFwoTTUVTU0FHRV9ST0xFX1NZU1RFTRADMskFCgtDaGF0U2VydmljZRJRCgxMaXN0U2Vzc2lvbnMSHy5naXRjaGF0LnYxLkxpc3RTZXNzaW9uc1JlcXVlc3QaIC5naXRjaGF0LnYxLkxpc3RTZXNzaW9uc1Jlc3BvbnNlEksKCkdldFNlc3Npb24SHS5naXRjaGF0LnYxLkdldFNlc3Npb25SZXF1ZXN0Gh4uZ2l0Y2hhdC52MS5HZXRTZXNzaW9uUmVzcG9uc2USSQoLU2VuZE1lc3NhZ2USHi5naXRjaGF0LnYxLlNlbmRNZXNzYWdlUmVxdWVzdBoYLmdpdGNoYXQudjEuTWVzc2FnZUNodW5rMAESPwoGU2VhcmNoEhkuZ2l0Y2hhdC52MS5TZWFyY2hSZXF1ZXN0GhouZ2l0Y2hhdC52MS5TZWFyY2hSZXNwb25zZRJUCg1SZW5hbWVTZXNzaW9uEiAuZ2l0Y2hhdC52MS5SZW5hbWVTZXNzaW9uUmVxdWVzdBohLmdpdGNoYXQudjEuUmVuYW1lU2Vzc2lvblJlc3BvbnNlElQKDURlbGV0ZVNlc3Npb24SIC5naXRjaGF0LnYxLkRlbGV0ZVNlc3Npb25SZXF1ZXN0GiEuZ2l0Y2hhdC52MS5EZWxldGVTZXNzaW9uUmVzcG9uc2USSwoKUGluU2Vzc2lvbhIdLmdpdGNoYXQudjEuUGluU2Vzc2lvblJlcXVlc3QaHi5naXRjaGF0LnYxLlBpblNlc3Npb25SZXNwb25zZRJICglMaXN0Q2FyZHMSHC5naXRjaGF0LnYxLkxpc3RDYXJkc1JlcXVlc3QaHS5naXRjaGF0LnYxLkxpc3RDYXJkc1Jlc3BvbnNlEksKCkRlbGV0ZUNhcmQSHS5naXRjaGF0LnYxLkRlbGV0ZUNhcmRSZXF1ZXN0Gh4uZ2l0Y2hhdC52MS5EZWxldGVDYXJkUmVzcG9uc2VCnQEKDmNvbS5naXRjaGF0LnYxQglDaGF0UHJvdG9QAVo3Z2l0aHViLmNvbS9wZGVyczAxL2dpdC1jaGF0L2dlbi9nby9naXRjaGF0L3YxO2dpdGNoYXR2MaICA0dYWKoCCkdpdGNoYXQuVjHKAgpHaXRjaGF0XFYx4gIWR2l0Y2hhdFxWMVxHUEJNZXRhZGF0YeoCC0dpdGNoYXQ6OlYxYgZwcm90bzM");
+  fileDesc("ChVnaXRjaGF0L3YxL2NoYXQucHJvdG8SCmdpdGNoYXQudjEiPgoNU2VhcmNoUmVxdWVzdBINCgVxdWVyeRgBIAEoCRIPCgdyZXBvX2lkGAIgASgJEg0KBWxpbWl0GAMgASgFIjUKDlNlYXJjaFJlc3BvbnNlEiMKBGhpdHMYASADKAsyFS5naXRjaGF0LnYxLlNlYXJjaEhpdCJECglTZWFyY2hIaXQSDgoGc291cmNlGAEgASgJEgoKAmlkGAIgASgJEg0KBXRpdGxlGAMgASgJEgwKBGJvZHkYBCABKAkiiAEKC0NoYXRTZXNzaW9uEgoKAmlkGAEgASgJEg8KB3JlcG9faWQYAiABKAkSDQoFdGl0bGUYAyABKAkSEgoKY3JlYXRlZF9hdBgEIAEoAxISCgp1cGRhdGVkX2F0GAUgASgDEhUKDW1lc3NhZ2VfY291bnQYBiABKAUSDgoGcGlubmVkGAcgASgIIrkBCgtDaGF0TWVzc2FnZRIKCgJpZBgBIAEoCRISCgpzZXNzaW9uX2lkGAIgASgJEiUKBHJvbGUYAyABKA4yFy5naXRjaGF0LnYxLk1lc3NhZ2VSb2xlEg8KB2NvbnRlbnQYBCABKAkSDQoFbW9kZWwYBSABKAkSFgoOdG9rZW5fY291bnRfaW4YBiABKAUSFwoPdG9rZW5fY291bnRfb3V0GAcgASgFEhIKCmNyZWF0ZWRfYXQYCCABKAMiJgoTTGlzdFNlc3Npb25zUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJIkEKFExpc3RTZXNzaW9uc1Jlc3BvbnNlEikKCHNlc3Npb25zGAEgAygLMhcuZ2l0Y2hhdC52MS5DaGF0U2Vzc2lvbiInChFHZXRTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJImkKEkdldFNlc3Npb25SZXNwb25zZRIoCgdzZXNzaW9uGAEgASgLMhcuZ2l0Y2hhdC52MS5DaGF0U2Vzc2lvbhIpCghtZXNzYWdlcxgCIAMoCzIXLmdpdGNoYXQudjEuQ2hhdE1lc3NhZ2UiRwoSU2VuZE1lc3NhZ2VSZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDwoHcmVwb19pZBgCIAEoCRIMCgR0ZXh0GAMgASgJInsKDE1lc3NhZ2VDaHVuaxIPCgV0b2tlbhgBIAEoCUgAEiAKBGRvbmUYAiABKAsyEC5naXRjaGF0LnYxLkRvbmVIABIwCghjYXJkX2hpdBgDIAEoCzIcLmdpdGNoYXQudjEuS25vd2xlZGdlQ2FyZEhpdEgAQgYKBGtpbmQicAoQS25vd2xlZGdlQ2FyZEhpdBIPCgdjYXJkX2lkGAEgASgJEhEKCWFuc3dlcl9tZBgCIAEoCRINCgVtb2RlbBgDIAEoCRIRCgloaXRfY291bnQYBCABKAUSFgoOY3JlYXRlZF9jb21taXQYBSABKAkioAEKBERvbmUSEgoKc2Vzc2lvbl9pZBgBIAEoCRIXCg91c2VyX21lc3NhZ2VfaWQYAiABKAkSHAoUYXNzaXN0YW50X21lc3NhZ2VfaWQYAyABKAkSFgoOdG9rZW5fY291bnRfaW4YBCABKAUSFwoPdG9rZW5fY291bnRfb3V0GAUgASgFEg0KBW1vZGVsGAYgASgJEg0KBWVycm9yGAcgASgJIjkKFFJlbmFtZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDQoFdGl0bGUYAiABKAkiFwoVUmVuYW1lU2Vzc2lvblJlc3BvbnNlIioKFERlbGV0ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiFwoVRGVsZXRlU2Vzc2lvblJlc3BvbnNlIjcKEVBpblNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDgoGcGlubmVkGAIgASgIIhQKElBpblNlc3Npb25SZXNwb25zZSIjChBMaXN0Q2FyZHNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkinQEKBktCQ2FyZBIKCgJpZBgBIAEoCRIQCghxdWVzdGlvbhgCIAEoCRIWCg5hbnN3ZXJfcHJldmlldxgDIAEoCRINCgVtb2RlbBgEIAEoCRISCgpjcmVhdGVkX2J5GAUgASgJEhEKCWhpdF9jb3VudBgGIAEoBRISCgpjcmVhdGVkX2F0GAcgASgDEhMKC2ludmFsaWRhdGVkGAggASgIIjYKEUxpc3RDYXJkc1Jlc3BvbnNlEiEKBWNhcmRzGAEgAygLMhIuZ2l0Y2hhdC52MS5LQkNhcmQiJAoRRGVsZXRlQ2FyZFJlcXVlc3QSDwoHY2FyZF9pZBgBIAEoCSIUChJEZWxldGVDYXJkUmVzcG9uc2UiIQoOR2V0Q2FyZFJlcXVlc3QSDwoHY2FyZF9pZBgBIAEoCSIwCg5DYXJkUHJvdmVuYW5jZRIMCgRwYXRoGAEgASgJEhAKCGJsb2Jfc2hhGAIgASgJIukBCg9HZXRDYXJkUmVzcG9uc2USCgoCaWQYASABKAkSEAoIcXVlc3Rpb24YAiABKAkSEQoJYW5zd2VyX21kGAMgASgJEg0KBW1vZGVsGAQgASgJEhIKCmNyZWF0ZWRfYnkYBSABKAkSEQoJaGl0X2NvdW50GAYgASgFEhIKCmNyZWF0ZWRfYXQYByABKAMSEwoLaW52YWxpZGF0ZWQYCCABKAgSFgoOY3JlYXRlZF9jb21taXQYCSABKAkSLgoKcHJvdmVuYW5jZRgKIAMoCzIaLmdpdGNoYXQudjEuQ2FyZFByb3ZlbmFuY2UqdwoLTWVzc2FnZVJvbGUSHAoYTUVTU0FHRV9ST0xFX1VOU1BFQ0lGSUVEEAASFQoRTUVTU0FHRV9ST0xFX1VTRVIQARIaChZNRVNTQUdFX1JPTEVfQVNTSVNUQU5UEAISFwoTTUVTU0FHRV9ST0xFX1NZU1RFTRADMo0GCgtDaGF0U2VydmljZRJRCgxMaXN0U2Vzc2lvbnMSHy5naXRjaGF0LnYxLkxpc3RTZXNzaW9uc1JlcXVlc3QaIC5naXRjaGF0LnYxLkxpc3RTZXNzaW9uc1Jlc3BvbnNlEksKCkdldFNlc3Npb24SHS5naXRjaGF0LnYxLkdldFNlc3Npb25SZXF1ZXN0Gh4uZ2l0Y2hhdC52MS5HZXRTZXNzaW9uUmVzcG9uc2USSQoLU2VuZE1lc3NhZ2USHi5naXRjaGF0LnYxLlNlbmRNZXNzYWdlUmVxdWVzdBoYLmdpdGNoYXQudjEuTWVzc2FnZUNodW5rMAESPwoGU2VhcmNoEhkuZ2l0Y2hhdC52MS5TZWFyY2hSZXF1ZXN0GhouZ2l0Y2hhdC52MS5TZWFyY2hSZXNwb25zZRJUCg1SZW5hbWVTZXNzaW9uEiAuZ2l0Y2hhdC52MS5SZW5hbWVTZXNzaW9uUmVxdWVzdBohLmdpdGNoYXQudjEuUmVuYW1lU2Vzc2lvblJlc3BvbnNlElQKDURlbGV0ZVNlc3Npb24SIC5naXRjaGF0LnYxLkRlbGV0ZVNlc3Npb25SZXF1ZXN0GiEuZ2l0Y2hhdC52MS5EZWxldGVTZXNzaW9uUmVzcG9uc2USSwoKUGluU2Vzc2lvbhIdLmdpdGNoYXQudjEuUGluU2Vzc2lvblJlcXVlc3QaHi5naXRjaGF0LnYxLlBpblNlc3Npb25SZXNwb25zZRJICglMaXN0Q2FyZHMSHC5naXRjaGF0LnYxLkxpc3RDYXJkc1JlcXVlc3QaHS5naXRjaGF0LnYxLkxpc3RDYXJkc1Jlc3BvbnNlEksKCkRlbGV0ZUNhcmQSHS5naXRjaGF0LnYxLkRlbGV0ZUNhcmRSZXF1ZXN0Gh4uZ2l0Y2hhdC52MS5EZWxldGVDYXJkUmVzcG9uc2USQgoHR2V0Q2FyZBIaLmdpdGNoYXQudjEuR2V0Q2FyZFJlcXVlc3QaGy5naXRjaGF0LnYxLkdldENhcmRSZXNwb25zZUKdAQoOY29tLmdpdGNoYXQudjFCCUNoYXRQcm90b1ABWjdnaXRodWIuY29tL3BkZXJzMDEvZ2l0LWNoYXQvZ2VuL2dvL2dpdGNoYXQvdjE7Z2l0Y2hhdHYxogIDR1hYqgIKR2l0Y2hhdC5WMcoCCkdpdGNoYXRcVjHiAhZHaXRjaGF0XFYxXEdQQk1ldGFkYXRh6gILR2l0Y2hhdDo6VjFiBnByb3RvMw");
 
 /**
  * ─── Search ─────────────────────────────────────────────────────────────
@@ -686,6 +686,109 @@ export const DeleteCardResponseSchema: GenMessage<DeleteCardResponse> = /*@__PUR
   messageDesc(file_gitchat_v1_chat, 23);
 
 /**
+ * ─── GetCard ────────────────────────────────────────────────────────
+ *
+ * @generated from message gitchat.v1.GetCardRequest
+ */
+export type GetCardRequest = Message<"gitchat.v1.GetCardRequest"> & {
+  /**
+   * @generated from field: string card_id = 1;
+   */
+  cardId: string;
+};
+
+/**
+ * Describes the message gitchat.v1.GetCardRequest.
+ * Use `create(GetCardRequestSchema)` to create a new message.
+ */
+export const GetCardRequestSchema: GenMessage<GetCardRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 24);
+
+/**
+ * @generated from message gitchat.v1.CardProvenance
+ */
+export type CardProvenance = Message<"gitchat.v1.CardProvenance"> & {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path: string;
+
+  /**
+   * @generated from field: string blob_sha = 2;
+   */
+  blobSha: string;
+};
+
+/**
+ * Describes the message gitchat.v1.CardProvenance.
+ * Use `create(CardProvenanceSchema)` to create a new message.
+ */
+export const CardProvenanceSchema: GenMessage<CardProvenance> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 25);
+
+/**
+ * @generated from message gitchat.v1.GetCardResponse
+ */
+export type GetCardResponse = Message<"gitchat.v1.GetCardResponse"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string question = 2;
+   */
+  question: string;
+
+  /**
+   * @generated from field: string answer_md = 3;
+   */
+  answerMd: string;
+
+  /**
+   * @generated from field: string model = 4;
+   */
+  model: string;
+
+  /**
+   * @generated from field: string created_by = 5;
+   */
+  createdBy: string;
+
+  /**
+   * @generated from field: int32 hit_count = 6;
+   */
+  hitCount: number;
+
+  /**
+   * @generated from field: int64 created_at = 7;
+   */
+  createdAt: bigint;
+
+  /**
+   * @generated from field: bool invalidated = 8;
+   */
+  invalidated: boolean;
+
+  /**
+   * @generated from field: string created_commit = 9;
+   */
+  createdCommit: string;
+
+  /**
+   * @generated from field: repeated gitchat.v1.CardProvenance provenance = 10;
+   */
+  provenance: CardProvenance[];
+};
+
+/**
+ * Describes the message gitchat.v1.GetCardResponse.
+ * Use `create(GetCardResponseSchema)` to create a new message.
+ */
+export const GetCardResponseSchema: GenMessage<GetCardResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_chat, 26);
+
+/**
  * Role mirrors the OpenAI chat completions roles for wire-level
  * simplicity. We do not expose `tool` because tool use is a higher-level
  * concept that lives in the LLM adapter, not in the wire protocol.
@@ -828,6 +931,17 @@ export const ChatService: GenService<{
     methodKind: "unary";
     input: typeof DeleteCardRequestSchema;
     output: typeof DeleteCardResponseSchema;
+  },
+  /**
+   * GetCard returns the full detail of a single knowledge card, including
+   * provenance (file dependencies).
+   *
+   * @generated from rpc gitchat.v1.ChatService.GetCard
+   */
+  getCard: {
+    methodKind: "unary";
+    input: typeof GetCardRequestSchema;
+    output: typeof GetCardResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_gitchat_v1_chat, 0);

@@ -488,6 +488,40 @@ func (s *Service) ListCards(
 	return connect.NewResponse(&gitchatv1.ListCardsResponse{Cards: cards}), nil
 }
 
+// ─── GetCard ──────────────────────────────────────────────────────────
+func (s *Service) GetCard(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.GetCardRequest],
+) (*connect.Response[gitchatv1.GetCardResponse], error) {
+	card, err := s.DB.GetCard(ctx, req.Msg.CardId)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	provRows, _ := s.DB.ListProvenance(ctx, req.Msg.CardId)
+	prov := make([]*gitchatv1.CardProvenance, 0, len(provRows))
+	for _, p := range provRows {
+		prov = append(prov, &gitchatv1.CardProvenance{
+			Path:    p.Path,
+			BlobSha: p.BlobSHA,
+		})
+	}
+	return connect.NewResponse(&gitchatv1.GetCardResponse{
+		Id:            card.ID,
+		Question:      card.QuestionNormalized,
+		AnswerMd:      card.AnswerMD,
+		Model:         card.Model,
+		CreatedBy:     card.CreatedBy,
+		HitCount:      int32(card.HitCount),
+		CreatedAt:     card.CreatedAt,
+		Invalidated:   card.InvalidatedAt != 0,
+		CreatedCommit: card.CreatedCommit,
+		Provenance:    prov,
+	}), nil
+}
+
 // ─── DeleteCard ────────────────────────────────────────────────────────
 func (s *Service) DeleteCard(
 	ctx context.Context,
