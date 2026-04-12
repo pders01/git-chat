@@ -12,8 +12,10 @@
 import { createHighlighterCore, type HighlighterCore } from "shiki/core";
 import { createOnigurumaEngine } from "shiki/engine/oniguruma";
 
-// Theme: github-dark-default. Other themes can be swapped here later.
+// Themes: dark + light, selected at highlight time based on active theme.
 import githubDark from "@shikijs/themes/github-dark-default";
+import githubLight from "@shikijs/themes/github-light-default";
+import { getTheme } from "./settings.js";
 
 // Languages — keep in alphabetical order by Shiki name.
 import c from "@shikijs/langs/c";
@@ -42,7 +44,18 @@ import xml from "@shikijs/langs/xml";
 import yaml from "@shikijs/langs/yaml";
 import zig from "@shikijs/langs/zig";
 
-const THEME_NAME = "github-dark-default";
+const THEME_DARK = "github-dark-default";
+const THEME_LIGHT = "github-light-default";
+
+function activeTheme(): string {
+  const choice = getTheme();
+  if (choice === "light") return THEME_LIGHT;
+  if (choice === "dark") return THEME_DARK;
+  // "system" — check the resolved data-theme attribute.
+  return document.documentElement.getAttribute("data-theme") === "light"
+    ? THEME_LIGHT
+    : THEME_DARK;
+}
 
 // The set of grammar names we ship. Anything outside this set renders as
 // plaintext. Keep in sync with the imports above and with the Go-side
@@ -82,7 +95,7 @@ async function getHighlighter(): Promise<HighlighterCore> {
   if (instance) return instance;
   if (!initPromise) {
     initPromise = createHighlighterCore({
-      themes: [githubDark],
+      themes: [githubDark, githubLight],
       langs: [
         c,
         cpp,
@@ -126,6 +139,6 @@ export async function highlight(code: string, lang: string): Promise<string> {
   const effective = BUNDLED_LANGS.has(lang) ? lang : "plaintext";
   return h.codeToHtml(code, {
     lang: effective,
-    theme: THEME_NAME,
+    theme: activeTheme(),
   });
 }
