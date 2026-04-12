@@ -8,6 +8,7 @@ import {
 } from "../gen/gitchat/v1/repo_pb.js";
 import "./file-view.js";
 import "./compare-view.js";
+import "./changes-view.js";
 
 /** A node in the expandable file tree. */
 interface TreeNode {
@@ -37,6 +38,7 @@ export class GcRepoBrowser extends LitElement {
   @state() private focused = readFocus();
   @state() private drawerOpen = false;
   @state() private comparing = false;
+  @state() private showChanges = false;
   @state() private branches: Array<{ name: string }> = [];
   @state() private baseRef = "";
   @state() private headRef = "";
@@ -52,6 +54,7 @@ export class GcRepoBrowser extends LitElement {
   private async toggleCompare() {
     if (this.compareFetching) return;
     this.comparing = !this.comparing;
+    if (this.comparing) this.showChanges = false;
     if (this.comparing && this.branches.length === 0) {
       this.compareFetching = true;
       try {
@@ -69,6 +72,11 @@ export class GcRepoBrowser extends LitElement {
         this.compareFetching = false;
       }
     }
+  }
+
+  private toggleChanges() {
+    this.showChanges = !this.showChanges;
+    if (this.showChanges) this.comparing = false;
   }
 
   private swapRefs() {
@@ -201,7 +209,7 @@ export class GcRepoBrowser extends LitElement {
 
   private renderReady(s: Extract<BrowserState, { phase: "ready" }>) {
     return html`
-      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""} ${this.comparing ? "comparing" : ""}"
+      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""} ${this.comparing || this.showChanges ? "comparing" : ""}"
         @keydown=${(e: KeyboardEvent) => { if (e.key === "Escape" && this.drawerOpen) { this.drawerOpen = false; } }}>
         <button class="drawer-toggle" @click=${() => (this.drawerOpen = !this.drawerOpen)} aria-label="Toggle file tree">☰</button>
         ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
@@ -221,12 +229,19 @@ export class GcRepoBrowser extends LitElement {
                   <span class="branch">${s.repo.defaultBranch}@${s.repo.headCommit}</span>`}
             <button
               class="hd-btn"
+              @click=${() => this.toggleChanges()}
+              aria-label="Working tree changes"
+              aria-pressed=${this.showChanges ? "true" : "false"}
+              title="Working tree changes"
+            >Δ</button>
+            <button
+              class="hd-btn"
               @click=${() => this.toggleCompare()}
               aria-label="Compare branches"
               aria-pressed=${this.comparing ? "true" : "false"}
               title="Compare branches"
             >⇄</button>
-            ${this.comparing ? nothing : html`
+            ${this.comparing || this.showChanges ? nothing : html`
               <button
                 class="focus-btn"
                 @click=${this.onToggleFocus}
@@ -243,17 +258,19 @@ export class GcRepoBrowser extends LitElement {
         </aside>
 
         <section>
-          ${this.comparing
-            ? html`<gc-compare-view
-                .repoId=${s.repo.id}
-                .baseRef=${this.baseRef}
-                .headRef=${this.headRef}
-              ></gc-compare-view>`
-            : html`<gc-file-view
-                .repoId=${s.repo.id}
-                .path=${this.selectedFile}
-                .branch=${""}
-              ></gc-file-view>`}
+          ${this.showChanges
+            ? html`<gc-changes-view .repoId=${s.repo.id}></gc-changes-view>`
+            : this.comparing
+              ? html`<gc-compare-view
+                  .repoId=${s.repo.id}
+                  .baseRef=${this.baseRef}
+                  .headRef=${this.headRef}
+                ></gc-compare-view>`
+              : html`<gc-file-view
+                  .repoId=${s.repo.id}
+                  .path=${this.selectedFile}
+                  .branch=${""}
+                ></gc-file-view>`}
         </section>
       </div>
     `;
@@ -400,7 +417,8 @@ export class GcRepoBrowser extends LitElement {
       min-height: 0;
     }
     section > gc-file-view,
-    section > gc-compare-view {
+    section > gc-compare-view,
+    section > gc-changes-view {
       flex: 1;
       min-height: 0;
     }

@@ -159,6 +159,43 @@ func (s *Service) GetDiff(
 	}), nil
 }
 
+func (s *Service) GetStatus(
+	_ context.Context,
+	req *connect.Request[gitchatv1.GetStatusRequest],
+) (*connect.Response[gitchatv1.GetStatusResponse], error) {
+	entry := s.lookup(req.Msg.RepoId)
+	if entry == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
+	}
+	staged, unstaged, untracked, err := entry.GetStatus()
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&gitchatv1.GetStatusResponse{
+		Staged:    staged,
+		Unstaged:  unstaged,
+		Untracked: untracked,
+	}), nil
+}
+
+func (s *Service) GetWorkingTreeDiff(
+	_ context.Context,
+	req *connect.Request[gitchatv1.GetWorkingTreeDiffRequest],
+) (*connect.Response[gitchatv1.GetWorkingTreeDiffResponse], error) {
+	entry := s.lookup(req.Msg.RepoId)
+	if entry == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
+	}
+	diff, empty, err := entry.GetWorkingTreeDiff(req.Msg.Path)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&gitchatv1.GetWorkingTreeDiffResponse{
+		UnifiedDiff: diff,
+		Empty:       empty,
+	}), nil
+}
+
 func (s *Service) lookup(id string) *Entry {
 	return s.Registry.Get(id)
 }

@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file gitchat/v1/repo.proto.
  */
 export const file_gitchat_v1_repo: GenFile = /*@__PURE__*/
-  fileDesc("ChVnaXRjaGF0L3YxL3JlcG8ucHJvdG8SCmdpdGNoYXQudjEiTgoEUmVwbxIKCgJpZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIWCg5kZWZhdWx0X2JyYW5jaBgDIAEoCRITCgtoZWFkX2NvbW1pdBgEIAEoCSISChBMaXN0UmVwb3NSZXF1ZXN0IjQKEUxpc3RSZXBvc1Jlc3BvbnNlEh8KBXJlcG9zGAEgAygLMhAuZ2l0Y2hhdC52MS5SZXBvIiYKE0xpc3RCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCSI8ChRMaXN0QnJhbmNoZXNSZXNwb25zZRIkCghicmFuY2hlcxgBIAMoCzISLmdpdGNoYXQudjEuQnJhbmNoIk8KBkJyYW5jaBIMCgRuYW1lGAEgASgJEg4KBmNvbW1pdBgCIAEoCRIWCg5jb21taXR0ZXJfdGltZRgDIAEoAxIPCgdzdWJqZWN0GAQgASgJIj0KD0xpc3RUcmVlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIlAKEExpc3RUcmVlUmVzcG9uc2USJgoHZW50cmllcxgBIAMoCzIVLmdpdGNoYXQudjEuVHJlZUVudHJ5EhQKDHJlZl9yZXNvbHZlZBgCIAEoCSJeCglUcmVlRW50cnkSDAoEbmFtZRgBIAEoCRIjCgR0eXBlGAIgASgOMhUuZ2l0Y2hhdC52MS5FbnRyeVR5cGUSDAoEc2l6ZRgDIAEoAxIQCghibG9iX3NoYRgEIAEoCSJPCg5HZXRGaWxlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJEhEKCW1heF9ieXRlcxgEIAEoAyJ6Cg9HZXRGaWxlUmVzcG9uc2USDwoHY29udGVudBgBIAEoDBIMCgRzaXplGAIgASgDEhEKCXRydW5jYXRlZBgDIAEoCBIRCglpc19iaW5hcnkYBCABKAgSEAoIYmxvYl9zaGEYBSABKAkSEAoIbGFuZ3VhZ2UYBiABKAkiUQoSTGlzdENvbW1pdHNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSCwoDcmVmGAIgASgJEg0KBWxpbWl0GAMgASgFEg4KBm9mZnNldBgEIAEoBSJRChNMaXN0Q29tbWl0c1Jlc3BvbnNlEigKB2NvbW1pdHMYASADKAsyFy5naXRjaGF0LnYxLkNvbW1pdEVudHJ5EhAKCGhhc19tb3JlGAIgASgIIskBCgtDb21taXRFbnRyeRILCgNzaGEYASABKAkSEQoJc2hvcnRfc2hhGAIgASgJEg8KB21lc3NhZ2UYAyABKAkSEwoLYXV0aG9yX25hbWUYBCABKAkSFAoMYXV0aG9yX2VtYWlsGAUgASgJEhMKC2F1dGhvcl90aW1lGAYgASgDEhUKDWZpbGVzX2NoYW5nZWQYByABKAUSEQoJYWRkaXRpb25zGAggASgFEhEKCWRlbGV0aW9ucxgJIAEoBRIMCgRib2R5GAogASgJIj0KD0dldEJsYW1lUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIjgKEEdldEJsYW1lUmVzcG9uc2USJAoFbGluZXMYASADKAsyFS5naXRjaGF0LnYxLkJsYW1lTGluZSJ+CglCbGFtZUxpbmUSDAoEdGV4dBgBIAEoCRITCgthdXRob3JfbmFtZRgCIAEoCRIUCgxhdXRob3JfZW1haWwYAyABKAkSDAoEZGF0ZRgEIAEoAxISCgpjb21taXRfc2hhGAUgASgJEhYKDmNvbW1pdF9tZXNzYWdlGAYgASgJIk0KFkNvbXBhcmVCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRIQCghiYXNlX3JlZhgCIAEoCRIQCghoZWFkX3JlZhgDIAEoCSJzChdDb21wYXJlQnJhbmNoZXNSZXNwb25zZRImCgVmaWxlcxgBIAMoCzIXLmdpdGNoYXQudjEuQ2hhbmdlZEZpbGUSFwoPdG90YWxfYWRkaXRpb25zGAIgASgFEhcKD3RvdGFsX2RlbGV0aW9ucxgDIAEoBSJRCgtDaGFuZ2VkRmlsZRIMCgRwYXRoGAEgASgJEg4KBnN0YXR1cxgCIAEoCRIRCglhZGRpdGlvbnMYAyABKAUSEQoJZGVsZXRpb25zGAQgASgFIlEKDkdldERpZmZSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSEAoIZnJvbV9yZWYYAiABKAkSDgoGdG9fcmVmGAMgASgJEgwKBHBhdGgYBCABKAkihgEKD0dldERpZmZSZXNwb25zZRIUCgx1bmlmaWVkX2RpZmYYASABKAkSEwoLZnJvbV9jb21taXQYAiABKAkSEQoJdG9fY29tbWl0GAMgASgJEg0KBWVtcHR5GAQgASgIEiYKBWZpbGVzGAUgAygLMhcuZ2l0Y2hhdC52MS5DaGFuZ2VkRmlsZSqCAQoJRW50cnlUeXBlEhoKFkVOVFJZX1RZUEVfVU5TUEVDSUZJRUQQABITCg9FTlRSWV9UWVBFX0ZJTEUQARISCg5FTlRSWV9UWVBFX0RJUhACEhYKEkVOVFJZX1RZUEVfU1lNTElOSxADEhgKFEVOVFJZX1RZUEVfU1VCTU9EVUxFEAQy7AQKC1JlcG9TZXJ2aWNlEkgKCUxpc3RSZXBvcxIcLmdpdGNoYXQudjEuTGlzdFJlcG9zUmVxdWVzdBodLmdpdGNoYXQudjEuTGlzdFJlcG9zUmVzcG9uc2USUQoMTGlzdEJyYW5jaGVzEh8uZ2l0Y2hhdC52MS5MaXN0QnJhbmNoZXNSZXF1ZXN0GiAuZ2l0Y2hhdC52MS5MaXN0QnJhbmNoZXNSZXNwb25zZRJFCghMaXN0VHJlZRIbLmdpdGNoYXQudjEuTGlzdFRyZWVSZXF1ZXN0GhwuZ2l0Y2hhdC52MS5MaXN0VHJlZVJlc3BvbnNlEkIKB0dldEZpbGUSGi5naXRjaGF0LnYxLkdldEZpbGVSZXF1ZXN0GhsuZ2l0Y2hhdC52MS5HZXRGaWxlUmVzcG9uc2USTgoLTGlzdENvbW1pdHMSHi5naXRjaGF0LnYxLkxpc3RDb21taXRzUmVxdWVzdBofLmdpdGNoYXQudjEuTGlzdENvbW1pdHNSZXNwb25zZRJFCghHZXRCbGFtZRIbLmdpdGNoYXQudjEuR2V0QmxhbWVSZXF1ZXN0GhwuZ2l0Y2hhdC52MS5HZXRCbGFtZVJlc3BvbnNlEloKD0NvbXBhcmVCcmFuY2hlcxIiLmdpdGNoYXQudjEuQ29tcGFyZUJyYW5jaGVzUmVxdWVzdBojLmdpdGNoYXQudjEuQ29tcGFyZUJyYW5jaGVzUmVzcG9uc2USQgoHR2V0RGlmZhIaLmdpdGNoYXQudjEuR2V0RGlmZlJlcXVlc3QaGy5naXRjaGF0LnYxLkdldERpZmZSZXNwb25zZUKdAQoOY29tLmdpdGNoYXQudjFCCVJlcG9Qcm90b1ABWjdnaXRodWIuY29tL3BkZXJzMDEvZ2l0LWNoYXQvZ2VuL2dvL2dpdGNoYXQvdjE7Z2l0Y2hhdHYxogIDR1hYqgIKR2l0Y2hhdC5WMcoCCkdpdGNoYXRcVjHiAhZHaXRjaGF0XFYxXEdQQk1ldGFkYXRh6gILR2l0Y2hhdDo6VjFiBnByb3RvMw");
+  fileDesc("ChVnaXRjaGF0L3YxL3JlcG8ucHJvdG8SCmdpdGNoYXQudjEiTgoEUmVwbxIKCgJpZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIWCg5kZWZhdWx0X2JyYW5jaBgDIAEoCRITCgtoZWFkX2NvbW1pdBgEIAEoCSISChBMaXN0UmVwb3NSZXF1ZXN0IjQKEUxpc3RSZXBvc1Jlc3BvbnNlEh8KBXJlcG9zGAEgAygLMhAuZ2l0Y2hhdC52MS5SZXBvIiYKE0xpc3RCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCSI8ChRMaXN0QnJhbmNoZXNSZXNwb25zZRIkCghicmFuY2hlcxgBIAMoCzISLmdpdGNoYXQudjEuQnJhbmNoIk8KBkJyYW5jaBIMCgRuYW1lGAEgASgJEg4KBmNvbW1pdBgCIAEoCRIWCg5jb21taXR0ZXJfdGltZRgDIAEoAxIPCgdzdWJqZWN0GAQgASgJIj0KD0xpc3RUcmVlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIlAKEExpc3RUcmVlUmVzcG9uc2USJgoHZW50cmllcxgBIAMoCzIVLmdpdGNoYXQudjEuVHJlZUVudHJ5EhQKDHJlZl9yZXNvbHZlZBgCIAEoCSJeCglUcmVlRW50cnkSDAoEbmFtZRgBIAEoCRIjCgR0eXBlGAIgASgOMhUuZ2l0Y2hhdC52MS5FbnRyeVR5cGUSDAoEc2l6ZRgDIAEoAxIQCghibG9iX3NoYRgEIAEoCSJPCg5HZXRGaWxlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJEhEKCW1heF9ieXRlcxgEIAEoAyJ6Cg9HZXRGaWxlUmVzcG9uc2USDwoHY29udGVudBgBIAEoDBIMCgRzaXplGAIgASgDEhEKCXRydW5jYXRlZBgDIAEoCBIRCglpc19iaW5hcnkYBCABKAgSEAoIYmxvYl9zaGEYBSABKAkSEAoIbGFuZ3VhZ2UYBiABKAkiUQoSTGlzdENvbW1pdHNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSCwoDcmVmGAIgASgJEg0KBWxpbWl0GAMgASgFEg4KBm9mZnNldBgEIAEoBSJRChNMaXN0Q29tbWl0c1Jlc3BvbnNlEigKB2NvbW1pdHMYASADKAsyFy5naXRjaGF0LnYxLkNvbW1pdEVudHJ5EhAKCGhhc19tb3JlGAIgASgIIskBCgtDb21taXRFbnRyeRILCgNzaGEYASABKAkSEQoJc2hvcnRfc2hhGAIgASgJEg8KB21lc3NhZ2UYAyABKAkSEwoLYXV0aG9yX25hbWUYBCABKAkSFAoMYXV0aG9yX2VtYWlsGAUgASgJEhMKC2F1dGhvcl90aW1lGAYgASgDEhUKDWZpbGVzX2NoYW5nZWQYByABKAUSEQoJYWRkaXRpb25zGAggASgFEhEKCWRlbGV0aW9ucxgJIAEoBRIMCgRib2R5GAogASgJIj0KD0dldEJsYW1lUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIjgKEEdldEJsYW1lUmVzcG9uc2USJAoFbGluZXMYASADKAsyFS5naXRjaGF0LnYxLkJsYW1lTGluZSJ+CglCbGFtZUxpbmUSDAoEdGV4dBgBIAEoCRITCgthdXRob3JfbmFtZRgCIAEoCRIUCgxhdXRob3JfZW1haWwYAyABKAkSDAoEZGF0ZRgEIAEoAxISCgpjb21taXRfc2hhGAUgASgJEhYKDmNvbW1pdF9tZXNzYWdlGAYgASgJIk0KFkNvbXBhcmVCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRIQCghiYXNlX3JlZhgCIAEoCRIQCghoZWFkX3JlZhgDIAEoCSJzChdDb21wYXJlQnJhbmNoZXNSZXNwb25zZRImCgVmaWxlcxgBIAMoCzIXLmdpdGNoYXQudjEuQ2hhbmdlZEZpbGUSFwoPdG90YWxfYWRkaXRpb25zGAIgASgFEhcKD3RvdGFsX2RlbGV0aW9ucxgDIAEoBSJRCgtDaGFuZ2VkRmlsZRIMCgRwYXRoGAEgASgJEg4KBnN0YXR1cxgCIAEoCRIRCglhZGRpdGlvbnMYAyABKAUSEQoJZGVsZXRpb25zGAQgASgFIlEKDkdldERpZmZSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSEAoIZnJvbV9yZWYYAiABKAkSDgoGdG9fcmVmGAMgASgJEgwKBHBhdGgYBCABKAkihgEKD0dldERpZmZSZXNwb25zZRIUCgx1bmlmaWVkX2RpZmYYASABKAkSEwoLZnJvbV9jb21taXQYAiABKAkSEQoJdG9fY29tbWl0GAMgASgJEg0KBWVtcHR5GAQgASgIEiYKBWZpbGVzGAUgAygLMhcuZ2l0Y2hhdC52MS5DaGFuZ2VkRmlsZSIjChBHZXRTdGF0dXNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkikAEKEUdldFN0YXR1c1Jlc3BvbnNlEiYKBnN0YWdlZBgBIAMoCzIWLmdpdGNoYXQudjEuU3RhdHVzRmlsZRIoCgh1bnN0YWdlZBgCIAMoCzIWLmdpdGNoYXQudjEuU3RhdHVzRmlsZRIpCgl1bnRyYWNrZWQYAyADKAsyFi5naXRjaGF0LnYxLlN0YXR1c0ZpbGUiKgoKU3RhdHVzRmlsZRIMCgRwYXRoGAEgASgJEg4KBnN0YXR1cxgCIAEoCSI6ChlHZXRXb3JraW5nVHJlZURpZmZSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSDAoEcGF0aBgCIAEoCSJBChpHZXRXb3JraW5nVHJlZURpZmZSZXNwb25zZRIUCgx1bmlmaWVkX2RpZmYYASABKAkSDQoFZW1wdHkYAiABKAgqggEKCUVudHJ5VHlwZRIaChZFTlRSWV9UWVBFX1VOU1BFQ0lGSUVEEAASEwoPRU5UUllfVFlQRV9GSUxFEAESEgoORU5UUllfVFlQRV9ESVIQAhIWChJFTlRSWV9UWVBFX1NZTUxJTksQAxIYChRFTlRSWV9UWVBFX1NVQk1PRFVMRRAEMpsGCgtSZXBvU2VydmljZRJICglMaXN0UmVwb3MSHC5naXRjaGF0LnYxLkxpc3RSZXBvc1JlcXVlc3QaHS5naXRjaGF0LnYxLkxpc3RSZXBvc1Jlc3BvbnNlElEKDExpc3RCcmFuY2hlcxIfLmdpdGNoYXQudjEuTGlzdEJyYW5jaGVzUmVxdWVzdBogLmdpdGNoYXQudjEuTGlzdEJyYW5jaGVzUmVzcG9uc2USRQoITGlzdFRyZWUSGy5naXRjaGF0LnYxLkxpc3RUcmVlUmVxdWVzdBocLmdpdGNoYXQudjEuTGlzdFRyZWVSZXNwb25zZRJCCgdHZXRGaWxlEhouZ2l0Y2hhdC52MS5HZXRGaWxlUmVxdWVzdBobLmdpdGNoYXQudjEuR2V0RmlsZVJlc3BvbnNlEk4KC0xpc3RDb21taXRzEh4uZ2l0Y2hhdC52MS5MaXN0Q29tbWl0c1JlcXVlc3QaHy5naXRjaGF0LnYxLkxpc3RDb21taXRzUmVzcG9uc2USRQoIR2V0QmxhbWUSGy5naXRjaGF0LnYxLkdldEJsYW1lUmVxdWVzdBocLmdpdGNoYXQudjEuR2V0QmxhbWVSZXNwb25zZRJaCg9Db21wYXJlQnJhbmNoZXMSIi5naXRjaGF0LnYxLkNvbXBhcmVCcmFuY2hlc1JlcXVlc3QaIy5naXRjaGF0LnYxLkNvbXBhcmVCcmFuY2hlc1Jlc3BvbnNlEkIKB0dldERpZmYSGi5naXRjaGF0LnYxLkdldERpZmZSZXF1ZXN0GhsuZ2l0Y2hhdC52MS5HZXREaWZmUmVzcG9uc2USSAoJR2V0U3RhdHVzEhwuZ2l0Y2hhdC52MS5HZXRTdGF0dXNSZXF1ZXN0Gh0uZ2l0Y2hhdC52MS5HZXRTdGF0dXNSZXNwb25zZRJjChJHZXRXb3JraW5nVHJlZURpZmYSJS5naXRjaGF0LnYxLkdldFdvcmtpbmdUcmVlRGlmZlJlcXVlc3QaJi5naXRjaGF0LnYxLkdldFdvcmtpbmdUcmVlRGlmZlJlc3BvbnNlQp0BCg5jb20uZ2l0Y2hhdC52MUIJUmVwb1Byb3RvUAFaN2dpdGh1Yi5jb20vcGRlcnMwMS9naXQtY2hhdC9nZW4vZ28vZ2l0Y2hhdC92MTtnaXRjaGF0djGiAgNHWFiqAgpHaXRjaGF0LlYxygIKR2l0Y2hhdFxWMeICFkdpdGNoYXRcVjFcR1BCTWV0YWRhdGHqAgtHaXRjaGF0OjpWMWIGcHJvdG8z");
 
 /**
  * ─── Repo ───────────────────────────────────────────────────────────────
@@ -763,6 +763,124 @@ export const GetDiffResponseSchema: GenMessage<GetDiffResponse> = /*@__PURE__*/
   messageDesc(file_gitchat_v1_repo, 21);
 
 /**
+ * ─── GetStatus ──────────────────────────────────────────────────────────
+ *
+ * @generated from message gitchat.v1.GetStatusRequest
+ */
+export type GetStatusRequest = Message<"gitchat.v1.GetStatusRequest"> & {
+  /**
+   * @generated from field: string repo_id = 1;
+   */
+  repoId: string;
+};
+
+/**
+ * Describes the message gitchat.v1.GetStatusRequest.
+ * Use `create(GetStatusRequestSchema)` to create a new message.
+ */
+export const GetStatusRequestSchema: GenMessage<GetStatusRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 22);
+
+/**
+ * @generated from message gitchat.v1.GetStatusResponse
+ */
+export type GetStatusResponse = Message<"gitchat.v1.GetStatusResponse"> & {
+  /**
+   * @generated from field: repeated gitchat.v1.StatusFile staged = 1;
+   */
+  staged: StatusFile[];
+
+  /**
+   * @generated from field: repeated gitchat.v1.StatusFile unstaged = 2;
+   */
+  unstaged: StatusFile[];
+
+  /**
+   * @generated from field: repeated gitchat.v1.StatusFile untracked = 3;
+   */
+  untracked: StatusFile[];
+};
+
+/**
+ * Describes the message gitchat.v1.GetStatusResponse.
+ * Use `create(GetStatusResponseSchema)` to create a new message.
+ */
+export const GetStatusResponseSchema: GenMessage<GetStatusResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 23);
+
+/**
+ * @generated from message gitchat.v1.StatusFile
+ */
+export type StatusFile = Message<"gitchat.v1.StatusFile"> & {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path: string;
+
+  /**
+   * "added", "modified", "deleted", "copied"
+   *
+   * @generated from field: string status = 2;
+   */
+  status: string;
+};
+
+/**
+ * Describes the message gitchat.v1.StatusFile.
+ * Use `create(StatusFileSchema)` to create a new message.
+ */
+export const StatusFileSchema: GenMessage<StatusFile> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 24);
+
+/**
+ * ─── GetWorkingTreeDiff ─────────────────────────────────────────────────
+ *
+ * @generated from message gitchat.v1.GetWorkingTreeDiffRequest
+ */
+export type GetWorkingTreeDiffRequest = Message<"gitchat.v1.GetWorkingTreeDiffRequest"> & {
+  /**
+   * @generated from field: string repo_id = 1;
+   */
+  repoId: string;
+
+  /**
+   * file path (required)
+   *
+   * @generated from field: string path = 2;
+   */
+  path: string;
+};
+
+/**
+ * Describes the message gitchat.v1.GetWorkingTreeDiffRequest.
+ * Use `create(GetWorkingTreeDiffRequestSchema)` to create a new message.
+ */
+export const GetWorkingTreeDiffRequestSchema: GenMessage<GetWorkingTreeDiffRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 25);
+
+/**
+ * @generated from message gitchat.v1.GetWorkingTreeDiffResponse
+ */
+export type GetWorkingTreeDiffResponse = Message<"gitchat.v1.GetWorkingTreeDiffResponse"> & {
+  /**
+   * @generated from field: string unified_diff = 1;
+   */
+  unifiedDiff: string;
+
+  /**
+   * @generated from field: bool empty = 2;
+   */
+  empty: boolean;
+};
+
+/**
+ * Describes the message gitchat.v1.GetWorkingTreeDiffResponse.
+ * Use `create(GetWorkingTreeDiffResponseSchema)` to create a new message.
+ */
+export const GetWorkingTreeDiffResponseSchema: GenMessage<GetWorkingTreeDiffResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 26);
+
+/**
  * @generated from enum gitchat.v1.EntryType
  */
 export enum EntryType {
@@ -906,6 +1024,28 @@ export const RepoService: GenService<{
     methodKind: "unary";
     input: typeof GetDiffRequestSchema;
     output: typeof GetDiffResponseSchema;
+  },
+  /**
+   * GetStatus returns the working tree status: staged, unstaged, and
+   * untracked files. Diffs are fetched separately via GetWorkingTreeDiff.
+   *
+   * @generated from rpc gitchat.v1.RepoService.GetStatus
+   */
+  getStatus: {
+    methodKind: "unary";
+    input: typeof GetStatusRequestSchema;
+    output: typeof GetStatusResponseSchema;
+  },
+  /**
+   * GetWorkingTreeDiff returns a unified diff between HEAD and the
+   * working tree for a single file.
+   *
+   * @generated from rpc gitchat.v1.RepoService.GetWorkingTreeDiff
+   */
+  getWorkingTreeDiff: {
+    methodKind: "unary";
+    input: typeof GetWorkingTreeDiffRequestSchema;
+    output: typeof GetWorkingTreeDiffResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_gitchat_v1_repo, 0);

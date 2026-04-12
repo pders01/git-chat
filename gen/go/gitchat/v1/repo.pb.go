@@ -1477,6 +1477,268 @@ func (x *GetDiffResponse) GetFiles() []*ChangedFile {
 	return nil
 }
 
+// ─── GetStatus ──────────────────────────────────────────────────────────
+type GetStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RepoId        string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetStatusRequest) Reset() {
+	*x = GetStatusRequest{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetStatusRequest) ProtoMessage() {}
+
+func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetStatusRequest) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *GetStatusRequest) GetRepoId() string {
+	if x != nil {
+		return x.RepoId
+	}
+	return ""
+}
+
+type GetStatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Staged        []*StatusFile          `protobuf:"bytes,1,rep,name=staged,proto3" json:"staged,omitempty"`
+	Unstaged      []*StatusFile          `protobuf:"bytes,2,rep,name=unstaged,proto3" json:"unstaged,omitempty"`
+	Untracked     []*StatusFile          `protobuf:"bytes,3,rep,name=untracked,proto3" json:"untracked,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetStatusResponse) Reset() {
+	*x = GetStatusResponse{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetStatusResponse) ProtoMessage() {}
+
+func (x *GetStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetStatusResponse) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *GetStatusResponse) GetStaged() []*StatusFile {
+	if x != nil {
+		return x.Staged
+	}
+	return nil
+}
+
+func (x *GetStatusResponse) GetUnstaged() []*StatusFile {
+	if x != nil {
+		return x.Unstaged
+	}
+	return nil
+}
+
+func (x *GetStatusResponse) GetUntracked() []*StatusFile {
+	if x != nil {
+		return x.Untracked
+	}
+	return nil
+}
+
+type StatusFile struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // "added", "modified", "deleted", "copied"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatusFile) Reset() {
+	*x = StatusFile{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatusFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatusFile) ProtoMessage() {}
+
+func (x *StatusFile) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatusFile.ProtoReflect.Descriptor instead.
+func (*StatusFile) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *StatusFile) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *StatusFile) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+// ─── GetWorkingTreeDiff ─────────────────────────────────────────────────
+type GetWorkingTreeDiffRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RepoId        string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"` // file path (required)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWorkingTreeDiffRequest) Reset() {
+	*x = GetWorkingTreeDiffRequest{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWorkingTreeDiffRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWorkingTreeDiffRequest) ProtoMessage() {}
+
+func (x *GetWorkingTreeDiffRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWorkingTreeDiffRequest.ProtoReflect.Descriptor instead.
+func (*GetWorkingTreeDiffRequest) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *GetWorkingTreeDiffRequest) GetRepoId() string {
+	if x != nil {
+		return x.RepoId
+	}
+	return ""
+}
+
+func (x *GetWorkingTreeDiffRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type GetWorkingTreeDiffResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UnifiedDiff   string                 `protobuf:"bytes,1,opt,name=unified_diff,json=unifiedDiff,proto3" json:"unified_diff,omitempty"`
+	Empty         bool                   `protobuf:"varint,2,opt,name=empty,proto3" json:"empty,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWorkingTreeDiffResponse) Reset() {
+	*x = GetWorkingTreeDiffResponse{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWorkingTreeDiffResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWorkingTreeDiffResponse) ProtoMessage() {}
+
+func (x *GetWorkingTreeDiffResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWorkingTreeDiffResponse.ProtoReflect.Descriptor instead.
+func (*GetWorkingTreeDiffResponse) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *GetWorkingTreeDiffResponse) GetUnifiedDiff() string {
+	if x != nil {
+		return x.UnifiedDiff
+	}
+	return ""
+}
+
+func (x *GetWorkingTreeDiffResponse) GetEmpty() bool {
+	if x != nil {
+		return x.Empty
+	}
+	return false
+}
+
 var File_gitchat_v1_repo_proto protoreflect.FileDescriptor
 
 const file_gitchat_v1_repo_proto_rawDesc = "" +
@@ -1586,13 +1848,29 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"fromCommit\x12\x1b\n" +
 	"\tto_commit\x18\x03 \x01(\tR\btoCommit\x12\x14\n" +
 	"\x05empty\x18\x04 \x01(\bR\x05empty\x12-\n" +
-	"\x05files\x18\x05 \x03(\v2\x17.gitchat.v1.ChangedFileR\x05files*\x82\x01\n" +
+	"\x05files\x18\x05 \x03(\v2\x17.gitchat.v1.ChangedFileR\x05files\"+\n" +
+	"\x10GetStatusRequest\x12\x17\n" +
+	"\arepo_id\x18\x01 \x01(\tR\x06repoId\"\xad\x01\n" +
+	"\x11GetStatusResponse\x12.\n" +
+	"\x06staged\x18\x01 \x03(\v2\x16.gitchat.v1.StatusFileR\x06staged\x122\n" +
+	"\bunstaged\x18\x02 \x03(\v2\x16.gitchat.v1.StatusFileR\bunstaged\x124\n" +
+	"\tuntracked\x18\x03 \x03(\v2\x16.gitchat.v1.StatusFileR\tuntracked\"8\n" +
+	"\n" +
+	"StatusFile\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"H\n" +
+	"\x19GetWorkingTreeDiffRequest\x12\x17\n" +
+	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"U\n" +
+	"\x1aGetWorkingTreeDiffResponse\x12!\n" +
+	"\funified_diff\x18\x01 \x01(\tR\vunifiedDiff\x12\x14\n" +
+	"\x05empty\x18\x02 \x01(\bR\x05empty*\x82\x01\n" +
 	"\tEntryType\x12\x1a\n" +
 	"\x16ENTRY_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fENTRY_TYPE_FILE\x10\x01\x12\x12\n" +
 	"\x0eENTRY_TYPE_DIR\x10\x02\x12\x16\n" +
 	"\x12ENTRY_TYPE_SYMLINK\x10\x03\x12\x18\n" +
-	"\x14ENTRY_TYPE_SUBMODULE\x10\x042\xec\x04\n" +
+	"\x14ENTRY_TYPE_SUBMODULE\x10\x042\x9b\x06\n" +
 	"\vRepoService\x12H\n" +
 	"\tListRepos\x12\x1c.gitchat.v1.ListReposRequest\x1a\x1d.gitchat.v1.ListReposResponse\x12Q\n" +
 	"\fListBranches\x12\x1f.gitchat.v1.ListBranchesRequest\x1a .gitchat.v1.ListBranchesResponse\x12E\n" +
@@ -1601,7 +1879,9 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\vListCommits\x12\x1e.gitchat.v1.ListCommitsRequest\x1a\x1f.gitchat.v1.ListCommitsResponse\x12E\n" +
 	"\bGetBlame\x12\x1b.gitchat.v1.GetBlameRequest\x1a\x1c.gitchat.v1.GetBlameResponse\x12Z\n" +
 	"\x0fCompareBranches\x12\".gitchat.v1.CompareBranchesRequest\x1a#.gitchat.v1.CompareBranchesResponse\x12B\n" +
-	"\aGetDiff\x12\x1a.gitchat.v1.GetDiffRequest\x1a\x1b.gitchat.v1.GetDiffResponseB\x9d\x01\n" +
+	"\aGetDiff\x12\x1a.gitchat.v1.GetDiffRequest\x1a\x1b.gitchat.v1.GetDiffResponse\x12H\n" +
+	"\tGetStatus\x12\x1c.gitchat.v1.GetStatusRequest\x1a\x1d.gitchat.v1.GetStatusResponse\x12c\n" +
+	"\x12GetWorkingTreeDiff\x12%.gitchat.v1.GetWorkingTreeDiffRequest\x1a&.gitchat.v1.GetWorkingTreeDiffResponseB\x9d\x01\n" +
 	"\x0ecom.gitchat.v1B\tRepoProtoP\x01Z7github.com/pders01/git-chat/gen/go/gitchat/v1;gitchatv1\xa2\x02\x03GXX\xaa\x02\n" +
 	"Gitchat.V1\xca\x02\n" +
 	"Gitchat\\V1\xe2\x02\x16Gitchat\\V1\\GPBMetadata\xea\x02\vGitchat::V1b\x06proto3"
@@ -1619,31 +1899,36 @@ func file_gitchat_v1_repo_proto_rawDescGZIP() []byte {
 }
 
 var file_gitchat_v1_repo_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_gitchat_v1_repo_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_gitchat_v1_repo_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_gitchat_v1_repo_proto_goTypes = []any{
-	(EntryType)(0),                  // 0: gitchat.v1.EntryType
-	(*Repo)(nil),                    // 1: gitchat.v1.Repo
-	(*ListReposRequest)(nil),        // 2: gitchat.v1.ListReposRequest
-	(*ListReposResponse)(nil),       // 3: gitchat.v1.ListReposResponse
-	(*ListBranchesRequest)(nil),     // 4: gitchat.v1.ListBranchesRequest
-	(*ListBranchesResponse)(nil),    // 5: gitchat.v1.ListBranchesResponse
-	(*Branch)(nil),                  // 6: gitchat.v1.Branch
-	(*ListTreeRequest)(nil),         // 7: gitchat.v1.ListTreeRequest
-	(*ListTreeResponse)(nil),        // 8: gitchat.v1.ListTreeResponse
-	(*TreeEntry)(nil),               // 9: gitchat.v1.TreeEntry
-	(*GetFileRequest)(nil),          // 10: gitchat.v1.GetFileRequest
-	(*GetFileResponse)(nil),         // 11: gitchat.v1.GetFileResponse
-	(*ListCommitsRequest)(nil),      // 12: gitchat.v1.ListCommitsRequest
-	(*ListCommitsResponse)(nil),     // 13: gitchat.v1.ListCommitsResponse
-	(*CommitEntry)(nil),             // 14: gitchat.v1.CommitEntry
-	(*GetBlameRequest)(nil),         // 15: gitchat.v1.GetBlameRequest
-	(*GetBlameResponse)(nil),        // 16: gitchat.v1.GetBlameResponse
-	(*BlameLine)(nil),               // 17: gitchat.v1.BlameLine
-	(*CompareBranchesRequest)(nil),  // 18: gitchat.v1.CompareBranchesRequest
-	(*CompareBranchesResponse)(nil), // 19: gitchat.v1.CompareBranchesResponse
-	(*ChangedFile)(nil),             // 20: gitchat.v1.ChangedFile
-	(*GetDiffRequest)(nil),          // 21: gitchat.v1.GetDiffRequest
-	(*GetDiffResponse)(nil),         // 22: gitchat.v1.GetDiffResponse
+	(EntryType)(0),                     // 0: gitchat.v1.EntryType
+	(*Repo)(nil),                       // 1: gitchat.v1.Repo
+	(*ListReposRequest)(nil),           // 2: gitchat.v1.ListReposRequest
+	(*ListReposResponse)(nil),          // 3: gitchat.v1.ListReposResponse
+	(*ListBranchesRequest)(nil),        // 4: gitchat.v1.ListBranchesRequest
+	(*ListBranchesResponse)(nil),       // 5: gitchat.v1.ListBranchesResponse
+	(*Branch)(nil),                     // 6: gitchat.v1.Branch
+	(*ListTreeRequest)(nil),            // 7: gitchat.v1.ListTreeRequest
+	(*ListTreeResponse)(nil),           // 8: gitchat.v1.ListTreeResponse
+	(*TreeEntry)(nil),                  // 9: gitchat.v1.TreeEntry
+	(*GetFileRequest)(nil),             // 10: gitchat.v1.GetFileRequest
+	(*GetFileResponse)(nil),            // 11: gitchat.v1.GetFileResponse
+	(*ListCommitsRequest)(nil),         // 12: gitchat.v1.ListCommitsRequest
+	(*ListCommitsResponse)(nil),        // 13: gitchat.v1.ListCommitsResponse
+	(*CommitEntry)(nil),                // 14: gitchat.v1.CommitEntry
+	(*GetBlameRequest)(nil),            // 15: gitchat.v1.GetBlameRequest
+	(*GetBlameResponse)(nil),           // 16: gitchat.v1.GetBlameResponse
+	(*BlameLine)(nil),                  // 17: gitchat.v1.BlameLine
+	(*CompareBranchesRequest)(nil),     // 18: gitchat.v1.CompareBranchesRequest
+	(*CompareBranchesResponse)(nil),    // 19: gitchat.v1.CompareBranchesResponse
+	(*ChangedFile)(nil),                // 20: gitchat.v1.ChangedFile
+	(*GetDiffRequest)(nil),             // 21: gitchat.v1.GetDiffRequest
+	(*GetDiffResponse)(nil),            // 22: gitchat.v1.GetDiffResponse
+	(*GetStatusRequest)(nil),           // 23: gitchat.v1.GetStatusRequest
+	(*GetStatusResponse)(nil),          // 24: gitchat.v1.GetStatusResponse
+	(*StatusFile)(nil),                 // 25: gitchat.v1.StatusFile
+	(*GetWorkingTreeDiffRequest)(nil),  // 26: gitchat.v1.GetWorkingTreeDiffRequest
+	(*GetWorkingTreeDiffResponse)(nil), // 27: gitchat.v1.GetWorkingTreeDiffResponse
 }
 var file_gitchat_v1_repo_proto_depIdxs = []int32{
 	1,  // 0: gitchat.v1.ListReposResponse.repos:type_name -> gitchat.v1.Repo
@@ -1654,27 +1939,34 @@ var file_gitchat_v1_repo_proto_depIdxs = []int32{
 	17, // 5: gitchat.v1.GetBlameResponse.lines:type_name -> gitchat.v1.BlameLine
 	20, // 6: gitchat.v1.CompareBranchesResponse.files:type_name -> gitchat.v1.ChangedFile
 	20, // 7: gitchat.v1.GetDiffResponse.files:type_name -> gitchat.v1.ChangedFile
-	2,  // 8: gitchat.v1.RepoService.ListRepos:input_type -> gitchat.v1.ListReposRequest
-	4,  // 9: gitchat.v1.RepoService.ListBranches:input_type -> gitchat.v1.ListBranchesRequest
-	7,  // 10: gitchat.v1.RepoService.ListTree:input_type -> gitchat.v1.ListTreeRequest
-	10, // 11: gitchat.v1.RepoService.GetFile:input_type -> gitchat.v1.GetFileRequest
-	12, // 12: gitchat.v1.RepoService.ListCommits:input_type -> gitchat.v1.ListCommitsRequest
-	15, // 13: gitchat.v1.RepoService.GetBlame:input_type -> gitchat.v1.GetBlameRequest
-	18, // 14: gitchat.v1.RepoService.CompareBranches:input_type -> gitchat.v1.CompareBranchesRequest
-	21, // 15: gitchat.v1.RepoService.GetDiff:input_type -> gitchat.v1.GetDiffRequest
-	3,  // 16: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
-	5,  // 17: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
-	8,  // 18: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
-	11, // 19: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
-	13, // 20: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
-	16, // 21: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
-	19, // 22: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
-	22, // 23: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
-	16, // [16:24] is the sub-list for method output_type
-	8,  // [8:16] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	25, // 8: gitchat.v1.GetStatusResponse.staged:type_name -> gitchat.v1.StatusFile
+	25, // 9: gitchat.v1.GetStatusResponse.unstaged:type_name -> gitchat.v1.StatusFile
+	25, // 10: gitchat.v1.GetStatusResponse.untracked:type_name -> gitchat.v1.StatusFile
+	2,  // 11: gitchat.v1.RepoService.ListRepos:input_type -> gitchat.v1.ListReposRequest
+	4,  // 12: gitchat.v1.RepoService.ListBranches:input_type -> gitchat.v1.ListBranchesRequest
+	7,  // 13: gitchat.v1.RepoService.ListTree:input_type -> gitchat.v1.ListTreeRequest
+	10, // 14: gitchat.v1.RepoService.GetFile:input_type -> gitchat.v1.GetFileRequest
+	12, // 15: gitchat.v1.RepoService.ListCommits:input_type -> gitchat.v1.ListCommitsRequest
+	15, // 16: gitchat.v1.RepoService.GetBlame:input_type -> gitchat.v1.GetBlameRequest
+	18, // 17: gitchat.v1.RepoService.CompareBranches:input_type -> gitchat.v1.CompareBranchesRequest
+	21, // 18: gitchat.v1.RepoService.GetDiff:input_type -> gitchat.v1.GetDiffRequest
+	23, // 19: gitchat.v1.RepoService.GetStatus:input_type -> gitchat.v1.GetStatusRequest
+	26, // 20: gitchat.v1.RepoService.GetWorkingTreeDiff:input_type -> gitchat.v1.GetWorkingTreeDiffRequest
+	3,  // 21: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
+	5,  // 22: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
+	8,  // 23: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
+	11, // 24: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
+	13, // 25: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
+	16, // 26: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
+	19, // 27: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
+	22, // 28: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
+	24, // 29: gitchat.v1.RepoService.GetStatus:output_type -> gitchat.v1.GetStatusResponse
+	27, // 30: gitchat.v1.RepoService.GetWorkingTreeDiff:output_type -> gitchat.v1.GetWorkingTreeDiffResponse
+	21, // [21:31] is the sub-list for method output_type
+	11, // [11:21] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_gitchat_v1_repo_proto_init() }
@@ -1688,7 +1980,7 @@ func file_gitchat_v1_repo_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gitchat_v1_repo_proto_rawDesc), len(file_gitchat_v1_repo_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   22,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -51,6 +51,11 @@ const (
 	RepoServiceCompareBranchesProcedure = "/gitchat.v1.RepoService/CompareBranches"
 	// RepoServiceGetDiffProcedure is the fully-qualified name of the RepoService's GetDiff RPC.
 	RepoServiceGetDiffProcedure = "/gitchat.v1.RepoService/GetDiff"
+	// RepoServiceGetStatusProcedure is the fully-qualified name of the RepoService's GetStatus RPC.
+	RepoServiceGetStatusProcedure = "/gitchat.v1.RepoService/GetStatus"
+	// RepoServiceGetWorkingTreeDiffProcedure is the fully-qualified name of the RepoService's
+	// GetWorkingTreeDiff RPC.
+	RepoServiceGetWorkingTreeDiffProcedure = "/gitchat.v1.RepoService/GetWorkingTreeDiff"
 )
 
 // RepoServiceClient is a client for the gitchat.v1.RepoService service.
@@ -88,6 +93,12 @@ type RepoServiceClient interface {
 	// The returned diff is a plain text unified patch suitable for
 	// Shiki's `diff` grammar or the @pierre/diffs renderer.
 	GetDiff(context.Context, *connect.Request[v1.GetDiffRequest]) (*connect.Response[v1.GetDiffResponse], error)
+	// GetStatus returns the working tree status: staged, unstaged, and
+	// untracked files. Diffs are fetched separately via GetWorkingTreeDiff.
+	GetStatus(context.Context, *connect.Request[v1.GetStatusRequest]) (*connect.Response[v1.GetStatusResponse], error)
+	// GetWorkingTreeDiff returns a unified diff between HEAD and the
+	// working tree for a single file.
+	GetWorkingTreeDiff(context.Context, *connect.Request[v1.GetWorkingTreeDiffRequest]) (*connect.Response[v1.GetWorkingTreeDiffResponse], error)
 }
 
 // NewRepoServiceClient constructs a client for the gitchat.v1.RepoService service. By default, it
@@ -149,19 +160,33 @@ func NewRepoServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(repoServiceMethods.ByName("GetDiff")),
 			connect.WithClientOptions(opts...),
 		),
+		getStatus: connect.NewClient[v1.GetStatusRequest, v1.GetStatusResponse](
+			httpClient,
+			baseURL+RepoServiceGetStatusProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("GetStatus")),
+			connect.WithClientOptions(opts...),
+		),
+		getWorkingTreeDiff: connect.NewClient[v1.GetWorkingTreeDiffRequest, v1.GetWorkingTreeDiffResponse](
+			httpClient,
+			baseURL+RepoServiceGetWorkingTreeDiffProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("GetWorkingTreeDiff")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // repoServiceClient implements RepoServiceClient.
 type repoServiceClient struct {
-	listRepos       *connect.Client[v1.ListReposRequest, v1.ListReposResponse]
-	listBranches    *connect.Client[v1.ListBranchesRequest, v1.ListBranchesResponse]
-	listTree        *connect.Client[v1.ListTreeRequest, v1.ListTreeResponse]
-	getFile         *connect.Client[v1.GetFileRequest, v1.GetFileResponse]
-	listCommits     *connect.Client[v1.ListCommitsRequest, v1.ListCommitsResponse]
-	getBlame        *connect.Client[v1.GetBlameRequest, v1.GetBlameResponse]
-	compareBranches *connect.Client[v1.CompareBranchesRequest, v1.CompareBranchesResponse]
-	getDiff         *connect.Client[v1.GetDiffRequest, v1.GetDiffResponse]
+	listRepos          *connect.Client[v1.ListReposRequest, v1.ListReposResponse]
+	listBranches       *connect.Client[v1.ListBranchesRequest, v1.ListBranchesResponse]
+	listTree           *connect.Client[v1.ListTreeRequest, v1.ListTreeResponse]
+	getFile            *connect.Client[v1.GetFileRequest, v1.GetFileResponse]
+	listCommits        *connect.Client[v1.ListCommitsRequest, v1.ListCommitsResponse]
+	getBlame           *connect.Client[v1.GetBlameRequest, v1.GetBlameResponse]
+	compareBranches    *connect.Client[v1.CompareBranchesRequest, v1.CompareBranchesResponse]
+	getDiff            *connect.Client[v1.GetDiffRequest, v1.GetDiffResponse]
+	getStatus          *connect.Client[v1.GetStatusRequest, v1.GetStatusResponse]
+	getWorkingTreeDiff *connect.Client[v1.GetWorkingTreeDiffRequest, v1.GetWorkingTreeDiffResponse]
 }
 
 // ListRepos calls gitchat.v1.RepoService.ListRepos.
@@ -204,6 +229,16 @@ func (c *repoServiceClient) GetDiff(ctx context.Context, req *connect.Request[v1
 	return c.getDiff.CallUnary(ctx, req)
 }
 
+// GetStatus calls gitchat.v1.RepoService.GetStatus.
+func (c *repoServiceClient) GetStatus(ctx context.Context, req *connect.Request[v1.GetStatusRequest]) (*connect.Response[v1.GetStatusResponse], error) {
+	return c.getStatus.CallUnary(ctx, req)
+}
+
+// GetWorkingTreeDiff calls gitchat.v1.RepoService.GetWorkingTreeDiff.
+func (c *repoServiceClient) GetWorkingTreeDiff(ctx context.Context, req *connect.Request[v1.GetWorkingTreeDiffRequest]) (*connect.Response[v1.GetWorkingTreeDiffResponse], error) {
+	return c.getWorkingTreeDiff.CallUnary(ctx, req)
+}
+
 // RepoServiceHandler is an implementation of the gitchat.v1.RepoService service.
 type RepoServiceHandler interface {
 	// ListRepos returns every repository the server has been configured to
@@ -239,6 +274,12 @@ type RepoServiceHandler interface {
 	// The returned diff is a plain text unified patch suitable for
 	// Shiki's `diff` grammar or the @pierre/diffs renderer.
 	GetDiff(context.Context, *connect.Request[v1.GetDiffRequest]) (*connect.Response[v1.GetDiffResponse], error)
+	// GetStatus returns the working tree status: staged, unstaged, and
+	// untracked files. Diffs are fetched separately via GetWorkingTreeDiff.
+	GetStatus(context.Context, *connect.Request[v1.GetStatusRequest]) (*connect.Response[v1.GetStatusResponse], error)
+	// GetWorkingTreeDiff returns a unified diff between HEAD and the
+	// working tree for a single file.
+	GetWorkingTreeDiff(context.Context, *connect.Request[v1.GetWorkingTreeDiffRequest]) (*connect.Response[v1.GetWorkingTreeDiffResponse], error)
 }
 
 // NewRepoServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -296,6 +337,18 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(repoServiceMethods.ByName("GetDiff")),
 		connect.WithHandlerOptions(opts...),
 	)
+	repoServiceGetStatusHandler := connect.NewUnaryHandler(
+		RepoServiceGetStatusProcedure,
+		svc.GetStatus,
+		connect.WithSchema(repoServiceMethods.ByName("GetStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
+	repoServiceGetWorkingTreeDiffHandler := connect.NewUnaryHandler(
+		RepoServiceGetWorkingTreeDiffProcedure,
+		svc.GetWorkingTreeDiff,
+		connect.WithSchema(repoServiceMethods.ByName("GetWorkingTreeDiff")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/gitchat.v1.RepoService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RepoServiceListReposProcedure:
@@ -314,6 +367,10 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 			repoServiceCompareBranchesHandler.ServeHTTP(w, r)
 		case RepoServiceGetDiffProcedure:
 			repoServiceGetDiffHandler.ServeHTTP(w, r)
+		case RepoServiceGetStatusProcedure:
+			repoServiceGetStatusHandler.ServeHTTP(w, r)
+		case RepoServiceGetWorkingTreeDiffProcedure:
+			repoServiceGetWorkingTreeDiffHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -353,4 +410,12 @@ func (UnimplementedRepoServiceHandler) CompareBranches(context.Context, *connect
 
 func (UnimplementedRepoServiceHandler) GetDiff(context.Context, *connect.Request[v1.GetDiffRequest]) (*connect.Response[v1.GetDiffResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.GetDiff is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) GetStatus(context.Context, *connect.Request[v1.GetStatusRequest]) (*connect.Response[v1.GetStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.GetStatus is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) GetWorkingTreeDiff(context.Context, *connect.Request[v1.GetWorkingTreeDiffRequest]) (*connect.Response[v1.GetWorkingTreeDiffResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.GetWorkingTreeDiff is not implemented"))
 }

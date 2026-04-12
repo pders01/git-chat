@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -559,6 +560,86 @@ func changedPathsWithFiles(from, to *object.Commit) ([]string, []*gitchatv1.Chan
 	return paths, files, nil
 }
 
+// GetStatus returns the working tree status: staged, unstaged, and
+// untracked files categorized by their git status.
+func (e *Entry) GetStatus() (staged, unstaged, untracked []*gitchatv1.StatusFile, err error) {
+	w, err := e.repo.Worktree()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("worktree: %w", err)
+	}
+	status, err := w.Status()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("status: %w", err)
+	}
+
+	for path, fs := range status {
+		if s := mapStatusCode(fs.Staging); s != "" {
+			staged = append(staged, &gitchatv1.StatusFile{Path: path, Status: s})
+		}
+		if s := mapStatusCode(fs.Worktree); s != "" {
+			if fs.Staging == git.Untracked && fs.Worktree == git.Untracked {
+				untracked = append(untracked, &gitchatv1.StatusFile{Path: path, Status: "added"})
+			} else {
+				unstaged = append(unstaged, &gitchatv1.StatusFile{Path: path, Status: s})
+			}
+		}
+	}
+
+	sort.Slice(staged, func(i, j int) bool { return staged[i].Path < staged[j].Path })
+	sort.Slice(unstaged, func(i, j int) bool { return unstaged[i].Path < unstaged[j].Path })
+	sort.Slice(untracked, func(i, j int) bool { return untracked[i].Path < untracked[j].Path })
+	return staged, unstaged, untracked, nil
+}
+
+func mapStatusCode(c git.StatusCode) string {
+	switch c {
+	case git.Added:
+		return "added"
+	case git.Modified:
+		return "modified"
+	case git.Deleted:
+		return "deleted"
+	case git.Renamed:
+		return "renamed"
+	case git.Copied:
+		return "copied"
+	case git.Untracked:
+		return "added"
+	default:
+		return ""
+	}
+}
+
+// GetWorkingTreeDiff returns a unified diff for a single file between
+// its HEAD version and its current working tree content.
+func (e *Entry) GetWorkingTreeDiff(path string) (string, bool, error) {
+	headCommit, _, err := e.resolveCommit("")
+	if err != nil {
+		return "", false, err
+	}
+	headContent, _ := fileContent(headCommit, path)
+
+	diskPath := filepath.Join(e.Path, path)
+	diskBytes, err := os.ReadFile(diskPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// File deleted from working tree.
+			if headContent == "" {
+				return "", true, nil
+			}
+			patch := renderUnifiedDiff(path, "HEAD", "working tree", headContent, "")
+			return patch, false, nil
+		}
+		return "", false, fmt.Errorf("read %s: %w", path, err)
+	}
+	diskContent := string(diskBytes)
+
+	if headContent == diskContent {
+		return "", true, nil
+	}
+	patch := renderUnifiedDiff(path, "HEAD", "working tree", headContent, diskContent)
+	return patch, false, nil
+}
 
 // fileContent returns the contents of `path` at `commit`. Returns the
 // empty string with no error if the path doesn't exist at that commit
