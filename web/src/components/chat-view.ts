@@ -99,6 +99,8 @@ export class GcChatView extends LitElement {
   @state() private sessionTokensOut = 0;
   // Dashboard: recent commits + auto-generated suggestions.
   @state() private activitySummary = "";
+  @state() private summaryLoading = false;
+  private cachedSummaryKey = ""; // repoId:headSha — only re-fetch on new commits
   @state() private suggestions: Array<{ label: string; prompt: string }> = [];
 
   private toggleFocus = () => {
@@ -209,24 +211,41 @@ export class GcChatView extends LitElement {
   }
 
   private async loadDashboard() {
+    // 1. Suggestions from commits — instant, no LLM.
     try {
-      const resp = await (chatClient as any).summarizeActivity({ repoId: this.repoId });
-      this.activitySummary = resp.summary || "";
-      const llmSuggestions = (resp.suggestions || []) as string[];
-      this.suggestions = llmSuggestions
-        .filter((s: string) => s.trim())
-        .slice(0, 3)
-        .map((s: string) => ({ label: "ask", prompt: s }));
-      // Always include overview as first option if LLM didn't suggest it.
-      if (this.suggestions.length === 0 || !this.suggestions.some(s => s.prompt.toLowerCase().includes("about"))) {
-        this.suggestions.unshift({ label: "overview", prompt: "What is this project about?" });
-        this.suggestions = this.suggestions.slice(0, 3);
+      const commits = await repoClient.listCommits({ repoId: this.repoId, limit: 5, offset: 0 });
+      const sug: Array<{ label: string; prompt: string }> = [];
+      sug.push({ label: "overview", prompt: "What is this project about?" });
+      if (commits.commits.length > 0) {
+        const latest = commits.commits[0];
+        sug.push({ label: "latest", prompt: `What changed in commit ${latest.shortSha} ("${latest.message}")?` });
       }
+      if (commits.commits.length > 2) {
+        sug.push({ label: "recent", prompt: "What areas of the codebase have been worked on recently?" });
+      }
+      this.suggestions = sug.slice(0, 3);
     } catch {
       this.suggestions = [
         { label: "overview", prompt: "What is this project about?" },
-        { label: "architecture", prompt: "Describe the architecture of this project" },
       ];
+    }
+
+    // 2. LLM summary — cached by HEAD SHA, only re-fetch on new commits.
+    try {
+      const repos = await repoClient.listRepos({});
+      const repo = repos.repos.find((r) => r.id === this.repoId);
+      const headSha = repo?.headCommit ?? "";
+      const cacheKey = `${this.repoId}:${headSha}`;
+      if (cacheKey === this.cachedSummaryKey && this.activitySummary) return;
+
+      this.summaryLoading = true;
+      const resp = await (chatClient as any).summarizeActivity({ repoId: this.repoId });
+      this.activitySummary = resp.summary || "";
+      this.cachedSummaryKey = cacheKey;
+    } catch {
+      this.activitySummary = "";
+    } finally {
+      this.summaryLoading = false;
     }
   }
 
@@ -823,12 +842,14 @@ export class GcChatView extends LitElement {
           </div>
         ` : nothing}
 
-        ${this.activitySummary ? html`
-          <div class="recent-activity">
-            <div class="recent-title">recent activity</div>
-            <p class="activity-text">${this.activitySummary}</p>
-          </div>
-        ` : nothing}
+        <div class="recent-activity">
+          <div class="recent-title">recent activity</div>
+          ${this.summaryLoading
+            ? html`<p class="activity-text loading">summarizing recent changes…</p>`
+            : this.activitySummary
+              ? html`<p class="activity-text">${this.activitySummary}</p>`
+              : nothing}
+        </div>
       </div>
     `;
   }
@@ -1247,6 +1268,10 @@ export class GcChatView extends LitElement {
       line-height: 1.6;
       opacity: 0.6;
       margin: 0;
+    }
+    .activity-text.loading {
+      opacity: 0.35;
+      font-style: italic;
     }
 
     /* ── Turns ───────────────────────────────────────────────────── */

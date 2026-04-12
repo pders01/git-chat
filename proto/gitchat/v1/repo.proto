@@ -96,6 +96,7 @@ message ListBranchesRequest {
 
 message ListBranchesResponse {
   repeated Branch branches = 1;
+  repeated Branch tags = 2;    // tags reuse Branch shape (name, commit SHA, time, subject)
 }
 
 message Branch {
@@ -155,6 +156,7 @@ message ListCommitsRequest {
   string ref = 2;       // branch/SHA; empty = default branch
   int32  limit = 3;     // max commits to return; 0 = 50
   int32  offset = 4;    // pagination offset
+  string path = 5;      // filter to commits that touched this file path
 }
 
 message ListCommitsResponse {
@@ -301,3 +303,4 @@ message FileChurn {
 message GetFileChurnMapResponse {
   repeated FileChurn files = 1;
 }
+

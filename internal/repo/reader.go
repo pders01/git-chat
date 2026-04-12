@@ -60,6 +60,46 @@ func (e *Entry) ListBranches() ([]*gitchatv1.Branch, error) {
 	return out, nil
 }
 
+// ListTags returns all tags in the repository, sorted by tagger time
+// (most-recent first). Tags are returned as Branch messages for
+// wire-compatibility — name holds the tag name, Commit the target SHA,
+// CommitterTime the tagger timestamp, and Subject the tag message.
+func (e *Entry) ListTags() ([]*gitchatv1.Branch, error) {
+	iter, err := e.repo.Tags()
+	if err != nil {
+		return nil, fmt.Errorf("iterate tags: %w", err)
+	}
+	var out []*gitchatv1.Branch
+	err = iter.ForEach(func(ref *plumbing.Reference) error {
+		tag := &gitchatv1.Branch{
+			Name:   ref.Name().Short(),
+			Commit: ref.Hash().String(),
+		}
+		// Try to resolve as annotated tag first.
+		if tagObj, err := e.repo.TagObject(ref.Hash()); err == nil {
+			tag.CommitterTime = tagObj.Tagger.When.Unix()
+			tag.Subject = firstLine(tagObj.Message)
+			// Resolve to the commit it points to.
+			if commit, err := tagObj.Commit(); err == nil {
+				tag.Commit = commit.Hash.String()
+			}
+		} else if commit, err := e.repo.CommitObject(ref.Hash()); err == nil {
+			// Lightweight tag pointing directly to a commit.
+			tag.CommitterTime = commit.Committer.When.Unix()
+			tag.Subject = firstLine(commit.Message)
+		}
+		out = append(out, tag)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CommitterTime > out[j].CommitterTime
+	})
+	return out, nil
+}
+
 // ListTree returns entries at a path under a given ref. Empty path lists
 // the repository root. Empty ref uses the default branch.
 func (e *Entry) ListTree(ref, path string) ([]*gitchatv1.TreeEntry, string, error) {
@@ -192,7 +232,9 @@ func (e *Entry) GetFile(ref, path string, maxBytes int64) (*gitchatv1.GetFileRes
 
 // ListCommits returns the most recent commits on a ref, newest first.
 // Includes diff stats (files changed, additions, deletions) per commit.
-func (e *Entry) ListCommits(ref string, limit, offset int) ([]*gitchatv1.CommitEntry, bool, error) {
+// When pathFilter is non-empty, only commits that touched that file are
+// included (the offset/limit still apply to the filtered result set).
+func (e *Entry) ListCommits(ref string, limit, offset int, pathFilter string) ([]*gitchatv1.CommitEntry, bool, error) {
 	if limit <= 0 {
 		limit = defaultCommitLimit
 	}
@@ -205,23 +247,30 @@ func (e *Entry) ListCommits(ref string, limit, offset int) ([]*gitchatv1.CommitE
 	iter := object.NewCommitIterCTime(commit, nil, nil)
 	defer iter.Close()
 
-	// Skip `offset` commits.
-	for i := 0; i < offset; i++ {
-		if _, err := iter.Next(); err != nil {
-			return nil, false, nil // past the end
-		}
-	}
-
+	skipped := 0
 	var out []*gitchatv1.CommitEntry
-	for i := 0; i < limit+1; i++ {
+	for {
 		c, err := iter.Next()
 		if err != nil {
 			break
 		}
-		if i == limit {
+
+		// Path filter: skip commits that didn't touch the file.
+		if pathFilter != "" && !commitTouchedPath(c, pathFilter) {
+			continue
+		}
+
+		// Skip `offset` matching commits.
+		if skipped < offset {
+			skipped++
+			continue
+		}
+
+		if len(out) == limit {
 			// One extra to detect has_more.
 			return out, true, nil
 		}
+
 		parents := make([]string, c.NumParents())
 		for pi := range parents {
 			parents[pi] = c.ParentHashes[pi].String()
@@ -246,6 +295,45 @@ func (e *Entry) ListCommits(ref string, limit, offset int) ([]*gitchatv1.CommitE
 		out = append(out, entry)
 	}
 	return out, false, nil
+}
+
+// commitTouchedPath returns true if the commit changed the file at path
+// compared to its first parent (or if it's a root commit containing
+// the path).
+func commitTouchedPath(c *object.Commit, path string) bool {
+	cTree, err := c.Tree()
+	if err != nil {
+		return false
+	}
+
+	// Get file at path in this commit's tree.
+	cFile, cErr := cTree.File(path)
+
+	if c.NumParents() == 0 {
+		// Root commit: file is touched if it exists.
+		return cErr == nil
+	}
+
+	parent, err := c.Parents().Next()
+	if err != nil {
+		return false
+	}
+	pTree, err := parent.Tree()
+	if err != nil {
+		return cErr == nil // parent broken, consider touched if file exists
+	}
+
+	pFile, pErr := pTree.File(path)
+
+	// File added (not in parent) or deleted (not in child).
+	if cErr != nil && pErr != nil {
+		return false // doesn't exist in either
+	}
+	if cErr != nil || pErr != nil {
+		return true // added or deleted
+	}
+	// Both exist: compare hashes.
+	return cFile.Hash != pFile.Hash
 }
 
 type diffStats struct {

@@ -52,7 +52,12 @@ func (s *Service) ListBranches(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&gitchatv1.ListBranchesResponse{Branches: branches}), nil
+	tags, err := entry.ListTags()
+	if err != nil {
+		// Tags are best-effort — don't fail the whole response.
+		tags = nil
+	}
+	return connect.NewResponse(&gitchatv1.ListBranchesResponse{Branches: branches, Tags: tags}), nil
 }
 
 func (s *Service) ListTree(
@@ -130,7 +135,7 @@ func (s *Service) ListCommits(
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	commits, hasMore, err := entry.ListCommits(req.Msg.Ref, int(req.Msg.Limit), int(req.Msg.Offset))
+	commits, hasMore, err := entry.ListCommits(req.Msg.Ref, int(req.Msg.Limit), int(req.Msg.Offset), req.Msg.Path)
 	if err != nil {
 		return nil, mapErr(err)
 	}

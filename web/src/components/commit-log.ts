@@ -35,6 +35,9 @@ export class GcCommitLog extends LitElement {
   @state() private graphMode = false;
   @state() private files: ChangedFile[] = [];
   @state() private selectedFile = ""; // "" = all files
+  @state() private commitFilter = "";
+  @state() private splitView = false;
+  @property({ type: String }) filterPath = "";
   private fullDiffHtml = ""; // cached full-commit diff
   private pendingSha = "";
 
@@ -46,31 +49,65 @@ export class GcCommitLog extends LitElement {
     }
   }) as EventListener;
 
+  private onSetFilterPath = ((e: CustomEvent<{ path: string }>) => {
+    this.filterPath = e.detail.path;
+  }) as EventListener;
+
   override connectedCallback() {
     super.connectedCallback();
     this.addEventListener("gc:select-commit", this.onSelectCommit);
+    this.addEventListener("gc:set-filter-path", this.onSetFilterPath);
     if (this.repoId) void this.load(0);
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.removeEventListener("gc:select-commit", this.onSelectCommit);
+    this.removeEventListener("gc:set-filter-path", this.onSetFilterPath);
+  }
+
+  private clearFilterPath() {
+    this.filterPath = "";
   }
 
   override updated(changed: Map<string, unknown>) {
-    if ((changed.has("repoId") || changed.has("branch")) && this.repoId) {
+    if ((changed.has("repoId") || changed.has("branch") || changed.has("filterPath")) && this.repoId) {
       void this.load(0);
     }
   }
 
   private async load(offset: number) {
     try {
-      const resp = await repoClient.listCommits({
-        repoId: this.repoId,
-        ref: this.branch,
-        limit: 50,
-        offset,
-      });
+      let resp: { commits: CommitEntry[]; hasMore: boolean };
+      if (this.filterPath) {
+        // Use raw fetch to include `path` field which may not be in
+        // the regenerated proto descriptor yet.
+        const rawResp = await fetch("/gitchat.v1.RepoService/ListCommits", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            repoId: this.repoId,
+            ref: this.branch,
+            limit: 50,
+            offset,
+            path: this.filterPath,
+          }),
+        });
+        resp = await rawResp.json();
+        // Normalize: raw JSON uses snake_case, need to map.
+        resp = {
+          commits: (resp as any).commits ?? [],
+          hasMore: (resp as any).hasMore ?? (resp as any).has_more ?? false,
+        };
+      } else {
+        resp = await repoClient.listCommits({
+          repoId: this.repoId,
+          ref: this.branch,
+          limit: 50,
+          offset,
+        });
+      }
       this.state = {
         phase: "ready",
         commits:
@@ -186,8 +223,9 @@ export class GcCommitLog extends LitElement {
         this.fullDiffHtml = this.diffHtml;
       } else {
         const { highlight } = await loadHighlight();
-        const highlighted = await highlight(resp.unifiedDiff, "diff");
+        let highlighted = await highlight(resp.unifiedDiff, "diff");
         if (this.selectedSha !== requestedSha) return; // stale
+        highlighted = this.highlightWordDiffs(highlighted);
         this.diffHtml = highlighted;
         this.fullDiffHtml = highlighted;
       }
@@ -226,8 +264,9 @@ export class GcCommitLog extends LitElement {
         this.diffHtml = "";
       } else {
         const { highlight } = await loadHighlight();
-        const highlighted = await highlight(resp.unifiedDiff, "diff");
+        let highlighted = await highlight(resp.unifiedDiff, "diff");
         if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
+        highlighted = this.highlightWordDiffs(highlighted);
         this.diffHtml = highlighted;
       }
     } catch (e) {
@@ -238,8 +277,181 @@ export class GcCommitLog extends LitElement {
     }
   }
 
+  // ── Split diff helpers ──────────────────────────────────────────
+  /**
+   * Parse unified diff HTML into left/right paired line arrays for
+   * side-by-side rendering. Each entry is { left, right } where each
+   * side is an HTML string (or empty if the line doesn't exist on that
+   * side).
+   */
+  private splitDiffHtml(unifiedHtml: string): Array<{ left: string; right: string }> {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = unifiedHtml;
+    const code = tmp.querySelector("code");
+    if (!code) return [{ left: unifiedHtml, right: "" }];
+    const lineEls = code.querySelectorAll(".line");
+    const lines = lineEls.length > 0
+      ? Array.from(lineEls).map(el => el.innerHTML)
+      : code.innerHTML.split("\n");
+
+    const pairs: Array<{ left: string; right: string }> = [];
+    const delBuf: string[] = [];
+    const addBuf: string[] = [];
+
+    const flushBuffers = () => {
+      const max = Math.max(delBuf.length, addBuf.length);
+      for (let i = 0; i < max; i++) {
+        pairs.push({
+          left: delBuf[i] ?? "",
+          right: addBuf[i] ?? "",
+        });
+      }
+      delBuf.length = 0;
+      addBuf.length = 0;
+    };
+
+    for (const lineHtml of lines) {
+      // Extract the plain text to determine the line type.
+      const tempEl = document.createElement("span");
+      tempEl.innerHTML = lineHtml;
+      const text = tempEl.textContent ?? "";
+
+      if (text.startsWith("-")) {
+        delBuf.push(lineHtml);
+      } else if (text.startsWith("+")) {
+        addBuf.push(lineHtml);
+      } else {
+        flushBuffers();
+        // Context line or header — show on both sides.
+        pairs.push({ left: lineHtml, right: lineHtml });
+      }
+    }
+    flushBuffers();
+    return pairs;
+  }
+
+  // ── Word-level diff highlighting ──────────────────────────────
+  /**
+   * Post-process Shiki diff HTML to add <mark> around changed words
+   * within adjacent -/+ line pairs.
+   */
+  private highlightWordDiffs(htmlStr: string): string {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = htmlStr;
+    const code = tmp.querySelector("code");
+    if (!code) return htmlStr;
+    const lineEls = Array.from(code.querySelectorAll(".line"));
+    if (lineEls.length === 0) return htmlStr;
+
+    // Group adjacent -/+ pairs.
+    let i = 0;
+    while (i < lineEls.length) {
+      const el = lineEls[i];
+      const text = el.textContent ?? "";
+      if (text.startsWith("-")) {
+        // Collect consecutive - lines.
+        const delStart = i;
+        while (i < lineEls.length && (lineEls[i].textContent ?? "").startsWith("-")) i++;
+        // Collect consecutive + lines.
+        const addStart = i;
+        while (i < lineEls.length && (lineEls[i].textContent ?? "").startsWith("+")) i++;
+        const delEnd = addStart;
+        const addEnd = i;
+        // Pair up for word-diff.
+        const pairCount = Math.min(delEnd - delStart, addEnd - addStart);
+        for (let p = 0; p < pairCount; p++) {
+          this.markWordDiffs(lineEls[delStart + p], lineEls[addStart + p]);
+        }
+      } else {
+        i++;
+      }
+    }
+    return tmp.innerHTML;
+  }
+
+  /**
+   * Compare two line elements word-by-word and wrap differing words in <mark>.
+   */
+  private markWordDiffs(delEl: Element, addEl: Element) {
+    const delText = (delEl.textContent ?? "").slice(1); // strip leading -
+    const addText = (addEl.textContent ?? "").slice(1); // strip leading +
+    if (delText === addText) return;
+
+    const delWords = delText.split(/(\s+)/);
+    const addWords = addText.split(/(\s+)/);
+
+    // Find changed word indices using a simple comparison.
+    const markIndices = (words: string[], other: string[]): Set<number> => {
+      const changed = new Set<number>();
+      const maxLen = Math.max(words.length, other.length);
+      for (let i = 0; i < maxLen; i++) {
+        if (words[i] !== other[i]) {
+          if (i < words.length) changed.add(i);
+        }
+      }
+      return changed;
+    };
+
+    const delChanged = markIndices(delWords, addWords);
+    const addChanged = markIndices(addWords, delWords);
+
+    // Only apply if there's a meaningful diff (not everything changed).
+    if (delChanged.size > delWords.length * 0.8 && addChanged.size > addWords.length * 0.8) return;
+
+    const wrapWords = (el: Element, words: string[], changed: Set<number>) => {
+      // Build new innerHTML preserving the first character (- or +).
+      const prefix = (el.textContent ?? "")[0] ?? "";
+      let result = "";
+      for (let i = 0; i < words.length; i++) {
+        if (changed.has(i) && words[i].trim()) {
+          result += `<mark>${this.escapeHtml(words[i])}</mark>`;
+        } else {
+          result += this.escapeHtml(words[i]);
+        }
+      }
+      // Replace inner content but preserve span structure — fall back to simple replacement.
+      const spans = el.querySelectorAll("span");
+      if (spans.length === 0) {
+        el.innerHTML = this.escapeHtml(prefix) + result;
+      }
+      // For Shiki-highlighted content, append marks via overlay approach:
+      // wrap the whole line content and add marks after.
+      // Simpler: just set text content with marks.
+      el.innerHTML = `<span style="color:inherit">${this.escapeHtml(prefix)}${result}</span>`;
+    };
+
+    wrapWords(delEl, delWords, delChanged);
+    wrapWords(addEl, addWords, addChanged);
+  }
+
+  private escapeHtml(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
   private selectedFileEntry(): ChangedFile | undefined {
     return this.files.find((f) => f.path === this.selectedFile);
+  }
+
+  private renderSplitDiff() {
+    const pairs = this.splitDiffHtml(this.diffHtml);
+    return html`
+      <div class="diff-content split-diff">
+        <table class="split-table">
+          <colgroup>
+            <col class="split-col" />
+            <col class="split-col" />
+          </colgroup>
+          <tbody>
+            ${pairs.map(({ left, right }) => html`
+              <tr>
+                <td class="split-cell del-cell">${left ? unsafeHTML(left) : nothing}</td>
+                <td class="split-cell add-cell">${right ? unsafeHTML(right) : nothing}</td>
+              </tr>
+            `)}
+          </tbody>
+        </table>
+      </div>
+    `;
   }
 
   private selectedCommit(): CommitEntry | undefined {
@@ -363,7 +575,13 @@ export class GcCommitLog extends LitElement {
         <button class="retry-btn" @click=${() => void this.load(0)}>retry</button>
       </div>`;
     }
-    const { commits, hasMore, offset } = this.state;
+    const { commits: rawCommits, hasMore, offset } = this.state;
+    const lowerFilter = this.commitFilter.toLowerCase();
+    const commits = lowerFilter
+      ? rawCommits.filter(c =>
+          c.message.toLowerCase().includes(lowerFilter) ||
+          c.authorName.toLowerCase().includes(lowerFilter))
+      : rawCommits;
     const sel = this.selectedCommit();
     return html`
       <div class="layout ${this.drawerOpen ? "drawer-open" : ""}"
@@ -373,6 +591,14 @@ export class GcCommitLog extends LitElement {
         <!-- Left: commit list sidebar -->
         <aside class="commit-list" aria-label="Commit history">
           <div class="list-header">
+            <input
+              class="commit-filter-input"
+              type="search"
+              placeholder="filter commits…"
+              .value=${this.commitFilter}
+              @input=${(e: Event) => { this.commitFilter = (e.target as HTMLInputElement).value; }}
+              aria-label="Filter commits by message or author"
+            />
             <button
               class="graph-toggle ${this.graphMode ? "active" : ""}"
               @click=${() => { this.graphMode = !this.graphMode; }}
@@ -381,6 +607,13 @@ export class GcCommitLog extends LitElement {
               title="Toggle graph view"
             >⑂</button>
           </div>
+          ${this.filterPath ? html`
+            <div class="path-filter-bar">
+              <span class="path-filter-label">history for</span>
+              <span class="path-filter-path">${this.filterPath}</span>
+              <button class="path-filter-clear" @click=${() => this.clearFilterPath()} aria-label="Clear file filter">x</button>
+            </div>
+          ` : nothing}
           ${this.graphMode
             ? this.renderGraph(commits)
             : html`<ul class="commits" role="list" @keydown=${this.onListKeydown}>
@@ -516,6 +749,13 @@ export class GcCommitLog extends LitElement {
                               <span class="dels">-${sel.deletions}</span>
                             </span>`
                           : nothing}`}
+                  <button
+                    class="split-toggle ${this.splitView ? "active" : ""}"
+                    @click=${() => { this.splitView = !this.splitView; }}
+                    aria-label="Toggle split diff view"
+                    aria-pressed=${this.splitView ? "true" : "false"}
+                    title="Toggle split/unified diff"
+                  >${this.splitView ? "unified" : "split"}</button>
                 </div>
                 <div class="diff-body">
                   ${this.diffLoading
@@ -523,7 +763,9 @@ export class GcCommitLog extends LitElement {
                     : this.diffError
                       ? html`<p style="color:var(--danger);padding:var(--space-4)">${this.diffError}</p>`
                       : this.diffHtml
-                        ? html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
+                        ? this.splitView
+                          ? this.renderSplitDiff()
+                          : html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
                         : html`<div class="diff-empty">no changes</div>`}
                 </div>`
             : html`<div class="empty-detail">
@@ -984,6 +1226,120 @@ export class GcCommitLog extends LitElement {
     }
     .diff-content .shiki {
       background: transparent !important;
+    }
+    .diff-content mark {
+      background: rgba(255, 200, 0, 0.25);
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+
+    /* ── Commit filter input ───────────────────────────────────── */
+    .commit-filter-input {
+      flex: 1;
+      min-width: 0;
+      padding: 2px var(--space-2);
+      background: var(--surface-0);
+      color: var(--text);
+      border: 1px solid var(--surface-4);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      outline: none;
+    }
+    .commit-filter-input:focus {
+      border-color: var(--accent-assistant);
+    }
+    .commit-filter-input::placeholder {
+      opacity: 0.35;
+    }
+
+    /* ── Path filter bar ───────────────────────────────────────── */
+    .path-filter-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-1) var(--space-3);
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--surface-4);
+      font-size: var(--text-xs);
+      flex-shrink: 0;
+    }
+    .path-filter-label {
+      opacity: 0.5;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 0.6rem;
+    }
+    .path-filter-path {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--accent-user);
+    }
+    .path-filter-clear {
+      padding: 0 var(--space-1);
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: 0.6rem;
+      cursor: pointer;
+      opacity: 0.5;
+      line-height: 1.2;
+    }
+    .path-filter-clear:hover { opacity: 1; }
+
+    /* ── Split diff toggle ─────────────────────────────────────── */
+    .split-toggle {
+      padding: 2px var(--space-2);
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+      opacity: 0.4;
+      flex-shrink: 0;
+    }
+    .split-toggle:hover { opacity: 0.8; }
+    .split-toggle.active {
+      opacity: 1;
+      background: var(--surface-3);
+      border-color: var(--accent-user);
+    }
+
+    /* ── Split diff table ──────────────────────────────────────── */
+    .split-diff {
+      overflow-x: auto;
+    }
+    .split-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: var(--text-xs);
+      line-height: 1.55;
+    }
+    .split-col {
+      width: 50%;
+    }
+    .split-cell {
+      padding: 0 var(--space-3);
+      white-space: pre;
+      vertical-align: top;
+      border-right: 1px solid var(--surface-4);
+      overflow: hidden;
+    }
+    .split-cell:last-child {
+      border-right: none;
+    }
+    .del-cell:not(:empty) {
+      background: rgba(255, 100, 100, 0.04);
+    }
+    .add-cell:not(:empty) {
+      background: rgba(100, 255, 100, 0.04);
     }
     .empty-detail {
       display: flex;

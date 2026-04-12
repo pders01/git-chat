@@ -187,6 +187,14 @@ export class GcFileView extends LitElement {
           </span>
         </div>
         <button
+          class="hd-btn"
+          @click=${() => this.viewFileHistory()}
+          aria-label="Show file history"
+          title="Show commits that touched this file"
+        >
+          history
+        </button>
+        <button
           class="hd-btn ${this.showBlame ? "active" : ""}"
           @click=${() => this.toggleBlame()}
           aria-label="Toggle git blame"
@@ -353,6 +361,16 @@ export class GcFileView extends LitElement {
           prompt: `Explain commit ${sha.slice(0, 7)} "${subject}" — what changed and why?`,
           tab: "chat",
         },
+      }),
+    );
+  }
+
+  private viewFileHistory() {
+    this.dispatchEvent(
+      new CustomEvent("gc:view-file-history", {
+        bubbles: true,
+        composed: true,
+        detail: { path: this.path },
       }),
     );
   }

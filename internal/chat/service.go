@@ -533,7 +533,7 @@ func (s *Service) SummarizeActivity(
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
 
-	commits, _, _ := r.ListCommits("", 10, 0)
+	commits, _, _ := r.ListCommits("", 10, 0, "")
 	if len(commits) == 0 {
 		return connect.NewResponse(&gitchatv1.SummarizeActivityResponse{
 			Summary: "No commits yet.",

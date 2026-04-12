@@ -59,7 +59,7 @@ var diffAttrPattern = regexp.MustCompile(`(\w+)=(?:"([^"]*)"|(\S+))`)
 // context. Lets the model answer "what changed recently?" without the
 // user switching to the log tab. ~200 bytes, negligible context cost.
 func recentCommits(r *repo.Entry) string {
-	commits, _, err := r.ListCommits("", int(recentCommitCount), 0)
+	commits, _, err := r.ListCommits("", int(recentCommitCount), 0, "")
 	if err != nil || len(commits) == 0 {
 		return ""
 	}
