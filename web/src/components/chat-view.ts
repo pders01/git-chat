@@ -59,10 +59,10 @@ export class GcChatView extends LitElement {
   @state() private editingSessionId = "";
   @state() private sessionFilter = "";
   // @-mention autocomplete state.
-  @state() private mentionQuery = "";
   @state() private mentionResults: string[] = [];
   @state() private showMentions = false;
-  private allFilePaths: string[] | null = null;
+  /** Cache of directory path → full entry paths (dirs suffixed with /). */
+  private dirCache = new Map<string, string[]>();
   // Focus mode hides the session sidebar and removes the messages
   // reader-width cap so the whole main area is chat content. Persisted
   // per-browser via localStorage.
@@ -299,20 +299,33 @@ export class GcChatView extends LitElement {
       this.showMentions = false;
       return;
     }
-    this.mentionQuery = atMatch[1].toLowerCase();
-    // Lazy-load top-level file/dir names once.
-    if (!this.allFilePaths) {
+    const query = atMatch[1];
+    // Determine which directory to list based on the query.
+    // e.g. "src/comp" → dir "src", filter "comp"
+    // e.g. "src/components/" → dir "src/components", filter ""
+    const lastSlash = query.lastIndexOf("/");
+    const dirPath = lastSlash >= 0 ? query.slice(0, lastSlash) : "";
+    const filterPart = (lastSlash >= 0 ? query.slice(lastSlash + 1) : query).toLowerCase();
+    // Lazy-load directory entries with caching.
+    if (!this.dirCache.has(dirPath)) {
       try {
-        const resp = await repoClient.listTree({ repoId: this.repoId, path: "" });
-        this.allFilePaths = resp.entries.map((e) =>
-          e.type === 2 ? e.name + "/" : e.name // 2 = DIR
+        const resp = await repoClient.listTree({ repoId: this.repoId, path: dirPath });
+        const prefix = dirPath ? dirPath + "/" : "";
+        this.dirCache.set(
+          dirPath,
+          resp.entries.map((e) =>
+            prefix + e.name + (e.type === 2 ? "/" : ""),
+          ),
         );
       } catch {
-        this.allFilePaths = [];
+        this.dirCache.set(dirPath, []);
       }
     }
-    this.mentionResults = (this.allFilePaths || [])
-      .filter((p) => p.toLowerCase().includes(this.mentionQuery))
+    this.mentionResults = (this.dirCache.get(dirPath) || [])
+      .filter((p) => {
+        const name = p.slice(p.lastIndexOf("/", p.length - 2) + 1).toLowerCase();
+        return name.includes(filterPart);
+      })
       .slice(0, 8);
     this.showMentions = this.mentionResults.length > 0;
   }
