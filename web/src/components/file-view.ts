@@ -39,6 +39,7 @@ export class GcFileView extends LitElement {
   @state() private hoveredBlame: BlameLine | null = null;
   @state() private blameTooltipStyle = "";
   private hoverTimer: ReturnType<typeof setTimeout> | null = null;
+  private hoveredIdx = -1;
 
   @state() private view: ViewState = { phase: "empty" };
   private cachedShikiLines: string[] | null = null;
@@ -213,16 +214,16 @@ export class GcFileView extends LitElement {
     if (!cell) return;
     const idx = parseInt(cell.dataset.idx ?? "-1");
     if (idx < 0 || idx >= this.blameLines.length) return;
+    // Same line — don't reposition or flicker.
+    if (idx === this.hoveredIdx && this.hoveredBlame) return;
     if (this.hoverTimer) clearTimeout(this.hoverTimer);
     this.hoverTimer = setTimeout(() => {
+      this.hoveredIdx = idx;
       this.hoveredBlame = this.blameLines[idx]!;
-      // Position to the right of the gutter, clamped to viewport.
-      // Defer one frame so the tooltip DOM exists and we can measure it.
       requestAnimationFrame(() => {
         const tip = this.renderRoot.querySelector(".blame-tip") as HTMLElement | null;
         const tipW = tip?.offsetWidth ?? 560;
         const tipH = tip?.offsetHeight ?? 200;
-        // Position near cursor, offset right+below. Clamp to viewport.
         let left = e.clientX + 16;
         let top = e.clientY + 12;
         if (left + tipW > window.innerWidth - 8) left = e.clientX - tipW - 8;
@@ -231,7 +232,7 @@ export class GcFileView extends LitElement {
         if (left < 8) left = 8;
         this.blameTooltipStyle = `top:${top}px;left:${left}px`;
       });
-    }, 200);
+    }, 300);
   };
 
   private onBlameKeydown = (e: KeyboardEvent) => {
@@ -257,7 +258,10 @@ export class GcFileView extends LitElement {
 
   private onGutterLeave = () => {
     if (this.hoverTimer) clearTimeout(this.hoverTimer);
-    this.hoverTimer = setTimeout(() => { this.hoveredBlame = null; }, 150);
+    this.hoverTimer = setTimeout(() => {
+      this.hoveredBlame = null;
+      this.hoveredIdx = -1;
+    }, 150);
   };
 
   /** Cached wrapper — avoids re-parsing Shiki HTML on every render. */
