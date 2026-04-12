@@ -232,7 +232,7 @@ export class GcChatView extends LitElement {
         const latest = resp.commits[0];
         suggestions.push({
           label: "latest change",
-          prompt: `Explain the latest commit "${latest.message}" — what does it change and why?\n\n[[diff to=${latest.sha}]]`,
+          prompt: `Explain commit ${latest.shortSha} ("${latest.message}"). What does it change and why?`,
         });
       }
       if (resp.commits.length > 3) {
@@ -241,14 +241,12 @@ export class GcChatView extends LitElement {
           prompt: "Summarize what changed in the last few commits. What areas of the codebase are being worked on?",
         });
       }
-      // Find a frequently changed file from recent commits to suggest.
-      const fileCounts = new Map<string, number>();
-      for (const c of resp.commits.slice(0, 5)) {
-        if (c.filesChanged > 0 && c.filesChanged < 10) {
-          // We don't have per-file info here, but we can suggest exploring.
+      // Suggest asking about a specific recent commit.
+      for (const c of resp.commits.slice(1, 5)) {
+        if (c.filesChanged > 0 && c.filesChanged < 15) {
           suggestions.push({
             label: `commit ${c.shortSha}`,
-            prompt: `What does commit ${c.shortSha} ("${c.message}") change?\n\n[[diff to=${c.sha}]]`,
+            prompt: `What does commit ${c.shortSha} ("${c.message}") do?`,
           });
           break;
         }
@@ -274,6 +272,12 @@ export class GcChatView extends LitElement {
 
   private async selectSession(sessionId: string) {
     if (this.state.phase !== "ready") return;
+    // Toggle: clicking selected session returns to dashboard.
+    if (this.state.selected === sessionId) {
+      this.state = { ...this.state, selected: null };
+      this.turns = [];
+      return;
+    }
     this.drawerOpen = false;
     this.state = { ...this.state, selected: sessionId };
     this.sessionTokensIn = 0;
