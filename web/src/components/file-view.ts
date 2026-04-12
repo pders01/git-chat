@@ -111,20 +111,18 @@ export class GcFileView extends LitElement {
         return html`
           ${this.renderHeader(this.view.file)}
           ${this.showBlame ? this.renderBlameTooltip() : nothing}
-          <div class="code-with-blame">
-            ${this.showBlame ? this.renderBlameGutter() : nothing}
-            <pre class="plain">${this.view.text}</pre>
-          </div>
+          ${this.showBlame
+            ? this.renderBlameTable(this.view.text.split("\n"), false)
+            : html`<pre class="plain">${this.view.text}</pre>`}
           ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
         `;
       case "highlighted":
         return html`
           ${this.renderHeader(this.view.file)}
           ${this.showBlame ? this.renderBlameTooltip() : nothing}
-          <div class="code-with-blame">
-            ${this.showBlame ? this.renderBlameGutter() : nothing}
-            <div class="shiki-wrap">${unsafeHTML(this.view.html)}</div>
-          </div>
+          ${this.showBlame
+            ? this.renderBlameTable(this.splitShikiLines(this.view.html), true)
+            : html`<div class="shiki-wrap">${unsafeHTML(this.view.html)}</div>`}
           ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
         `;
     }
@@ -178,7 +176,7 @@ export class GcFileView extends LitElement {
   // Event delegation on the gutter container — one listener for all
   // lines, not one per line. O(1) listeners regardless of file size.
   private onGutterHover = (e: MouseEvent) => {
-    const target = (e.target as HTMLElement).closest?.(".blame-line") as HTMLElement | null;
+    const target = (e.target as HTMLElement).closest?.(".blame-cell") as HTMLElement | null;
     if (!target) return;
     const idx = parseInt(target.dataset.idx ?? "-1");
     if (idx < 0 || idx >= this.blameLines.length) return;
@@ -186,7 +184,7 @@ export class GcFileView extends LitElement {
     this.hoverTimer = setTimeout(() => {
       this.hoveredBlame = this.blameLines[idx]!;
       // Position to the right of the gutter, clamped to viewport.
-      const gutterRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const gutterRect = target.getBoundingClientRect();
       const tipW = 420, tipH = 60;
       let left = gutterRect.right + 8;
       let top = e.clientY - 20;
@@ -202,29 +200,51 @@ export class GcFileView extends LitElement {
     this.hoverTimer = setTimeout(() => { this.hoveredBlame = null; }, 150);
   };
 
-  private renderBlameGutter() {
+  /** Extract individual line HTML strings from Shiki output. */
+  private splitShikiLines(shikiHtml: string): string[] {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = shikiHtml;
+    const lines = tmp.querySelectorAll(".line");
+    if (lines.length > 0) {
+      return Array.from(lines).map((el) => el.innerHTML);
+    }
+    // Fallback: split by newline inside the <code> tag.
+    const code = tmp.querySelector("code");
+    if (code) return code.innerHTML.split("\n");
+    return shikiHtml.split("\n");
+  }
+
+  private renderBlameTable(lines: string[], isHighlighted: boolean) {
+    let blockIdx = -1;
     return html`
-      <div class="blame-gutter"
+      <div class="blame-table-wrap"
         @mouseover=${this.onGutterHover}
         @mouseout=${this.onGutterLeave}
       >
-        ${(() => { let blockIdx = -1; return this.blameLines.map(
-          (l, i) => {
-            const prev = i > 0 ? this.blameLines[i - 1] : null;
-            const isNewBlock = !prev || prev.commitSha !== l.commitSha;
-            // Alternate background for each commit block — count unique commits seen.
-            if (isNewBlock) blockIdx++;
-            const band = blockIdx % 2 === 0 ? "band-even" : "band-odd";
-            return html`<div class="blame-line ${band} ${isNewBlock ? "blame-start" : ""}" data-idx=${i}>
-              ${isNewBlock
-                ? html`<span class="blame-sha">${l.commitSha}</span><span class="blame-msg">${(l.commitMessage || "").slice(0, 24)}</span>`
-                : nothing}
-            </div>`;
-          },
-        ); })()}
+        <table class="blame-table">
+          <tbody>
+            ${lines.map((line, i) => {
+              const blame = this.blameLines[i];
+              const prev = i > 0 ? this.blameLines[i - 1] : null;
+              const isNewBlock = !prev || !blame || prev.commitSha !== blame?.commitSha;
+              if (isNewBlock) blockIdx++;
+              const band = blockIdx % 2 === 0 ? "band-even" : "band-odd";
+              return html`
+                <tr class="${band} ${isNewBlock ? "blame-start" : ""}">
+                  <td class="blame-cell" data-idx=${i}>
+                    ${blame && isNewBlock
+                      ? html`<span class="blame-sha">${blame.commitSha}</span><span class="blame-msg">${(blame.commitMessage || "").slice(0, 24)}</span>`
+                      : nothing}
+                  </td>
+                  <td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">${isHighlighted ? unsafeHTML(line) : line}</td>
+                </tr>`;
+            })}
+          </tbody>
+        </table>
       </div>
     `;
   }
+
 
   private async toggleBlame() {
     this.showBlame = !this.showBlame;
@@ -335,53 +355,47 @@ export class GcFileView extends LitElement {
       min-width: 0;
       gap: var(--space-3);
     }
-    .code-with-blame {
-      display: flex;
+    /* ── Blame table layout ──────────────────────── */
+    .blame-table-wrap {
       overflow: auto;
-      /* CRITICAL: both gutter and code MUST share the exact same
-         line-height in px. Using em/rem causes sub-pixel drift that
-         accumulates over hundreds of lines. 18px = 0.8rem * ~1.4
-         at default browser font size. */
-      --blame-lh: 18px;
       font-size: 0.8rem;
-      line-height: var(--blame-lh);
     }
-    .code-with-blame > .plain,
-    .code-with-blame > .shiki-wrap {
-      flex: 1;
-      min-width: 0;
-      overflow-x: auto;
+    .blame-table {
+      border-collapse: collapse;
+      width: 100%;
+      font-family: inherit;
+      font-size: inherit;
     }
-    /* Force Shiki's internal spans to use our line-height, not its own. */
-    .code-with-blame .shiki,
-    .code-with-blame .shiki code,
-    .code-with-blame .shiki .line,
-    .code-with-blame pre {
-      line-height: var(--blame-lh) !important;
-      font-size: 0.8rem !important;
+    .blame-table tr.blame-start td {
+      border-top: 1px solid var(--surface-4);
     }
-    .blame-gutter {
-      flex-shrink: 0;
+    .blame-cell {
       width: 200px;
-      border-right: 1px solid var(--surface-4);
-      font-size: 0.7rem;
-      line-height: var(--blame-lh);
-      padding: var(--space-4) var(--space-2);
-      background: var(--surface-0);
-      overflow: hidden;
-    }
-    .blame-line {
-      height: var(--blame-lh);
-      display: flex;
-      gap: var(--space-2);
+      min-width: 200px;
+      max-width: 200px;
+      padding: 0 var(--space-2);
       white-space: nowrap;
       overflow: hidden;
+      font-size: 0.7rem;
+      background: var(--surface-0);
+      border-right: 1px solid var(--surface-4);
       cursor: default;
-      box-sizing: border-box;
+      vertical-align: top;
     }
-    .blame-line:hover {
+    .blame-cell:hover {
       background: var(--surface-3);
     }
+    .code-cell {
+      padding: 0 var(--space-4);
+      white-space: pre;
+      vertical-align: top;
+    }
+    .code-cell.plain-cell {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .band-even .blame-cell { background: var(--surface-0); }
+    .band-odd .blame-cell { background: var(--surface-1); }
     .blame-start {
       border-top: 1px solid var(--surface-4);
     }
@@ -426,10 +440,6 @@ export class GcFileView extends LitElement {
       background: var(--action-bg-hover);
     }
 
-    .blame-continuation {
-      opacity: 0.15;
-      padding-left: 0.3rem;
-    }
     .blame-sha {
       color: var(--accent-user);
       font-variant-numeric: tabular-nums;
