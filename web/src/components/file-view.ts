@@ -41,6 +41,17 @@ export class GcFileView extends LitElement {
   private hoverTimer: ReturnType<typeof setTimeout> | null = null;
 
   @state() private view: ViewState = { phase: "empty" };
+  private cachedShikiLines: string[] | null = null;
+  private cachedShikiSrc = "";
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this.hoverTimer) {
+      clearTimeout(this.hoverTimer);
+      this.hoverTimer = null;
+    }
+    this.hoveredBlame = null;
+  }
 
   override updated(changed: Map<string, unknown>) {
     if (
@@ -57,6 +68,7 @@ export class GcFileView extends LitElement {
   }
 
   private async load() {
+    const requestedPath = this.path;
     this.view = { phase: "loading" };
     this.blameLines = [];
     this.hoveredBlame = null;
@@ -68,6 +80,7 @@ export class GcFileView extends LitElement {
         path: this.path,
         maxBytes: BigInt(512 * 1024),
       });
+      if (this.path !== requestedPath) return; // user navigated away
       if (resp.isBinary) {
         this.view = { phase: "binary", file: resp };
         return;
@@ -79,10 +92,8 @@ export class GcFileView extends LitElement {
       }
       const highlight = await loadHighlight();
       const html = await highlight(text, resp.language);
-      // Only commit the result if the path is still the one we started on.
-      if (this.path === resp.blobSha || true) {
-        this.view = { phase: "highlighted", html, file: resp };
-      }
+      if (this.path !== requestedPath) return; // navigated during highlight
+      this.view = { phase: "highlighted", html, file: resp };
     } catch (e) {
       this.view = {
         phase: "error",
@@ -124,7 +135,7 @@ export class GcFileView extends LitElement {
           ${this.renderHeader(this.view.file)}
           ${this.showBlame ? this.renderBlameTooltip() : nothing}
           ${this.showBlame
-            ? this.renderBlameTable(this.splitShikiLines(this.view.html), true)
+            ? this.renderBlameTable(this.getShikiLines(this.view.html), true)
             : html`<div class="shiki-wrap">${unsafeHTML(this.view.html)}</div>`}
           ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
         `;
@@ -220,6 +231,16 @@ export class GcFileView extends LitElement {
     if (this.hoverTimer) clearTimeout(this.hoverTimer);
     this.hoverTimer = setTimeout(() => { this.hoveredBlame = null; }, 150);
   };
+
+  /** Cached wrapper — avoids re-parsing Shiki HTML on every render. */
+  private getShikiLines(shikiHtml: string): string[] {
+    if (this.cachedShikiSrc === shikiHtml && this.cachedShikiLines) {
+      return this.cachedShikiLines;
+    }
+    this.cachedShikiSrc = shikiHtml;
+    this.cachedShikiLines = this.splitShikiLines(shikiHtml);
+    return this.cachedShikiLines;
+  }
 
   /** Extract individual line HTML strings from Shiki output. */
   private splitShikiLines(shikiHtml: string): string[] {

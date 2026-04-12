@@ -8,6 +8,7 @@ import {
   type ChatMessage,
   MessageRole,
 } from "../gen/gitchat/v1/chat_pb.js";
+import { EntryType } from "../gen/gitchat/v1/repo_pb.js";
 
 // The markdown renderer pulls in `marked` + Shiki (via highlight.ts),
 // which together weigh ~270 kB gzipped. Loading them eagerly would
@@ -314,7 +315,7 @@ export class GcChatView extends LitElement {
         this.dirCache.set(
           dirPath,
           resp.entries.map((e) =>
-            prefix + e.name + (e.type === 2 ? "/" : ""),
+            prefix + e.name + (e.type === EntryType.DIR ? "/" : ""),
           ),
         );
       } catch {
@@ -516,14 +517,14 @@ export class GcChatView extends LitElement {
               />`
             : nothing}
           <div class="sidebar-label" id="sessions-label">sessions</div>
-          <ul class="sessions" role="listbox" aria-labelledby="sessions-label">
+          <ul class="sessions" role="list" aria-labelledby="sessions-label">
             ${s.sessions.length === 0
-              ? html`<li class="sidebar-empty" role="option">no sessions yet</li>`
+              ? html`<li class="sidebar-empty">no sessions yet</li>`
               : s.sessions
                   .filter((sess) => !this.sessionFilter || sess.title.toLowerCase().includes(this.sessionFilter.toLowerCase()))
                   .map(
                   (sess) => html`
-                    <li role="option" aria-selected=${sess.id === s.selected ? "true" : "false"}>
+                    <li>
                       <div class="sess-row">
                         <button
                           class="sess ${sess.id === s.selected ? "selected" : ""}"

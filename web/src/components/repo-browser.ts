@@ -37,24 +37,31 @@ export class GcRepoBrowser extends LitElement {
   @state() private drawerOpen = false;
   private pendingFile = "";
 
-  private toggleFocus = () => {
+  private onToggleFocus = () => {
     this.focused = !this.focused;
     writeFocus(this.focused);
   };
 
+  private onOpenFile = ((e: CustomEvent<{ path: string }>) => {
+    if (this.state.phase === "ready") {
+      this.selectedFile = e.detail.path;
+      this.requestUpdate();
+    } else {
+      this.pendingFile = e.detail.path;
+    }
+  }) as EventListener;
+
   override connectedCallback() {
     super.connectedCallback();
     if (this.repoId) void this.boot();
-    this.addEventListener("gc:toggle-focus", () => this.toggleFocus());
-    this.addEventListener("gc:open-file", ((e: CustomEvent<{ path: string }>) => {
-      if (this.state.phase === "ready") {
-        this.selectedFile = e.detail.path;
-        this.requestUpdate();
-      } else {
-        // Boot still in progress — queue for when it completes.
-        this.pendingFile = e.detail.path;
-      }
-    }) as EventListener);
+    this.addEventListener("gc:toggle-focus", this.onToggleFocus);
+    this.addEventListener("gc:open-file", this.onOpenFile);
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.removeEventListener("gc:toggle-focus", this.onToggleFocus);
+    this.removeEventListener("gc:open-file", this.onOpenFile);
   }
 
   override updated(changed: Map<string, unknown>) {
@@ -170,7 +177,7 @@ export class GcRepoBrowser extends LitElement {
             <span class="branch">${s.repo.defaultBranch}@${s.repo.headCommit}</span>
             <button
               class="focus-btn"
-              @click=${this.toggleFocus}
+              @click=${this.onToggleFocus}
               title=${this.focused ? "show tree" : "hide tree"}
             >
               ${this.focused ? "◀" : "▶"}

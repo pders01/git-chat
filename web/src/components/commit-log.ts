@@ -32,16 +32,23 @@ export class GcCommitLog extends LitElement {
   @state() private drawerOpen = false;
   private pendingSha = "";
 
+  private onSelectCommit = ((e: CustomEvent<{ sha: string }>) => {
+    if (this.state.phase === "ready") {
+      void this.selectCommit(e.detail.sha);
+    } else {
+      this.pendingSha = e.detail.sha;
+    }
+  }) as EventListener;
+
   override connectedCallback() {
     super.connectedCallback();
-    this.addEventListener("gc:select-commit", ((e: CustomEvent<{ sha: string }>) => {
-      if (this.state.phase === "ready") {
-        void this.selectCommit(e.detail.sha);
-      } else {
-        this.pendingSha = e.detail.sha;
-      }
-    }) as EventListener);
+    this.addEventListener("gc:select-commit", this.onSelectCommit);
     if (this.repoId) void this.load(0);
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.removeEventListener("gc:select-commit", this.onSelectCommit);
   }
 
   override updated(changed: Map<string, unknown>) {
@@ -150,10 +157,10 @@ export class GcCommitLog extends LitElement {
         ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
         <!-- Left: commit list sidebar -->
         <aside class="commit-list" aria-label="Commit history">
-          <ul class="commits" role="listbox">
+          <ul class="commits" role="list">
             ${commits.map(
               (c) => html`
-                <li role="option" aria-selected=${c.sha === this.selectedSha ? "true" : "false"}>
+                <li>
                   <button
                     class="commit-row ${c.sha === this.selectedSha ? "selected" : ""}"
                     @click=${() => this.selectCommit(c.sha)}
