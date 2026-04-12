@@ -17,6 +17,10 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
       - name: Go vet + test
         run: |
           go vet ./...
