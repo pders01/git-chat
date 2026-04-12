@@ -368,8 +368,9 @@ test.describe("features", () => {
       const app = document.querySelector("gc-app");
       const browser = app?.shadowRoot?.querySelector("gc-repo-browser");
       const fileView = browser?.shadowRoot?.querySelector("gc-file-view");
-      const blameBtn = fileView?.shadowRoot?.querySelector(".hd-btn") as HTMLElement;
-      blameBtn?.click();
+      const blameBtns = fileView?.shadowRoot?.querySelectorAll(".hd-btn");
+      // blame is the second .hd-btn (after history)
+      (blameBtns?.[1] as HTMLElement)?.click();
     });
     await page.waitForTimeout(1500);
 
