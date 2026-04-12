@@ -292,6 +292,137 @@ func commitDiffStats(c *object.Commit) *diffStats {
 	return s
 }
 
+// GetFileChurnMap returns per-file commit counts, additions, deletions,
+// last modified timestamp, and file size over a time window [since, until].
+// If both since and until are 0 the entire history is walked.
+func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.FileChurn, error) {
+	commit, _, err := e.resolveCommit(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	// Determine whether we filter by time window.
+	filterTime := since > 0 || until > 0
+
+	type churnAcc struct {
+		commits   int
+		additions int
+		deletions int
+		lastMod   int64
+	}
+	m := map[string]*churnAcc{}
+
+	iter := object.NewCommitIterCTime(commit, nil, nil)
+	defer iter.Close()
+
+	for {
+		c, err := iter.Next()
+		if err != nil {
+			break
+		}
+
+		ts := c.Author.When.Unix()
+		if filterTime {
+			// Past the window — stop walking (commits are in reverse
+			// chronological order).
+			if since > 0 && ts < since {
+				break
+			}
+			// Before window starts — skip but keep walking.
+			if until > 0 && ts > until {
+				continue
+			}
+		}
+
+		cTree, err := c.Tree()
+		if err != nil {
+			continue
+		}
+
+		var pTree *object.Tree
+		if c.NumParents() > 0 {
+			parent, perr := c.Parents().Next()
+			if perr == nil {
+				pTree, _ = parent.Tree()
+			}
+		}
+
+		if pTree == nil {
+			// Root commit — treat every file as added.
+			cTree.Files().ForEach(func(f *object.File) error {
+				acc, ok := m[f.Name]
+				if !ok {
+					acc = &churnAcc{}
+					m[f.Name] = acc
+				}
+				acc.commits++
+				acc.additions += int(f.Size) / 40 // rough estimate
+				if ts > acc.lastMod {
+					acc.lastMod = ts
+				}
+				return nil
+			})
+			continue
+		}
+
+		changes, err := pTree.Diff(cTree)
+		if err != nil {
+			continue
+		}
+		patch, err := changes.Patch()
+		if err != nil {
+			continue
+		}
+		for _, st := range patch.Stats() {
+			acc, ok := m[st.Name]
+			if !ok {
+				acc = &churnAcc{}
+				m[st.Name] = acc
+			}
+			acc.commits++
+			acc.additions += st.Addition
+			acc.deletions += st.Deletion
+			if ts > acc.lastMod {
+				acc.lastMod = ts
+			}
+		}
+	}
+
+	// Walk the current tree at ref to collect file sizes.
+	tree, err := commit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("get tree for sizes: %w", err)
+	}
+	sizeMap := map[string]int64{}
+	tree.Files().ForEach(func(f *object.File) error {
+		sizeMap[f.Name] = f.Size
+		return nil
+	})
+
+	// Merge into result.
+	out := make([]*gitchatv1.FileChurn, 0, len(m))
+	for path, acc := range m {
+		out = append(out, &gitchatv1.FileChurn{
+			Path:           path,
+			CommitCount:    int32(acc.commits),
+			TotalAdditions: int32(acc.additions),
+			TotalDeletions: int32(acc.deletions),
+			LastModified:   acc.lastMod,
+			Size:           sizeMap[path],
+		})
+	}
+
+	// Sort by commit_count DESC, then path ASC for determinism.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CommitCount != out[j].CommitCount {
+			return out[i].CommitCount > out[j].CommitCount
+		}
+		return out[i].Path < out[j].Path
+	})
+
+	return out, nil
+}
+
 // CompareBranches returns the files changed between two refs with
 // per-file add/delete stats.
 func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFile, int32, int32, error) {

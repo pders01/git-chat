@@ -61,6 +61,10 @@ service RepoService {
   // working tree for a single file.
   rpc GetWorkingTreeDiff(GetWorkingTreeDiffRequest) returns (GetWorkingTreeDiffResponse);
 
+  // GetFileChurnMap returns per-file commit counts, additions, deletions,
+  // last modified timestamp, and file size over a time window.
+  rpc GetFileChurnMap(GetFileChurnMapRequest) returns (GetFileChurnMapResponse);
+
   // GetConfig returns all registered configuration entries with their
   // resolved values (SQLite override → env var → compiled default).
   rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
@@ -276,3 +280,24 @@ message UpdateConfigRequest {
 }
 
 message UpdateConfigResponse {}
+
+// ─── GetFileChurnMap ────────────────────────────────────────────────────
+message GetFileChurnMapRequest {
+  string repo_id = 1;
+  string ref = 2;
+  int64 since_timestamp = 3;
+  int64 until_timestamp = 4;
+}
+
+message FileChurn {
+  string path = 1;
+  int32 commit_count = 2;
+  int32 total_additions = 3;
+  int32 total_deletions = 4;
+  int64 last_modified = 5;
+  int64 size = 6;
+}
+
+message GetFileChurnMapResponse {
+  repeated FileChurn files = 1;
+}

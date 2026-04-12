@@ -9,6 +9,7 @@ import {
 import "./file-view.js";
 import "./compare-view.js";
 import "./changes-view.js";
+import "./code-city.js";
 
 /** A node in the expandable file tree. */
 interface TreeNode {
@@ -40,6 +41,7 @@ export class GcRepoBrowser extends LitElement {
   @state() private drawerOpen = false;
   @state() private comparing = false;
   @state() private showChanges = false;
+  @state() private showCity = false;
   @state() private branches: Array<{ name: string }> = [];
   @state() private baseRef = "";
   @state() private headRef = "";
@@ -77,7 +79,12 @@ export class GcRepoBrowser extends LitElement {
 
   private toggleChanges() {
     this.showChanges = !this.showChanges;
-    if (this.showChanges) this.comparing = false;
+    if (this.showChanges) { this.comparing = false; this.showCity = false; }
+  }
+
+  private toggleCity() {
+    this.showCity = !this.showCity;
+    if (this.showCity) { this.comparing = false; this.showChanges = false; }
   }
 
   private swapRefs() {
@@ -210,7 +217,7 @@ export class GcRepoBrowser extends LitElement {
 
   private renderReady(s: Extract<BrowserState, { phase: "ready" }>) {
     return html`
-      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""} ${this.comparing || this.showChanges ? "comparing" : ""}"
+      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""} ${this.comparing || this.showChanges || this.showCity ? "comparing" : ""}"
         @keydown=${(e: KeyboardEvent) => { if (e.key === "Escape" && this.drawerOpen) { this.drawerOpen = false; } }}>
         <button class="drawer-toggle" @click=${() => (this.drawerOpen = !this.drawerOpen)} aria-label="Toggle file tree">☰</button>
         ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
@@ -228,6 +235,13 @@ export class GcRepoBrowser extends LitElement {
                   </select>`
               : html`
                   <span class="branch">${this.branch || s.repo.defaultBranch}@${s.repo.headCommit}</span>`}
+            <button
+              class="hd-btn"
+              @click=${() => this.toggleCity()}
+              aria-label="Code city"
+              aria-pressed=${this.showCity ? "true" : "false"}
+              title="Activity visualization"
+            >&#x25C9;</button>
             <button
               class="hd-btn"
               @click=${() => this.toggleChanges()}
@@ -259,19 +273,21 @@ export class GcRepoBrowser extends LitElement {
         </aside>
 
         <section>
-          ${this.showChanges
-            ? html`<gc-changes-view .repoId=${s.repo.id}></gc-changes-view>`
-            : this.comparing
-              ? html`<gc-compare-view
-                  .repoId=${s.repo.id}
-                  .baseRef=${this.baseRef}
-                  .headRef=${this.headRef}
-                ></gc-compare-view>`
-              : html`<gc-file-view
-                  .repoId=${s.repo.id}
-                  .path=${this.selectedFile}
-                  .branch=${this.branch}
-                ></gc-file-view>`}
+          ${this.showCity
+            ? html`<gc-code-city .repoId=${s.repo.id} .branch=${this.branch}></gc-code-city>`
+            : this.showChanges
+              ? html`<gc-changes-view .repoId=${s.repo.id}></gc-changes-view>`
+              : this.comparing
+                ? html`<gc-compare-view
+                    .repoId=${s.repo.id}
+                    .baseRef=${this.baseRef}
+                    .headRef=${this.headRef}
+                  ></gc-compare-view>`
+                : html`<gc-file-view
+                    .repoId=${s.repo.id}
+                    .path=${this.selectedFile}
+                    .branch=${this.branch}
+                  ></gc-file-view>`}
         </section>
       </div>
     `;
@@ -419,7 +435,8 @@ export class GcRepoBrowser extends LitElement {
     }
     section > gc-file-view,
     section > gc-compare-view,
-    section > gc-changes-view {
+    section > gc-changes-view,
+    section > gc-code-city {
       flex: 1;
       min-height: 0;
     }

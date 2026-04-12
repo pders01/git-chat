@@ -1992,6 +1992,203 @@ func (*UpdateConfigResponse) Descriptor() ([]byte, []int) {
 	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{31}
 }
 
+// ─── GetFileChurnMap ────────────────────────────────────────────────────
+type GetFileChurnMapRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	RepoId         string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	Ref            string                 `protobuf:"bytes,2,opt,name=ref,proto3" json:"ref,omitempty"`
+	SinceTimestamp int64                  `protobuf:"varint,3,opt,name=since_timestamp,json=sinceTimestamp,proto3" json:"since_timestamp,omitempty"`
+	UntilTimestamp int64                  `protobuf:"varint,4,opt,name=until_timestamp,json=untilTimestamp,proto3" json:"until_timestamp,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *GetFileChurnMapRequest) Reset() {
+	*x = GetFileChurnMapRequest{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFileChurnMapRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFileChurnMapRequest) ProtoMessage() {}
+
+func (x *GetFileChurnMapRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFileChurnMapRequest.ProtoReflect.Descriptor instead.
+func (*GetFileChurnMapRequest) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *GetFileChurnMapRequest) GetRepoId() string {
+	if x != nil {
+		return x.RepoId
+	}
+	return ""
+}
+
+func (x *GetFileChurnMapRequest) GetRef() string {
+	if x != nil {
+		return x.Ref
+	}
+	return ""
+}
+
+func (x *GetFileChurnMapRequest) GetSinceTimestamp() int64 {
+	if x != nil {
+		return x.SinceTimestamp
+	}
+	return 0
+}
+
+func (x *GetFileChurnMapRequest) GetUntilTimestamp() int64 {
+	if x != nil {
+		return x.UntilTimestamp
+	}
+	return 0
+}
+
+type FileChurn struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Path           string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	CommitCount    int32                  `protobuf:"varint,2,opt,name=commit_count,json=commitCount,proto3" json:"commit_count,omitempty"`
+	TotalAdditions int32                  `protobuf:"varint,3,opt,name=total_additions,json=totalAdditions,proto3" json:"total_additions,omitempty"`
+	TotalDeletions int32                  `protobuf:"varint,4,opt,name=total_deletions,json=totalDeletions,proto3" json:"total_deletions,omitempty"`
+	LastModified   int64                  `protobuf:"varint,5,opt,name=last_modified,json=lastModified,proto3" json:"last_modified,omitempty"`
+	Size           int64                  `protobuf:"varint,6,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *FileChurn) Reset() {
+	*x = FileChurn{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileChurn) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileChurn) ProtoMessage() {}
+
+func (x *FileChurn) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileChurn.ProtoReflect.Descriptor instead.
+func (*FileChurn) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *FileChurn) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *FileChurn) GetCommitCount() int32 {
+	if x != nil {
+		return x.CommitCount
+	}
+	return 0
+}
+
+func (x *FileChurn) GetTotalAdditions() int32 {
+	if x != nil {
+		return x.TotalAdditions
+	}
+	return 0
+}
+
+func (x *FileChurn) GetTotalDeletions() int32 {
+	if x != nil {
+		return x.TotalDeletions
+	}
+	return 0
+}
+
+func (x *FileChurn) GetLastModified() int64 {
+	if x != nil {
+		return x.LastModified
+	}
+	return 0
+}
+
+func (x *FileChurn) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+type GetFileChurnMapResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Files         []*FileChurn           `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFileChurnMapResponse) Reset() {
+	*x = GetFileChurnMapResponse{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFileChurnMapResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFileChurnMapResponse) ProtoMessage() {}
+
+func (x *GetFileChurnMapResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFileChurnMapResponse.ProtoReflect.Descriptor instead.
+func (*GetFileChurnMapResponse) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *GetFileChurnMapResponse) GetFiles() []*FileChurn {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
 var File_gitchat_v1_repo_proto protoreflect.FileDescriptor
 
 const file_gitchat_v1_repo_proto_rawDesc = "" +
@@ -2132,13 +2329,27 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x13UpdateConfigRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\"\x16\n" +
-	"\x14UpdateConfigResponse*\x82\x01\n" +
+	"\x14UpdateConfigResponse\"\x95\x01\n" +
+	"\x16GetFileChurnMapRequest\x12\x17\n" +
+	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x10\n" +
+	"\x03ref\x18\x02 \x01(\tR\x03ref\x12'\n" +
+	"\x0fsince_timestamp\x18\x03 \x01(\x03R\x0esinceTimestamp\x12'\n" +
+	"\x0funtil_timestamp\x18\x04 \x01(\x03R\x0euntilTimestamp\"\xcd\x01\n" +
+	"\tFileChurn\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12!\n" +
+	"\fcommit_count\x18\x02 \x01(\x05R\vcommitCount\x12'\n" +
+	"\x0ftotal_additions\x18\x03 \x01(\x05R\x0etotalAdditions\x12'\n" +
+	"\x0ftotal_deletions\x18\x04 \x01(\x05R\x0etotalDeletions\x12#\n" +
+	"\rlast_modified\x18\x05 \x01(\x03R\flastModified\x12\x12\n" +
+	"\x04size\x18\x06 \x01(\x03R\x04size\"F\n" +
+	"\x17GetFileChurnMapResponse\x12+\n" +
+	"\x05files\x18\x01 \x03(\v2\x15.gitchat.v1.FileChurnR\x05files*\x82\x01\n" +
 	"\tEntryType\x12\x1a\n" +
 	"\x16ENTRY_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fENTRY_TYPE_FILE\x10\x01\x12\x12\n" +
 	"\x0eENTRY_TYPE_DIR\x10\x02\x12\x16\n" +
 	"\x12ENTRY_TYPE_SYMLINK\x10\x03\x12\x18\n" +
-	"\x14ENTRY_TYPE_SUBMODULE\x10\x042\xb8\a\n" +
+	"\x14ENTRY_TYPE_SUBMODULE\x10\x042\x94\b\n" +
 	"\vRepoService\x12H\n" +
 	"\tListRepos\x12\x1c.gitchat.v1.ListReposRequest\x1a\x1d.gitchat.v1.ListReposResponse\x12Q\n" +
 	"\fListBranches\x12\x1f.gitchat.v1.ListBranchesRequest\x1a .gitchat.v1.ListBranchesResponse\x12E\n" +
@@ -2149,7 +2360,8 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x0fCompareBranches\x12\".gitchat.v1.CompareBranchesRequest\x1a#.gitchat.v1.CompareBranchesResponse\x12B\n" +
 	"\aGetDiff\x12\x1a.gitchat.v1.GetDiffRequest\x1a\x1b.gitchat.v1.GetDiffResponse\x12H\n" +
 	"\tGetStatus\x12\x1c.gitchat.v1.GetStatusRequest\x1a\x1d.gitchat.v1.GetStatusResponse\x12c\n" +
-	"\x12GetWorkingTreeDiff\x12%.gitchat.v1.GetWorkingTreeDiffRequest\x1a&.gitchat.v1.GetWorkingTreeDiffResponse\x12H\n" +
+	"\x12GetWorkingTreeDiff\x12%.gitchat.v1.GetWorkingTreeDiffRequest\x1a&.gitchat.v1.GetWorkingTreeDiffResponse\x12Z\n" +
+	"\x0fGetFileChurnMap\x12\".gitchat.v1.GetFileChurnMapRequest\x1a#.gitchat.v1.GetFileChurnMapResponse\x12H\n" +
 	"\tGetConfig\x12\x1c.gitchat.v1.GetConfigRequest\x1a\x1d.gitchat.v1.GetConfigResponse\x12Q\n" +
 	"\fUpdateConfig\x12\x1f.gitchat.v1.UpdateConfigRequest\x1a .gitchat.v1.UpdateConfigResponseB\x9d\x01\n" +
 	"\x0ecom.gitchat.v1B\tRepoProtoP\x01Z7github.com/pders01/git-chat/gen/go/gitchat/v1;gitchatv1\xa2\x02\x03GXX\xaa\x02\n" +
@@ -2169,7 +2381,7 @@ func file_gitchat_v1_repo_proto_rawDescGZIP() []byte {
 }
 
 var file_gitchat_v1_repo_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_gitchat_v1_repo_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_gitchat_v1_repo_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_gitchat_v1_repo_proto_goTypes = []any{
 	(EntryType)(0),                     // 0: gitchat.v1.EntryType
 	(*Repo)(nil),                       // 1: gitchat.v1.Repo
@@ -2204,6 +2416,9 @@ var file_gitchat_v1_repo_proto_goTypes = []any{
 	(*GetConfigResponse)(nil),          // 30: gitchat.v1.GetConfigResponse
 	(*UpdateConfigRequest)(nil),        // 31: gitchat.v1.UpdateConfigRequest
 	(*UpdateConfigResponse)(nil),       // 32: gitchat.v1.UpdateConfigResponse
+	(*GetFileChurnMapRequest)(nil),     // 33: gitchat.v1.GetFileChurnMapRequest
+	(*FileChurn)(nil),                  // 34: gitchat.v1.FileChurn
+	(*GetFileChurnMapResponse)(nil),    // 35: gitchat.v1.GetFileChurnMapResponse
 }
 var file_gitchat_v1_repo_proto_depIdxs = []int32{
 	1,  // 0: gitchat.v1.ListReposResponse.repos:type_name -> gitchat.v1.Repo
@@ -2218,35 +2433,38 @@ var file_gitchat_v1_repo_proto_depIdxs = []int32{
 	25, // 9: gitchat.v1.GetStatusResponse.unstaged:type_name -> gitchat.v1.StatusFile
 	25, // 10: gitchat.v1.GetStatusResponse.untracked:type_name -> gitchat.v1.StatusFile
 	29, // 11: gitchat.v1.GetConfigResponse.entries:type_name -> gitchat.v1.ConfigEntry
-	2,  // 12: gitchat.v1.RepoService.ListRepos:input_type -> gitchat.v1.ListReposRequest
-	4,  // 13: gitchat.v1.RepoService.ListBranches:input_type -> gitchat.v1.ListBranchesRequest
-	7,  // 14: gitchat.v1.RepoService.ListTree:input_type -> gitchat.v1.ListTreeRequest
-	10, // 15: gitchat.v1.RepoService.GetFile:input_type -> gitchat.v1.GetFileRequest
-	12, // 16: gitchat.v1.RepoService.ListCommits:input_type -> gitchat.v1.ListCommitsRequest
-	15, // 17: gitchat.v1.RepoService.GetBlame:input_type -> gitchat.v1.GetBlameRequest
-	18, // 18: gitchat.v1.RepoService.CompareBranches:input_type -> gitchat.v1.CompareBranchesRequest
-	21, // 19: gitchat.v1.RepoService.GetDiff:input_type -> gitchat.v1.GetDiffRequest
-	23, // 20: gitchat.v1.RepoService.GetStatus:input_type -> gitchat.v1.GetStatusRequest
-	26, // 21: gitchat.v1.RepoService.GetWorkingTreeDiff:input_type -> gitchat.v1.GetWorkingTreeDiffRequest
-	28, // 22: gitchat.v1.RepoService.GetConfig:input_type -> gitchat.v1.GetConfigRequest
-	31, // 23: gitchat.v1.RepoService.UpdateConfig:input_type -> gitchat.v1.UpdateConfigRequest
-	3,  // 24: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
-	5,  // 25: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
-	8,  // 26: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
-	11, // 27: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
-	13, // 28: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
-	16, // 29: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
-	19, // 30: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
-	22, // 31: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
-	24, // 32: gitchat.v1.RepoService.GetStatus:output_type -> gitchat.v1.GetStatusResponse
-	27, // 33: gitchat.v1.RepoService.GetWorkingTreeDiff:output_type -> gitchat.v1.GetWorkingTreeDiffResponse
-	30, // 34: gitchat.v1.RepoService.GetConfig:output_type -> gitchat.v1.GetConfigResponse
-	32, // 35: gitchat.v1.RepoService.UpdateConfig:output_type -> gitchat.v1.UpdateConfigResponse
-	24, // [24:36] is the sub-list for method output_type
-	12, // [12:24] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	34, // 12: gitchat.v1.GetFileChurnMapResponse.files:type_name -> gitchat.v1.FileChurn
+	2,  // 13: gitchat.v1.RepoService.ListRepos:input_type -> gitchat.v1.ListReposRequest
+	4,  // 14: gitchat.v1.RepoService.ListBranches:input_type -> gitchat.v1.ListBranchesRequest
+	7,  // 15: gitchat.v1.RepoService.ListTree:input_type -> gitchat.v1.ListTreeRequest
+	10, // 16: gitchat.v1.RepoService.GetFile:input_type -> gitchat.v1.GetFileRequest
+	12, // 17: gitchat.v1.RepoService.ListCommits:input_type -> gitchat.v1.ListCommitsRequest
+	15, // 18: gitchat.v1.RepoService.GetBlame:input_type -> gitchat.v1.GetBlameRequest
+	18, // 19: gitchat.v1.RepoService.CompareBranches:input_type -> gitchat.v1.CompareBranchesRequest
+	21, // 20: gitchat.v1.RepoService.GetDiff:input_type -> gitchat.v1.GetDiffRequest
+	23, // 21: gitchat.v1.RepoService.GetStatus:input_type -> gitchat.v1.GetStatusRequest
+	26, // 22: gitchat.v1.RepoService.GetWorkingTreeDiff:input_type -> gitchat.v1.GetWorkingTreeDiffRequest
+	33, // 23: gitchat.v1.RepoService.GetFileChurnMap:input_type -> gitchat.v1.GetFileChurnMapRequest
+	28, // 24: gitchat.v1.RepoService.GetConfig:input_type -> gitchat.v1.GetConfigRequest
+	31, // 25: gitchat.v1.RepoService.UpdateConfig:input_type -> gitchat.v1.UpdateConfigRequest
+	3,  // 26: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
+	5,  // 27: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
+	8,  // 28: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
+	11, // 29: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
+	13, // 30: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
+	16, // 31: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
+	19, // 32: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
+	22, // 33: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
+	24, // 34: gitchat.v1.RepoService.GetStatus:output_type -> gitchat.v1.GetStatusResponse
+	27, // 35: gitchat.v1.RepoService.GetWorkingTreeDiff:output_type -> gitchat.v1.GetWorkingTreeDiffResponse
+	35, // 36: gitchat.v1.RepoService.GetFileChurnMap:output_type -> gitchat.v1.GetFileChurnMapResponse
+	30, // 37: gitchat.v1.RepoService.GetConfig:output_type -> gitchat.v1.GetConfigResponse
+	32, // 38: gitchat.v1.RepoService.UpdateConfig:output_type -> gitchat.v1.UpdateConfigResponse
+	26, // [26:39] is the sub-list for method output_type
+	13, // [13:26] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_gitchat_v1_repo_proto_init() }
@@ -2260,7 +2478,7 @@ func file_gitchat_v1_repo_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gitchat_v1_repo_proto_rawDesc), len(file_gitchat_v1_repo_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   32,
+			NumMessages:   35,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

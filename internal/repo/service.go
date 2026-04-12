@@ -198,6 +198,21 @@ func (s *Service) GetWorkingTreeDiff(
 	}), nil
 }
 
+func (s *Service) GetFileChurnMap(
+	_ context.Context,
+	req *connect.Request[gitchatv1.GetFileChurnMapRequest],
+) (*connect.Response[gitchatv1.GetFileChurnMapResponse], error) {
+	entry := s.lookup(req.Msg.RepoId)
+	if entry == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
+	}
+	files, err := entry.GetFileChurnMap(req.Msg.Ref, req.Msg.SinceTimestamp, req.Msg.UntilTimestamp)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&gitchatv1.GetFileChurnMapResponse{Files: files}), nil
+}
+
 func (s *Service) GetConfig(
 	ctx context.Context,
 	_ *connect.Request[gitchatv1.GetConfigRequest],

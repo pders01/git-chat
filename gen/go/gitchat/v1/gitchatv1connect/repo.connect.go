@@ -56,6 +56,9 @@ const (
 	// RepoServiceGetWorkingTreeDiffProcedure is the fully-qualified name of the RepoService's
 	// GetWorkingTreeDiff RPC.
 	RepoServiceGetWorkingTreeDiffProcedure = "/gitchat.v1.RepoService/GetWorkingTreeDiff"
+	// RepoServiceGetFileChurnMapProcedure is the fully-qualified name of the RepoService's
+	// GetFileChurnMap RPC.
+	RepoServiceGetFileChurnMapProcedure = "/gitchat.v1.RepoService/GetFileChurnMap"
 	// RepoServiceGetConfigProcedure is the fully-qualified name of the RepoService's GetConfig RPC.
 	RepoServiceGetConfigProcedure = "/gitchat.v1.RepoService/GetConfig"
 	// RepoServiceUpdateConfigProcedure is the fully-qualified name of the RepoService's UpdateConfig
@@ -104,6 +107,9 @@ type RepoServiceClient interface {
 	// GetWorkingTreeDiff returns a unified diff between HEAD and the
 	// working tree for a single file.
 	GetWorkingTreeDiff(context.Context, *connect.Request[v1.GetWorkingTreeDiffRequest]) (*connect.Response[v1.GetWorkingTreeDiffResponse], error)
+	// GetFileChurnMap returns per-file commit counts, additions, deletions,
+	// last modified timestamp, and file size over a time window.
+	GetFileChurnMap(context.Context, *connect.Request[v1.GetFileChurnMapRequest]) (*connect.Response[v1.GetFileChurnMapResponse], error)
 	// GetConfig returns all registered configuration entries with their
 	// resolved values (SQLite override → env var → compiled default).
 	GetConfig(context.Context, *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error)
@@ -183,6 +189,12 @@ func NewRepoServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(repoServiceMethods.ByName("GetWorkingTreeDiff")),
 			connect.WithClientOptions(opts...),
 		),
+		getFileChurnMap: connect.NewClient[v1.GetFileChurnMapRequest, v1.GetFileChurnMapResponse](
+			httpClient,
+			baseURL+RepoServiceGetFileChurnMapProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("GetFileChurnMap")),
+			connect.WithClientOptions(opts...),
+		),
 		getConfig: connect.NewClient[v1.GetConfigRequest, v1.GetConfigResponse](
 			httpClient,
 			baseURL+RepoServiceGetConfigProcedure,
@@ -210,6 +222,7 @@ type repoServiceClient struct {
 	getDiff            *connect.Client[v1.GetDiffRequest, v1.GetDiffResponse]
 	getStatus          *connect.Client[v1.GetStatusRequest, v1.GetStatusResponse]
 	getWorkingTreeDiff *connect.Client[v1.GetWorkingTreeDiffRequest, v1.GetWorkingTreeDiffResponse]
+	getFileChurnMap    *connect.Client[v1.GetFileChurnMapRequest, v1.GetFileChurnMapResponse]
 	getConfig          *connect.Client[v1.GetConfigRequest, v1.GetConfigResponse]
 	updateConfig       *connect.Client[v1.UpdateConfigRequest, v1.UpdateConfigResponse]
 }
@@ -264,6 +277,11 @@ func (c *repoServiceClient) GetWorkingTreeDiff(ctx context.Context, req *connect
 	return c.getWorkingTreeDiff.CallUnary(ctx, req)
 }
 
+// GetFileChurnMap calls gitchat.v1.RepoService.GetFileChurnMap.
+func (c *repoServiceClient) GetFileChurnMap(ctx context.Context, req *connect.Request[v1.GetFileChurnMapRequest]) (*connect.Response[v1.GetFileChurnMapResponse], error) {
+	return c.getFileChurnMap.CallUnary(ctx, req)
+}
+
 // GetConfig calls gitchat.v1.RepoService.GetConfig.
 func (c *repoServiceClient) GetConfig(ctx context.Context, req *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error) {
 	return c.getConfig.CallUnary(ctx, req)
@@ -315,6 +333,9 @@ type RepoServiceHandler interface {
 	// GetWorkingTreeDiff returns a unified diff between HEAD and the
 	// working tree for a single file.
 	GetWorkingTreeDiff(context.Context, *connect.Request[v1.GetWorkingTreeDiffRequest]) (*connect.Response[v1.GetWorkingTreeDiffResponse], error)
+	// GetFileChurnMap returns per-file commit counts, additions, deletions,
+	// last modified timestamp, and file size over a time window.
+	GetFileChurnMap(context.Context, *connect.Request[v1.GetFileChurnMapRequest]) (*connect.Response[v1.GetFileChurnMapResponse], error)
 	// GetConfig returns all registered configuration entries with their
 	// resolved values (SQLite override → env var → compiled default).
 	GetConfig(context.Context, *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error)
@@ -390,6 +411,12 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(repoServiceMethods.ByName("GetWorkingTreeDiff")),
 		connect.WithHandlerOptions(opts...),
 	)
+	repoServiceGetFileChurnMapHandler := connect.NewUnaryHandler(
+		RepoServiceGetFileChurnMapProcedure,
+		svc.GetFileChurnMap,
+		connect.WithSchema(repoServiceMethods.ByName("GetFileChurnMap")),
+		connect.WithHandlerOptions(opts...),
+	)
 	repoServiceGetConfigHandler := connect.NewUnaryHandler(
 		RepoServiceGetConfigProcedure,
 		svc.GetConfig,
@@ -424,6 +451,8 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 			repoServiceGetStatusHandler.ServeHTTP(w, r)
 		case RepoServiceGetWorkingTreeDiffProcedure:
 			repoServiceGetWorkingTreeDiffHandler.ServeHTTP(w, r)
+		case RepoServiceGetFileChurnMapProcedure:
+			repoServiceGetFileChurnMapHandler.ServeHTTP(w, r)
 		case RepoServiceGetConfigProcedure:
 			repoServiceGetConfigHandler.ServeHTTP(w, r)
 		case RepoServiceUpdateConfigProcedure:
@@ -475,6 +504,10 @@ func (UnimplementedRepoServiceHandler) GetStatus(context.Context, *connect.Reque
 
 func (UnimplementedRepoServiceHandler) GetWorkingTreeDiff(context.Context, *connect.Request[v1.GetWorkingTreeDiffRequest]) (*connect.Response[v1.GetWorkingTreeDiffResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.GetWorkingTreeDiff is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) GetFileChurnMap(context.Context, *connect.Request[v1.GetFileChurnMapRequest]) (*connect.Response[v1.GetFileChurnMapResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.GetFileChurnMap is not implemented"))
 }
 
 func (UnimplementedRepoServiceHandler) GetConfig(context.Context, *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error) {
