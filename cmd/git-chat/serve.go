@@ -17,6 +17,7 @@ import (
 	"github.com/pders01/git-chat/internal/config"
 	"github.com/pders01/git-chat/internal/repo"
 	"github.com/pders01/git-chat/internal/rpc"
+	"github.com/pders01/git-chat/internal/webhook"
 )
 
 // repoFlags collects repeated --repo paths.
@@ -99,6 +100,7 @@ func runServe(args []string) error {
 		Model:       *llmModel,
 		Temperature: float32(*llmTemp),
 		MaxTokens:   *llmMaxTok,
+		Webhook:     webhook.New(cfg.Get("GITCHAT_WEBHOOK_URL")),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

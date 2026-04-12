@@ -20,6 +20,7 @@ import (
 	"github.com/pders01/git-chat/internal/config"
 	"github.com/pders01/git-chat/internal/repo"
 	"github.com/pders01/git-chat/internal/rpc"
+	"github.com/pders01/git-chat/internal/webhook"
 )
 
 func runLocal(args []string) error {
@@ -99,6 +100,7 @@ func runLocal(args []string) error {
 		Model:       *llmModel,
 		Temperature: float32(*llmTemp),
 		MaxTokens:   *llmMaxTok,
+		Webhook:     webhook.New(cfg.Get("GITCHAT_WEBHOOK_URL")),
 	}
 
 	// Listen on the requested loopback address first so we know the bound

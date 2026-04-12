@@ -27,4 +27,7 @@ func RegisterDefaults(r *Registry) {
 	// ── session ───────────────────────────────────────────────────
 	r.Register("GITCHAT_SESSION_TTL", "168h", "Browser session TTL (Go duration string)", "session")
 	r.Register("GITCHAT_DEFAULT_SESSION_LIMIT", "100", "Default number of sessions returned by list", "session")
+
+	// ── webhooks ──────────────────────────────────────────────────
+	r.Register("GITCHAT_WEBHOOK_URL", "", "Slack/Discord incoming webhook URL (empty = disabled)", "webhook")
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/pders01/git-chat/internal/chat/llm"
 	"github.com/pders01/git-chat/internal/repo"
 	"github.com/pders01/git-chat/internal/storage"
+	"github.com/pders01/git-chat/internal/webhook"
 )
 
 // Service wires all the chat dependencies. The zero value is not usable;
@@ -41,6 +42,7 @@ type Service struct {
 	// generates session titles. Set true in tests to avoid races
 	// with the Fake adapter's LastRequest tracking.
 	DisableSmartTitle bool
+	Webhook           *webhook.Sender
 }
 
 var _ gitchatv1connect.ChatServiceHandler = (*Service)(nil)
@@ -523,6 +525,7 @@ func (s *Service) verifyProvenance(ctx context.Context, card *storage.CardRow, r
 	if err != nil {
 		// Can't verify → treat as stale to be safe.
 		_ = s.DB.InvalidateCard(ctx, card.ID)
+		s.notifyInvalidation(ctx, card, r.ID, "", "provenance_error")
 		return false
 	}
 	if len(provRows) == 0 {
@@ -535,17 +538,33 @@ func (s *Service) verifyProvenance(ctx context.Context, card *storage.CardRow, r
 		if err != nil {
 			// File was deleted → stale.
 			_ = s.DB.InvalidateCard(ctx, card.ID)
+			s.notifyInvalidation(ctx, card, r.ID, p.Path, "file_deleted")
 			return false
 		}
 		if resp.BlobSha != p.BlobSHA {
 			// File changed → stale.
 			_ = s.DB.InvalidateCard(ctx, card.ID)
+			s.notifyInvalidation(ctx, card, r.ID, p.Path, "file_changed")
 			return false
 		}
 	}
 	// All provenance SHAs match → still valid.
 	_ = s.DB.UpdateCardVerification(ctx, card.ID, headCommit)
 	return true
+}
+
+func (s *Service) notifyInvalidation(ctx context.Context, card *storage.CardRow, repoID, path, reason string) {
+	if s.Webhook == nil {
+		return
+	}
+	s.Webhook.Send(ctx, webhook.Event{
+		Type:     "card_invalidated",
+		RepoID:   repoID,
+		CardID:   card.ID,
+		Question: card.QuestionNormalized,
+		Reason:   reason,
+		Path:     path,
+	})
 }
 
 // cardPromotionThreshold is the minimum number of similar past user
