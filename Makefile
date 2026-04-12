@@ -61,7 +61,7 @@ check-go:
 
 .PHONY: check-web
 check-web:
-	cd web && bun install --frozen-lockfile && bunx tsc --noEmit
+	cd web && bun install --frozen-lockfile && bun run check && bun run lint && bun run fmt:check
 
 .PHONY: test-e2e
 # test-e2e builds the binary, starts a server, runs Playwright tests,
