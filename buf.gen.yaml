@@ -1,0 +1,20 @@
+version: v2
+managed:
+  enabled: true
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: gen/go
+    opt: paths=source_relative
+  - remote: buf.build/connectrpc/go
+    out: gen/go
+    opt: paths=source_relative
+  # protoc-gen-es v2 generates BOTH messages and service definitions into
+  # a single _pb.ts file. The old connectrpc/es plugin is deprecated and
+  # generates broken import paths when paired with es v2 output.
+  # TS codegen is colocated with the web project so node_modules resolution
+  # works for the generated files' own imports (@bufbuild/protobuf/codegenv2).
+  - remote: buf.build/bufbuild/es
+    out: web/src/gen
+    opt:
+      - target=ts
+      - import_extension=js

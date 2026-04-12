@@ -1,0 +1,15 @@
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+  except:
+    # We use oneof-carrying chunk messages for server-streaming RPCs
+    # (see chat.proto MessageChunk, auth.proto WatchPairingResponse).
+    # The STANDARD naming rule insists on <Method>Response for every
+    # response type, which obscures "this is a streaming chunk" semantics.
+    - RPC_RESPONSE_STANDARD_NAME
+breaking:
+  use:
+    - FILE

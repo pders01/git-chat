@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package gitchat.v1;
+
+option go_package = "github.com/pders01/git-chat/gen/go/gitchat/v1;gitchatv1";
+
+// AuthService owns the session establishment flows.
+//
+// Two modes land on the same session cookie contract:
+//
+//   1. Self-hosted multi-user: StartPairing → WatchPairing (stream) →
+//      out-of-band `ssh -p 2222 host pair CODE` → server emits Paired
+//      event on the stream → Claim sets the cookie.
+//
+//   2. Solo-local: the binary was started with `git-chat local`, which
+//      printed a claim URL with a short-lived token. The browser fetches
+//      the SPA, reads the token from the URL, and calls LocalClaim to
+//      trade it for a session cookie.
+//
+// Session cookies are HttpOnly + SameSite=Strict and set on the HTTP
+// response of Claim / LocalClaim. The RPC bodies themselves are empty on
+// success — the cookie is the only side effect.
+service AuthService {
+  // StartPairing mints a new pairing session. The response carries a
+  // server-stable session id (for WatchPairing) and a short human-readable
+  // code (for the ssh pair command). Both expire after 60 seconds.
+  rpc StartPairing(StartPairingRequest) returns (StartPairingResponse);
+
+  // WatchPairing is a server stream that emits exactly one terminal event:
+  // Paired (success) or Expired (TTL exceeded). The stream closes after
+  // emitting its event. The browser must call Claim with the Paired event's
+  // claim_token to actually establish the session.
+  rpc WatchPairing(WatchPairingRequest) returns (stream WatchPairingResponse);
+
+  // Claim consumes a Paired event's claim_token and sets the session cookie
+  // on the response. Single-use: a second call with the same token 401s.
+  rpc Claim(ClaimRequest) returns (ClaimResponse);
+
+  // LocalClaim consumes the one-time token printed by `git-chat local` on
+  // startup and sets the session cookie on the response. The token is
+  // in-memory with a 60-second TTL and is deleted after a successful claim.
+  // Refused unless the server is running in local mode.
+  rpc LocalClaim(LocalClaimRequest) returns (LocalClaimResponse);
+
+  // Whoami returns the current principal from the session cookie, or an
+  // empty principal if unauthenticated. Does not 401 on missing auth —
+  // callers use it to decide whether to show the pairing view or the app.
+  rpc Whoami(WhoamiRequest) returns (WhoamiResponse);
+
+  // Logout invalidates the current session cookie server-side and instructs
+  // the browser to clear it via Set-Cookie with Max-Age=0.
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}
+
+// AuthMode distinguishes how the current session was established.
+enum AuthMode {
+  AUTH_MODE_UNSPECIFIED = 0;
+  AUTH_MODE_LOCAL = 1;   // session from LocalClaim
+  AUTH_MODE_PAIRED = 2;  // session from Claim after ssh pairing
+}
+
+// ─── StartPairing ───────────────────────────────────────────────────────
+message StartPairingRequest {}
+
+message StartPairingResponse {
+  // Stable identifier used to correlate WatchPairing and Claim calls.
+  string sid = 1;
+
+  // Short human-readable code used in `ssh -p 2222 host pair <code>`.
+  // Format: WORD-NNNN, e.g. "WOLF-7291".
+  string code = 2;
+
+  // Unix seconds at which this pairing session expires.
+  int64 expires_at = 3;
+}
+
+// ─── WatchPairing ───────────────────────────────────────────────────────
+message WatchPairingRequest {
+  string sid = 1;
+}
+
+// WatchPairingResponse carries exactly one terminal event per stream.
+// The oneof shape keeps the success and failure variants type-discriminated
+// on both sides.
+message WatchPairingResponse {
+  oneof kind {
+    Paired paired = 1;
+    Expired expired = 2;
+  }
+}
+
+message Paired {
+  // Short-lived (30s) nonce that authorizes exactly one Claim call.
+  string claim_token = 1;
+  // Principal resolved from the ssh pubkey that completed the pairing.
+  string principal = 2;
+}
+
+message Expired {
+  string reason = 1;  // "ttl" | "replaced"
+}
+
+// ─── Claim ──────────────────────────────────────────────────────────────
+message ClaimRequest {
+  string sid = 1;
+  string claim_token = 2;
+}
+
+message ClaimResponse {
+  string principal = 1;
+}
+
+// ─── LocalClaim ─────────────────────────────────────────────────────────
+message LocalClaimRequest {
+  string token = 1;
+}
+
+message LocalClaimResponse {
+  string principal = 1;  // always "local" in local mode
+}
+
+// ─── Whoami ─────────────────────────────────────────────────────────────
+message WhoamiRequest {}
+
+message WhoamiResponse {
+  string principal = 1;  // empty if unauthenticated
+  AuthMode mode = 2;
+}
+
+// ─── Logout ─────────────────────────────────────────────────────────────
+message LogoutRequest {}
+
+message LogoutResponse {}

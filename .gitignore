@@ -1,0 +1,25 @@
+# Build output
+/dist/
+
+# Go
+*.test
+*.out
+/vendor/
+
+# Web build output (embedded into Go binary at build time).
+# We commit only the stub index.html so `go build` works on a fresh clone.
+/internal/assets/dist/*
+!/internal/assets/dist/index.html
+
+# Web dev
+/web/node_modules
+/web/dist
+/web/.vite
+
+# SSH host keys (generated at first run)
+host_ed25519*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>git-chat</title>
+  <style>
+    /* ── Design tokens ───────────────────────────────────────────────
+       CSS custom properties inherit through the shadow DOM, so every
+       Lit component can reference var(--surface-2) without importing
+       anything. Define once here; flip values here to retheme the
+       whole app. Keep names semantic (role) not literal (shade). */
+    :root {
+      /* Surface elevation stack, darkest → lightest. */
+      --surface-0: #0a0c10;       /* deepest: sidebars */
+      --surface-1: #0b0d11;       /* app background, pane body */
+      --surface-1-alt: #0d1017;   /* subtle lift (user turn body) */
+      --surface-2: #10131a;       /* panels, cards, composer inner */
+      --surface-3: #161a22;       /* hover */
+      --surface-4: #1a1d24;       /* inline code bg, subtlest dividers */
+      --surface-5: #1b212d;       /* selected row */
+
+      /* Borders — three strengths plus semantic variants. */
+      --border-default: #1f232b;
+      --border-strong: #2a2f3a;
+      --border-focus: #3a4252;     /* focused input outline */
+      --border-accent: #2d4e42;    /* primary-action accent (green) */
+      --border-user-rule: #2a3a4a; /* user-turn left rule (blue) */
+
+      /* Text. */
+      --text: #e8e8e8;
+      --text-secondary: #cfd3d9;
+      --text-muted: #b8b8b8;
+
+      /* Accents — green is always "assistant / success", blue is
+         always "user / link". Keep this narrow on purpose. */
+      --accent-assistant: #7bd88f;
+      --accent-user: #9dcfff;
+      --accent-link: #9dcfff;
+      --accent-link-dim: #3a5570;
+
+      /* Danger (text, bg, border). */
+      --danger: #ff8a8a;
+      --danger-bg: #180b0b;
+      --danger-border: #5a1d1d;
+
+      /* Primary action (send button). */
+      --action-bg: #1a2f28;
+      --action-bg-hover: #223b33;
+
+      /* Radii. */
+      --radius-sm: 3px;
+      --radius-md: 4px;
+      --radius-lg: 5px;
+      --radius-xl: 8px;
+
+      /* Typography — monospace throughout. */
+      --font-mono: ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --text-xs: 0.7rem;    /* badges, meta */
+      --text-sm: 0.78rem;   /* secondary UI */
+      --text-base: 0.84rem; /* body */
+      --text-md: 0.92rem;   /* emphasized */
+      --text-lg: 1rem;      /* section headings */
+
+      /* ── Layout ────────────────────────────────────── */
+      --sidebar-width: 260px;     /* default; overridden per-user via localStorage */
+      --content-max-width: 820px; /* reader-width cap for prose */
+
+      /* ── Spacing (4px grid) ─────────────────────────
+         The scale starts at 0.25rem (4px) and doubles at key steps.
+         Use --space-N for margins, padding, gap. Off-grid values in
+         components are deliberate optical tweaks and stay hardcoded. */
+      --space-1: 0.25rem;   /*  4px — tight inline spacing */
+      --space-2: 0.5rem;    /*  8px — default gap */
+      --space-3: 0.75rem;   /* 12px — padding-sm */
+      --space-4: 1rem;      /* 16px — padding-md */
+      --space-5: 1.25rem;   /* 20px — pane padding */
+      --space-6: 1.5rem;    /* 24px — section margin */
+      --space-7: 2rem;      /* 32px — pane edge padding */
+      --space-8: 3rem;      /* 48px — top-of-pane breathing */
+    }
+
+    html, body {
+      margin: 0;
+      background: var(--surface-1);
+      color: var(--text);
+      font-family: var(--font-mono);
+    }
+
+    /* Responsive sidebar collapse is handled per-component via
+       @media (max-width: 768px) { .sidebar { display: none } }
+       rather than a CSS variable override here — inline styles
+       from the settings panel would override a :root variable. */
+  </style>
+</head>
+<body>
+  <gc-app></gc-app>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

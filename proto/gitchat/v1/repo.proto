@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package gitchat.v1;
+
+option go_package = "github.com/pders01/git-chat/gen/go/gitchat/v1;gitchatv1";
+
+// RepoService owns read-only access to the git repositories this server
+// manages. Writes (chat, KB updates) live on other services; this one is
+// intentionally a narrow window into git state.
+//
+// All RPCs require an authenticated session. The gateway interceptor
+// returns CodeUnauthenticated before the handler runs if the caller has
+// no principal in context.
+service RepoService {
+  // ListRepos returns every repository the server has been configured to
+  // expose. In M2 this is populated from `--repo` flags (serve) or the
+  // positional argument to `git-chat local`.
+  rpc ListRepos(ListReposRequest) returns (ListReposResponse);
+
+  // ListBranches returns the local branches of a repository. Ordered by
+  // committer time (most-recent first) so the default selection is the
+  // most active branch.
+  rpc ListBranches(ListBranchesRequest) returns (ListBranchesResponse);
+
+  // ListTree returns directory entries at a given path under a given ref.
+  // `path` is the slash-separated directory path; empty string means the
+  // repository root.
+  rpc ListTree(ListTreeRequest) returns (ListTreeResponse);
+
+  // GetFile returns the contents of a blob at a given path under a given
+  // ref. Files larger than max_bytes are returned with content truncated
+  // and truncated=true so the UI can show a partial view.
+  rpc GetFile(GetFileRequest) returns (GetFileResponse);
+
+  // ListCommits returns recent commits on a branch, newest first.
+  // Used by the commit-log view (third tab alongside chat and browse).
+  rpc ListCommits(ListCommitsRequest) returns (ListCommitsResponse);
+
+  // GetDiff returns a unified diff for a single file between two refs.
+  // Introduced in M4 as the backend for chat-embedded diff primitives:
+  // the LLM emits `[[diff from=X to=Y path=Z]]` markers in its prose,
+  // the client detects them and calls this RPC to pull actual content.
+  //
+  // Empty from_ref defaults to the parent of to_ref (i.e. "what did
+  // this commit change to this file"). Empty to_ref defaults to HEAD.
+  // The returned diff is a plain text unified patch suitable for
+  // Shiki's `diff` grammar or the @pierre/diffs renderer.
+  rpc GetDiff(GetDiffRequest) returns (GetDiffResponse);
+}
+
+// ─── Repo ───────────────────────────────────────────────────────────────
+message Repo {
+  string id = 1;              // stable slug (default: basename of path)
+  string label = 2;           // display name
+  string default_branch = 3;  // e.g. "main" or "master"
+  string head_commit = 4;     // short SHA at HEAD
+}
+
+// ─── ListRepos ──────────────────────────────────────────────────────────
+message ListReposRequest {}
+
+message ListReposResponse {
+  repeated Repo repos = 1;
+}
+
+// ─── ListBranches ───────────────────────────────────────────────────────
+message ListBranchesRequest {
+  string repo_id = 1;
+}
+
+message ListBranchesResponse {
+  repeated Branch branches = 1;
+}
+
+message Branch {
+  string name = 1;
+  string commit = 2;          // full SHA
+  int64 committer_time = 3;   // unix seconds
+  string subject = 4;         // first line of the commit message
+}
+
+// ─── ListTree ───────────────────────────────────────────────────────────
+message ListTreeRequest {
+  string repo_id = 1;
+  string ref = 2;   // branch name or SHA; empty = default branch
+  string path = 3;  // directory path; empty = repo root
+}
+
+message ListTreeResponse {
+  repeated TreeEntry entries = 1;
+  string ref_resolved = 2;  // the actual SHA that was used
+}
+
+message TreeEntry {
+  string name = 1;
+  EntryType type = 2;
+  int64 size = 3;      // bytes; 0 for directories
+  string blob_sha = 4; // empty for directories
+}
+
+enum EntryType {
+  ENTRY_TYPE_UNSPECIFIED = 0;
+  ENTRY_TYPE_FILE = 1;
+  ENTRY_TYPE_DIR = 2;
+  ENTRY_TYPE_SYMLINK = 3;
+  ENTRY_TYPE_SUBMODULE = 4;
+}
+
+// ─── GetFile ────────────────────────────────────────────────────────────
+message GetFileRequest {
+  string repo_id = 1;
+  string ref = 2;        // branch name or SHA; empty = default branch
+  string path = 3;       // file path
+  int64 max_bytes = 4;   // truncation threshold; 0 = 512 KiB default
+}
+
+message GetFileResponse {
+  bytes content = 1;
+  int64 size = 2;       // full blob size in bytes
+  bool truncated = 3;   // true if content was cut off at max_bytes
+  bool is_binary = 4;   // heuristic flag; content still returned
+  string blob_sha = 5;
+  string language = 6;  // shiki/highlight grammar name (by extension)
+}
+
+// ─── ListCommits ────────────────────────────────────────────────────────
+message ListCommitsRequest {
+  string repo_id = 1;
+  string ref = 2;       // branch/SHA; empty = default branch
+  int32  limit = 3;     // max commits to return; 0 = 50
+  int32  offset = 4;    // pagination offset
+}
+
+message ListCommitsResponse {
+  repeated CommitEntry commits = 1;
+  bool has_more = 2;    // true if more commits exist beyond limit+offset
+}
+
+message CommitEntry {
+  string sha = 1;             // full SHA
+  string short_sha = 2;       // 7-char abbreviated
+  string message = 3;         // first line only (subject)
+  string author_name = 4;
+  string author_email = 5;
+  int64  author_time = 6;     // unix seconds
+  int32  files_changed = 7;   // number of files touched
+  int32  additions = 8;       // total lines added
+  int32  deletions = 9;       // total lines removed
+}
+
+// ─── GetDiff ────────────────────────────────────────────────────────────
+message GetDiffRequest {
+  string repo_id = 1;
+  string from_ref = 2;  // branch/SHA; empty = parent of to_ref
+  string to_ref = 3;    // branch/SHA; empty = HEAD
+  string path = 4;      // file path (required)
+}
+
+message GetDiffResponse {
+  string unified_diff = 1;  // `diff --git` style unified patch
+  string from_commit = 2;   // resolved from_ref
+  string to_commit = 3;     // resolved to_ref
+  bool   empty = 4;         // true if the file is unchanged between refs
+}

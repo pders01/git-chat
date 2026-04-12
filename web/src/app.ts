@@ -1,0 +1,845 @@
+import { LitElement, html, css, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
+import { authClient, repoClient } from "./lib/transport.js";
+import { AuthMode } from "./gen/gitchat/v1/auth_pb.js";
+import type { Repo } from "./gen/gitchat/v1/repo_pb.js";
+import "./components/pairing-view.js";
+import "./components/repo-browser.js";
+import "./components/chat-view.js";
+import "./components/commit-log.js";
+import "./components/toast.js";
+import * as settings from "./lib/settings.js";
+
+type Tab = "chat" | "browse" | "log";
+
+type AppState =
+  | { phase: "booting" }
+  | { phase: "local-claiming" }
+  | { phase: "unauthenticated" }
+  | {
+      phase: "authenticated";
+      principal: string;
+      mode: AuthMode;
+      repos: Repo[];
+      selectedRepo: string;
+      tab: Tab;
+    }
+  | { phase: "error"; message: string };
+
+@customElement("gc-app")
+export class GcApp extends LitElement {
+  @state() private state: AppState = { phase: "booting" };
+  @state() private showShortcuts = false;
+  @state() private showSettings = false;
+
+  override async connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener("hashchange", this.onHashChange);
+    window.addEventListener("keydown", this.onGlobalKeydown);
+    // Cross-view bridge: any child can dispatch gc:ask-about to
+    // switch to chat and pre-fill the composer.
+    this.addEventListener("gc:ask-about", this.onAskAbout as EventListener);
+    await this.boot();
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    window.removeEventListener("hashchange", this.onHashChange);
+    window.removeEventListener("keydown", this.onGlobalKeydown);
+    this.removeEventListener("gc:ask-about", this.onAskAbout as EventListener);
+  }
+
+  // Bridge: any view can dispatch gc:ask-about to switch to chat
+  // and pre-fill the composer with a prompt. Used by log ("explain
+  // this commit") and browse ("ask about this file").
+  private onAskAbout = (e: CustomEvent<{ prompt: string }>) => {
+    if (this.state.phase !== "authenticated") return;
+    this.switchTab("chat");
+    // Defer so the chat-view mounts first, then inject the prompt.
+    requestAnimationFrame(() => {
+      const chatView = this.renderRoot.querySelector("gc-chat-view");
+      chatView?.dispatchEvent(
+        new CustomEvent("gc:prefill", {
+          detail: { text: e.detail.prompt },
+        }),
+      );
+    });
+  };
+
+  // ── Global keyboard shortcuts ────────────────────────────────
+  private onGlobalKeydown = (e: KeyboardEvent) => {
+    if (this.state.phase !== "authenticated") return;
+    // ? opens shortcut help (no modifier needed).
+    if (
+      e.key === "?" &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !(e.target instanceof HTMLTextAreaElement) &&
+      !(e.target instanceof HTMLInputElement)
+    ) {
+      e.preventDefault();
+      this.showShortcuts = !this.showShortcuts;
+      return;
+    }
+    if (e.key === "Escape" && this.showShortcuts) {
+      this.showShortcuts = false;
+      return;
+    }
+
+    const mod = e.metaKey || e.ctrlKey;
+    if (!mod) return;
+
+    switch (e.key) {
+      case "k":
+        // ⌘K → new chat (dispatch to chat-view)
+        e.preventDefault();
+        this.dispatchShortcut("gc:new-chat");
+        break;
+      case "1":
+        e.preventDefault();
+        this.switchTab("chat");
+        break;
+      case "2":
+        e.preventDefault();
+        this.switchTab("browse");
+        break;
+      case "3":
+        e.preventDefault();
+        this.switchTab("log");
+        break;
+      case "\\":
+        // ⌘\ → toggle focus mode
+        e.preventDefault();
+        this.dispatchShortcut("gc:toggle-focus");
+        break;
+    }
+  };
+
+  // Broadcast a shortcut event so child components can react.
+  private dispatchShortcut(name: string) {
+    const target = this.renderRoot.querySelector("gc-chat-view, gc-repo-browser");
+    target?.dispatchEvent(new CustomEvent(name, { bubbles: false }));
+  }
+
+  // boot decides which auth flow applies: if the URL carries a ?t= param,
+  // we're in local mode and trade it for a cookie; otherwise we ask Whoami
+  // and either show the authenticated view or the pairing view.
+  private async boot() {
+    const url = new URL(window.location.href);
+    const localToken = url.searchParams.get("t");
+
+    if (localToken) {
+      this.state = { phase: "local-claiming" };
+      try {
+        await authClient.localClaim({ token: localToken });
+        // Strip ?t= from the URL so the token doesn't linger in history.
+        url.searchParams.delete("t");
+        window.history.replaceState(null, "", url.toString());
+      } catch (e) {
+        this.state = { phase: "error", message: messageOf(e) };
+        return;
+      }
+    }
+
+    try {
+      const who = await authClient.whoami({});
+      if (who.principal) {
+        await this.enterAuthenticated(who.principal, who.mode);
+      } else {
+        this.state = { phase: "unauthenticated" };
+      }
+    } catch (e) {
+      this.state = { phase: "error", message: messageOf(e) };
+    }
+  }
+
+  // enterAuthenticated is called from two paths (boot after Whoami, and
+  // onPaired after the pairing stream completes). It fetches the repo
+  // list once and lands the user on the chat tab of the first repo.
+  private async enterAuthenticated(principal: string, mode: AuthMode) {
+    try {
+      const list = await repoClient.listRepos({});
+      const repos = list.repos;
+      // Restore repo + tab from hash if available.
+      const { repoId, tab } = this.readHash();
+      const validRepo =
+        repoId && repos.some((r) => r.id === repoId)
+          ? repoId
+          : repos[0]?.id ?? "";
+      this.state = {
+        phase: "authenticated",
+        principal,
+        mode,
+        repos,
+        selectedRepo: validRepo,
+        tab: tab ?? "chat",
+      };
+      this.pushHash();
+    } catch (e) {
+      this.state = { phase: "error", message: messageOf(e) };
+    }
+  }
+
+  private async logout() {
+    try {
+      await authClient.logout({});
+    } finally {
+      this.state = { phase: "unauthenticated" };
+    }
+  }
+
+  private onPaired = async (e: Event) => {
+    const detail = (e as CustomEvent<{ principal: string }>).detail;
+    await this.enterAuthenticated(detail.principal, AuthMode.PAIRED);
+  };
+
+  private switchTab(tab: Tab) {
+    if (this.state.phase !== "authenticated") return;
+    this.state = { ...this.state, tab };
+    this.pushHash();
+    // Move focus to newly-active tab for keyboard users.
+    requestAnimationFrame(() => {
+      const btn = this.renderRoot.querySelector<HTMLElement>(`#tab-${tab}`);
+      btn?.focus();
+    });
+  }
+
+  // WAI-ARIA tabs pattern: left/right arrow keys move between tabs.
+  private onTabKeydown = (e: KeyboardEvent) => {
+    const tabs: Tab[] = ["chat", "browse", "log"];
+    if (this.state.phase !== "authenticated") return;
+    const current = tabs.indexOf(this.state.tab);
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      const next =
+        e.key === "ArrowRight"
+          ? tabs[(current + 1) % tabs.length]!
+          : tabs[(current - 1 + tabs.length) % tabs.length]!;
+      this.switchTab(next);
+    }
+  };
+
+  private switchRepo(repoId: string) {
+    if (this.state.phase !== "authenticated") return;
+    this.state = { ...this.state, selectedRepo: repoId };
+    this.pushHash();
+  }
+
+  // ── Hash routing ─────────────────────────────────────────────
+  // Shape: #/:repoId/:tab  (e.g. #/git-chat/chat)
+  // Defaults: first repo, "chat" tab.
+  private pushHash() {
+    if (this.state.phase !== "authenticated") return;
+    const { selectedRepo, tab } = this.state;
+    const hash = `#/${selectedRepo}/${tab}`;
+    if (window.location.hash !== hash) {
+      window.location.hash = hash;
+    }
+  }
+
+  private readHash(): { repoId?: string; tab?: Tab } {
+    const hash = window.location.hash;
+    const m = hash.match(/^#\/([^/]+)(?:\/(chat|browse|log))?$/);
+    if (!m) return {};
+    return { repoId: m[1], tab: (m[2] as Tab) || "chat" };
+  }
+
+  private onHashChange = () => {
+    if (this.state.phase !== "authenticated") return;
+    const { repoId, tab } = this.readHash();
+    const { repos } = this.state;
+    const validRepo = repoId && repos.some((r) => r.id === repoId);
+    this.state = {
+      ...this.state,
+      selectedRepo: validRepo ? repoId! : this.state.selectedRepo,
+      tab: tab ?? this.state.tab,
+    };
+  };
+
+  override render() {
+    if (this.state.phase === "authenticated") {
+      return this.renderAuthenticated();
+    }
+    return html`
+      <div class="card">
+        <header>
+          <h1>git-chat</h1>
+          <p class="sub">chat · browse · log · knowledge base</p>
+        </header>
+        ${this.renderBody()}
+      </div>
+    `;
+  }
+
+  private renderAuthenticated() {
+    if (this.state.phase !== "authenticated") return null;
+    const { principal, mode, tab, selectedRepo, repos } = this.state;
+    const modeLabel = mode === AuthMode.LOCAL ? "local" : "paired";
+    const multiRepo = repos.length > 1;
+    return html`
+      <a class="skip-link" href="#main-content">Skip to content</a>
+      <div class="shell">
+        <header class="shell-hd" role="banner">
+          <div class="brand">
+            <span class="logo">git-chat</span>
+            ${multiRepo
+              ? html`
+                  <select
+                    class="repo-select"
+                    .value=${selectedRepo}
+                    aria-label="Select repository"
+                    @change=${(e: Event) =>
+                      this.switchRepo(
+                        (e.target as HTMLSelectElement).value,
+                      )}
+                  >
+                    ${repos.map(
+                      (r) =>
+                        html`<option value=${r.id} ?selected=${r.id === selectedRepo}>
+                          ${r.label}
+                        </option>`,
+                    )}
+                  </select>
+                `
+              : html`<span class="repo-label">${repos[0]?.label ?? ""}</span>`}
+            <nav class="tabs" role="tablist" aria-label="Views">
+              <button
+                role="tab"
+                id="tab-chat"
+                class="tab ${tab === "chat" ? "active" : ""}"
+                aria-selected=${tab === "chat" ? "true" : "false"}
+                aria-controls="panel-main"
+                tabindex=${tab === "chat" ? "0" : "-1"}
+                @click=${() => this.switchTab("chat")}
+                @keydown=${this.onTabKeydown}
+              >
+                chat
+              </button>
+              <button
+                role="tab"
+                id="tab-browse"
+                class="tab ${tab === "browse" ? "active" : ""}"
+                aria-selected=${tab === "browse" ? "true" : "false"}
+                aria-controls="panel-main"
+                tabindex=${tab === "browse" ? "0" : "-1"}
+                @click=${() => this.switchTab("browse")}
+                @keydown=${this.onTabKeydown}
+              >
+                browse
+              </button>
+              <button
+                role="tab"
+                id="tab-log"
+                class="tab ${tab === "log" ? "active" : ""}"
+                aria-selected=${tab === "log" ? "true" : "false"}
+                aria-controls="panel-main"
+                tabindex=${tab === "log" ? "0" : "-1"}
+                @click=${() => this.switchTab("log")}
+                @keydown=${this.onTabKeydown}
+              >
+                log
+              </button>
+            </nav>
+          </div>
+          <div class="who">
+            <span class="principal">${principal}</span>
+            <span class="dot">·</span>
+            <span class="mode">${modeLabel}</span>
+            <button class="settings-btn" @click=${() => (this.showSettings = !this.showSettings)} aria-label="Settings" title="Settings">
+              ⚙
+            </button>
+            <button class="logout" @click=${() => this.logout()} aria-label="Log out">
+              logout
+            </button>
+          </div>
+        </header>
+        <main class="shell-main" id="main-content" role="tabpanel" aria-labelledby="tab-${tab}">
+          ${tab === "chat"
+            ? html`<gc-chat-view .repoId=${selectedRepo}></gc-chat-view>`
+            : tab === "browse"
+              ? html`<gc-repo-browser .repoId=${selectedRepo}></gc-repo-browser>`
+              : html`<gc-commit-log .repoId=${selectedRepo}></gc-commit-log>`}
+        </main>
+      </div>
+      ${this.showShortcuts ? this.renderShortcutsModal() : nothing}
+      ${this.showSettings ? this.renderSettingsModal() : nothing}
+      <gc-toast></gc-toast>
+    `;
+  }
+
+  private renderShortcutsModal() {
+    const isMac = navigator.platform.includes("Mac");
+    const mod = isMac ? "⌘" : "Ctrl+";
+    const shortcuts = [
+      [mod + "K", "New chat"],
+      [mod + "1", "Chat tab"],
+      [mod + "2", "Browse tab"],
+      [mod + "3", "Log tab"],
+      [mod + "\\", "Toggle focus"],
+      ["/", "Focus composer"],
+      ["Esc", "Blur / close modal"],
+      ["↑ ↓", "Navigate sessions"],
+      ["← →", "Switch tabs (when focused)"],
+      [mod + "↵", "Send message"],
+      ["?", "Toggle this help"],
+    ];
+    return html`
+      <div class="modal-backdrop" @click=${() => (this.showShortcuts = false)}>
+        <div class="modal" role="dialog" aria-label="Keyboard shortcuts" @click=${(e: Event) => e.stopPropagation()}>
+          <h2 class="modal-title">Keyboard shortcuts</h2>
+          <dl class="shortcut-list">
+            ${shortcuts.map(
+              ([key, desc]) => html`
+                <div class="shortcut-row">
+                  <dt><kbd>${key}</kbd></dt>
+                  <dd>${desc}</dd>
+                </div>
+              `,
+            )}
+          </dl>
+          <p class="modal-hint">press <kbd>?</kbd> or <kbd>Esc</kbd> to close</p>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderSettingsModal() {
+    const sidebarW = parseInt(settings.get("sidebar-width"));
+    const contentW = parseInt(settings.get("content-max-width"));
+    const fontSize = parseFloat(settings.get("font-size")) * 100;
+    return html`
+      <div class="modal-backdrop" @click=${() => (this.showSettings = false)}>
+        <div class="modal" role="dialog" aria-label="Settings" @click=${(e: Event) => e.stopPropagation()}>
+          <h2 class="modal-title">Settings</h2>
+
+          <label class="setting-row">
+            <span class="setting-label">Sidebar width</span>
+            <div class="setting-control">
+              <input
+                type="range"
+                min="180"
+                max="450"
+                .value=${String(sidebarW)}
+                @input=${(e: Event) => {
+                  const v = (e.target as HTMLInputElement).value;
+                  settings.set("sidebar-width", v + "px");
+                  this.requestUpdate();
+                }}
+              />
+              <span class="setting-value">${sidebarW}px</span>
+            </div>
+          </label>
+
+          <label class="setting-row">
+            <span class="setting-label">Content max width</span>
+            <div class="setting-control">
+              <input
+                type="range"
+                min="600"
+                max="1400"
+                step="20"
+                .value=${String(contentW)}
+                @input=${(e: Event) => {
+                  const v = (e.target as HTMLInputElement).value;
+                  settings.set("content-max-width", v + "px");
+                  this.requestUpdate();
+                }}
+              />
+              <span class="setting-value">${contentW}px</span>
+            </div>
+          </label>
+
+          <label class="setting-row">
+            <span class="setting-label">Font size</span>
+            <div class="setting-control">
+              <input
+                type="range"
+                min="60"
+                max="120"
+                .value=${String(Math.round(fontSize))}
+                @input=${(e: Event) => {
+                  const v = parseInt((e.target as HTMLInputElement).value);
+                  settings.set("font-size", (v / 100).toFixed(2) + "rem");
+                  this.requestUpdate();
+                }}
+              />
+              <span class="setting-value">${Math.round(fontSize)}%</span>
+            </div>
+          </label>
+
+          <div class="setting-actions">
+            <button class="action-btn" @click=${() => {
+              for (const k of settings.allKeys()) settings.reset(k);
+              this.requestUpdate();
+            }}>
+              reset defaults
+            </button>
+          </div>
+
+          <p class="modal-hint">changes apply immediately and persist across sessions</p>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderBody() {
+    switch (this.state.phase) {
+      case "booting":
+        return html`<p class="hint">checking session…</p>`;
+      case "local-claiming":
+        return html`<p class="hint">claiming local session…</p>`;
+      case "unauthenticated":
+        return html`
+          <gc-pairing-view @paired=${this.onPaired}></gc-pairing-view>
+        `;
+      case "error":
+        return html`<div class="err">${this.state.message}</div>`;
+    }
+    return null;
+  }
+
+  static override styles = css`
+    :host {
+      /* The app is the viewport — a flex column with a fixed-height
+         header and a main area that fills the rest. min-height:0 on
+         the main area is critical: without it, content taller than
+         100vh would push main past the viewport and the nested chat
+         scroll region would stop scrolling. This is the chain that
+         the previous layout got wrong. */
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+      color: var(--text);
+    }
+
+    /* ── Skip-to-content link ───────────────────────────────────── */
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: var(--space-4);
+      padding: var(--space-2) var(--space-4);
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      z-index: 100;
+      font-size: var(--text-sm);
+      text-decoration: none;
+    }
+    .skip-link:focus {
+      top: var(--space-2);
+    }
+
+    /* ── Unauthenticated / booting: centered card layout ─────────── */
+    .card {
+      max-width: 720px;
+      margin: 4rem auto;
+      padding: var(--space-7);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--surface-2);
+    }
+    .card header {
+      margin-bottom: 1.75rem;
+    }
+    .card h1 {
+      margin: 0 0 var(--space-1);
+      font-weight: 500;
+      font-size: 1.25rem;
+      letter-spacing: -0.01em;
+    }
+    .sub {
+      margin: 0;
+      opacity: 0.55;
+      font-size: 0.8rem;
+    }
+    .hint {
+      font-size: 0.85rem;
+      opacity: 0.55;
+      margin: 0;
+    }
+    .err {
+      font-size: 0.85rem;
+      padding: var(--space-3) var(--space-4);
+      border: 1px solid var(--danger-border);
+      border-radius: 4px;
+      background: var(--danger-bg);
+      color: var(--danger);
+    }
+
+    /* ── Authenticated: full-viewport shell ───────────────────────── */
+    .shell {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      background: var(--surface-1);
+    }
+    .shell-hd {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 44px;
+      padding: 0 var(--space-5);
+      border-bottom: 1px solid var(--surface-4);
+      background: var(--surface-1);
+      flex-shrink: 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: var(--space-6);
+    }
+    .logo {
+      font-size: 0.82rem;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      color: var(--text);
+    }
+    .repo-select {
+      font-family: inherit;
+      font-size: var(--text-xs);
+      padding: 0.15rem 0.45rem;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+    }
+    .repo-select:focus {
+      outline: none;
+      border-color: var(--border-strong);
+    }
+    .repo-label {
+      font-size: var(--text-xs);
+      opacity: 0.55;
+    }
+    .tabs {
+      display: flex;
+      gap: 0.1rem;
+      align-items: stretch;
+      height: 44px;
+    }
+    .tab {
+      padding: 0 0.9rem;
+      background: transparent;
+      color: var(--text);
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px; /* overlap the shell-hd border */
+      font-family: inherit;
+      font-size: var(--text-sm);
+      cursor: pointer;
+      opacity: 0.45;
+      transition: opacity 0.12s ease, border-color 0.12s ease;
+    }
+    .tab:hover {
+      opacity: 0.8;
+    }
+    .tab.active {
+      opacity: 1;
+      border-bottom-color: var(--accent-assistant);
+    }
+    .who {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.72rem;
+    }
+    .principal {
+      opacity: 0.75;
+    }
+    .mode {
+      opacity: 0.55;
+      padding: 0.1rem 0.45rem;
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+    }
+    .dot {
+      opacity: 0.25;
+    }
+    .settings-btn {
+      font-family: inherit;
+      font-size: var(--text-sm);
+      padding: 0.15rem 0.4rem;
+      background: transparent;
+      color: var(--text);
+      border: none;
+      cursor: pointer;
+      opacity: 0.5;
+      transition: opacity 0.12s ease;
+      line-height: 1;
+      vertical-align: middle;
+    }
+    .settings-btn:hover {
+      opacity: 1;
+    }
+    .logout {
+      font-family: inherit;
+      font-size: inherit;
+      padding: 0.15rem 0.55rem;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      cursor: pointer;
+      opacity: 0.55;
+      transition: opacity 0.12s ease;
+    }
+    .logout:hover {
+      opacity: 1;
+    }
+
+    .shell-main {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      overflow: hidden;
+    }
+    .shell-main > * {
+      /* Whatever renders as the main view (chat-view, repo-browser)
+         gets full remaining space. Nested components handle their own
+         scroll regions. */
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    /* ── Focus-visible ─────────────────────────────────────────── */
+    :focus-visible {
+      outline: 2px solid var(--accent-assistant);
+      outline-offset: 2px;
+    }
+    .tab:focus-visible {
+      outline-offset: -2px;
+    }
+
+    /* ── Shortcut modal ─────────────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+    .modal {
+      background: var(--surface-2);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      padding: var(--space-6) var(--space-7);
+      max-width: 420px;
+      width: 90vw;
+    }
+    .modal-title {
+      margin: 0 0 var(--space-4);
+      font-size: var(--text-lg);
+      font-weight: 500;
+    }
+    .shortcut-list {
+      margin: 0;
+      padding: 0;
+    }
+    .shortcut-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-1) 0;
+      border-bottom: 1px solid var(--surface-4);
+    }
+    .shortcut-row:last-child {
+      border-bottom: none;
+    }
+    .shortcut-row dt {
+      flex-shrink: 0;
+    }
+    .shortcut-row dd {
+      margin: 0;
+      opacity: 0.7;
+      font-size: var(--text-sm);
+    }
+    kbd {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      background: var(--surface-0);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      min-width: 1.5em;
+      text-align: center;
+    }
+    .modal-hint {
+      margin: var(--space-4) 0 0;
+      opacity: 0.4;
+      font-size: var(--text-xs);
+      text-align: center;
+    }
+
+    /* ── Settings modal ───────────────────────────────────────── */
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-2) 0;
+      border-bottom: 1px solid var(--surface-4);
+    }
+    .setting-row:last-of-type {
+      border-bottom: none;
+    }
+    .setting-label {
+      font-size: var(--text-sm);
+    }
+    .setting-control {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .setting-control input[type="range"] {
+      width: 140px;
+      accent-color: var(--accent-assistant);
+    }
+    .setting-value {
+      font-size: var(--text-xs);
+      opacity: 0.6;
+      min-width: 4.5em;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .setting-actions {
+      margin-top: var(--space-4);
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    /* ── Responsive ─────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .shell-hd {
+        flex-wrap: wrap;
+        height: auto;
+        padding: var(--space-2) var(--space-3);
+        gap: var(--space-2);
+      }
+      .brand {
+        gap: var(--space-2);
+      }
+      .repo-label, .repo-select {
+        display: none;
+      }
+    }
+
+    /* ── Reduced motion ────────────────────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      .tab,
+      .logout {
+        transition: none;
+      }
+    }
+  `;
+}
+
+function messageOf(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}

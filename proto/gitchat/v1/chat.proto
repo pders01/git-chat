@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package gitchat.v1;
+
+option go_package = "github.com/pders01/git-chat/gen/go/gitchat/v1;gitchatv1";
+
+// ChatService owns conversations against a git repository. All RPCs are
+// scoped by the authenticated principal: a user only sees their own
+// sessions, never someone else's on the same server.
+//
+// The streaming shape is deliberately narrow in M3. Diff references
+// (MessageChunk.diff) arrive in M4, knowledge-card fast-path hits
+// (MessageChunk.card_hit) arrive in M5. The oneof is already declared so
+// the client's exhaustive switch can grow without breaking the wire
+// contract.
+service ChatService {
+  // ListSessions returns every chat session for the authenticated
+  // principal, newest first. Does not include message bodies — use
+  // GetSession to fetch the transcript of a specific session.
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+
+  // GetSession returns the full transcript of one session.
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+
+  // SendMessage appends a user message to a session (creating the session
+  // if session_id is empty) and streams the assistant reply back one
+  // MessageChunk at a time. The final chunk is always Done, carrying
+  // usage stats and the persisted session / message IDs.
+  rpc SendMessage(SendMessageRequest) returns (stream MessageChunk);
+
+  // RenameSession updates a session's title.
+  rpc RenameSession(RenameSessionRequest) returns (RenameSessionResponse);
+
+  // DeleteSession removes a session and cascades to its messages.
+  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
+}
+
+// ─── Session & Message ──────────────────────────────────────────────────
+
+message ChatSession {
+  string id = 1;
+  string repo_id = 2;
+  string title = 3;         // auto-generated from first message
+  int64 created_at = 4;     // unix seconds
+  int64 updated_at = 5;
+  int32 message_count = 6;
+}
+
+// Role mirrors the OpenAI chat completions roles for wire-level
+// simplicity. We do not expose `tool` because tool use is a higher-level
+// concept that lives in the LLM adapter, not in the wire protocol.
+enum MessageRole {
+  MESSAGE_ROLE_UNSPECIFIED = 0;
+  MESSAGE_ROLE_USER = 1;
+  MESSAGE_ROLE_ASSISTANT = 2;
+  MESSAGE_ROLE_SYSTEM = 3;
+}
+
+message ChatMessage {
+  string id = 1;
+  string session_id = 2;
+  MessageRole role = 3;
+  string content = 4;         // full markdown body
+  string model = 5;           // e.g. "gemma-4-e4b-it"; empty for user turns
+  int32 token_count_in = 6;
+  int32 token_count_out = 7;
+  int64 created_at = 8;
+}
+
+// ─── ListSessions ───────────────────────────────────────────────────────
+message ListSessionsRequest {
+  string repo_id = 1;   // required: scope to one repo
+}
+
+message ListSessionsResponse {
+  repeated ChatSession sessions = 1;
+}
+
+// ─── GetSession ─────────────────────────────────────────────────────────
+message GetSessionRequest {
+  string session_id = 1;
+}
+
+message GetSessionResponse {
+  ChatSession session = 1;
+  repeated ChatMessage messages = 2;
+}
+
+// ─── SendMessage ────────────────────────────────────────────────────────
+message SendMessageRequest {
+  // Empty session_id starts a new session in repo_id. If session_id is
+  // non-empty, repo_id is ignored (the session already knows its repo).
+  string session_id = 1;
+  string repo_id = 2;
+  string text = 3;
+}
+
+// MessageChunk is the server-streamed response shape. Exactly one chunk
+// per call carries Done; subclient code should terminate on that marker.
+message MessageChunk {
+  oneof kind {
+    string token = 1;     // incremental assistant text
+    Done done = 2;        // terminal chunk, always present
+    // M5: fast-path answer from the knowledge base, bypassing the LLM.
+    // Sent as a single chunk before Done when a valid card matches.
+    KnowledgeCardHit card_hit = 3;
+  }
+}
+
+// KnowledgeCardHit carries a cached answer from the knowledge base.
+// The client renders it like an assistant turn but with a visual badge
+// indicating it came from cache, not a fresh LLM call.
+message KnowledgeCardHit {
+  string card_id = 1;
+  string answer_md = 2;     // the frozen markdown answer
+  string model = 3;         // which model originally produced it
+  int32  hit_count = 4;     // how many times this card has been served
+  string created_commit = 5; // HEAD SHA when the card was derived
+}
+
+message Done {
+  // Canonical IDs once the turn has been persisted.
+  string session_id = 1;
+  string user_message_id = 2;
+  string assistant_message_id = 3;
+
+  // Usage metadata.
+  int32 token_count_in = 4;
+  int32 token_count_out = 5;
+  string model = 6;
+
+  // Optional error surface: non-empty `error` means the assistant turn
+  // failed mid-stream. The partial content sent up to that point has still
+  // been persisted for debuggability.
+  string error = 7;
+}
+
+// ─── RenameSession ──────────────────────────────────────────────────────
+message RenameSessionRequest {
+  string session_id = 1;
+  string title = 2;
+}
+
+message RenameSessionResponse {}
+
+// ─── DeleteSession ──────────────────────────────────────────────────────
+message DeleteSessionRequest {
+  string session_id = 1;
+}
+
+message DeleteSessionResponse {}

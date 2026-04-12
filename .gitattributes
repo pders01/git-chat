@@ -1,0 +1,10 @@
+# Generated code: committed to the repo so fresh clones build without `buf`
+# installed, but hidden from normal git diff/merge output to keep review
+# surface clean. CI enforces freshness via:
+#   make proto && git diff --exit-code gen/ web/src/gen/
+gen/** linguist-generated=true
+gen/** -diff
+gen/** -merge
+web/src/gen/** linguist-generated=true
+web/src/gen/** -diff
+web/src/gen/** -merge
