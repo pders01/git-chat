@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { authClient, repoClient } from "./lib/transport.js";
+import { authClient, repoClient, chatClient } from "./lib/transport.js";
 import { AuthMode } from "./gen/gitchat/v1/auth_pb.js";
 import type { Repo } from "./gen/gitchat/v1/repo_pb.js";
 import "./components/pairing-view.js";
@@ -31,6 +31,9 @@ export class GcApp extends LitElement {
   @state() private state: AppState = { phase: "booting" };
   @state() private showShortcuts = false;
   @state() private showSettings = false;
+  @state() private showSearch = false;
+  @state() private searchQuery = "";
+  @state() private searchResults: Array<{ source: string; id: string; title: string; body: string }> = [];
 
   override async connectedCallback() {
     super.connectedCallback();
@@ -111,6 +114,17 @@ export class GcApp extends LitElement {
         // ⌘\ → toggle focus mode
         e.preventDefault();
         this.dispatchShortcut("gc:toggle-focus");
+        break;
+      case "f":
+        // ⌘F → global search
+        e.preventDefault();
+        this.showSearch = !this.showSearch;
+        if (this.showSearch) {
+          requestAnimationFrame(() => {
+            const input = this.renderRoot.querySelector<HTMLInputElement>(".search-input");
+            input?.focus();
+          });
+        }
         break;
     }
   };
@@ -363,6 +377,7 @@ export class GcApp extends LitElement {
       </div>
       ${this.showShortcuts ? this.renderShortcutsModal() : nothing}
       ${this.showSettings ? this.renderSettingsModal() : nothing}
+      ${this.showSearch ? this.renderSearchOverlay() : nothing}
       <gc-toast></gc-toast>
     `;
   }
@@ -376,6 +391,7 @@ export class GcApp extends LitElement {
       [mod + "2", "Browse tab"],
       [mod + "3", "Log tab"],
       [mod + "\\", "Toggle focus"],
+      [mod + "F", "Global search"],
       ["/", "Focus composer"],
       ["Esc", "Blur / close modal"],
       ["↑ ↓", "Navigate sessions"],
@@ -477,6 +493,81 @@ export class GcApp extends LitElement {
           </div>
 
           <p class="modal-hint">changes apply immediately and persist across sessions</p>
+        </div>
+      </div>
+    `;
+  }
+
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private onSearchInput(e: Event) {
+    const q = (e.target as HTMLInputElement).value;
+    this.searchQuery = q;
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    if (!q.trim()) {
+      this.searchResults = [];
+      return;
+    }
+    // Debounce 300ms.
+    this.searchTimer = setTimeout(() => void this.runSearch(q), 300);
+  }
+
+  private async runSearch(query: string) {
+    if (this.state.phase !== "authenticated") return;
+    try {
+      const resp = await chatClient.search({
+        query,
+        repoId: this.state.selectedRepo,
+        limit: 10,
+      });
+      this.searchResults = resp.hits.map((h) => ({
+        source: h.source,
+        id: h.id,
+        title: h.title,
+        body: h.body,
+      }));
+    } catch {
+      this.searchResults = [];
+    }
+  }
+
+  private renderSearchOverlay() {
+    const sourceLabels: Record<string, string> = {
+      card: "knowledge base",
+      message: "chat history",
+      file: "files",
+    };
+    return html`
+      <div class="modal-backdrop" @click=${() => (this.showSearch = false)}>
+        <div class="modal search-modal" role="dialog" aria-label="Search" @click=${(e: Event) => e.stopPropagation()}>
+          <input
+            class="search-input"
+            type="search"
+            placeholder="Search files, chats, knowledge cards…"
+            .value=${this.searchQuery}
+            @input=${(e: Event) => this.onSearchInput(e)}
+            @keydown=${(e: KeyboardEvent) => {
+              if (e.key === "Escape") this.showSearch = false;
+            }}
+            aria-label="Global search"
+          />
+          ${this.searchResults.length > 0
+            ? html`<ul class="search-results" role="listbox">
+                ${this.searchResults.map(
+                  (r) => html`
+                    <li class="search-hit" role="option">
+                      <span class="hit-source">${sourceLabels[r.source] ?? r.source}</span>
+                      <span class="hit-title">${r.title}</span>
+                      ${r.body
+                        ? html`<span class="hit-body">${r.body.slice(0, 120)}</span>`
+                        : nothing}
+                    </li>
+                  `,
+                )}
+              </ul>`
+            : this.searchQuery.trim()
+              ? html`<p class="search-empty">no results</p>`
+              : nothing}
         </div>
       </div>
     `;
@@ -776,6 +867,68 @@ export class GcApp extends LitElement {
       opacity: 0.4;
       font-size: var(--text-xs);
       text-align: center;
+    }
+
+    /* ── Search overlay ─────────────────────────────────────────── */
+    .search-modal {
+      max-width: 560px;
+      padding: 0;
+    }
+    .search-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: var(--space-4);
+      background: transparent;
+      color: var(--text);
+      border: none;
+      border-bottom: 1px solid var(--surface-4);
+      font-family: inherit;
+      font-size: var(--text-base);
+      outline: none;
+    }
+    .search-results {
+      list-style: none;
+      margin: 0;
+      padding: var(--space-2) 0;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .search-hit {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      padding: var(--space-2) var(--space-4);
+      cursor: pointer;
+      border-bottom: 1px solid var(--surface-4);
+    }
+    .search-hit:last-child {
+      border-bottom: none;
+    }
+    .search-hit:hover {
+      background: var(--surface-3);
+    }
+    .hit-source {
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      opacity: 0.5;
+      color: var(--accent-assistant);
+    }
+    .hit-title {
+      font-size: var(--text-sm);
+    }
+    .hit-body {
+      font-size: var(--text-xs);
+      opacity: 0.55;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .search-empty {
+      padding: var(--space-4);
+      opacity: 0.45;
+      text-align: center;
+      font-size: var(--text-sm);
     }
 
     /* ── Settings modal ───────────────────────────────────────── */

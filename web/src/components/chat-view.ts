@@ -587,6 +587,8 @@ export class GcChatView extends LitElement {
 
           <form
             class="composer"
+            role="search"
+            aria-label="Chat composer"
             @submit=${(e: Event) => {
               e.preventDefault();
               void this.send();
@@ -600,7 +602,10 @@ export class GcChatView extends LitElement {
                 placeholder="ask about the repo — use @path/to/file to pin content"
                 ?disabled=${this.sending}
                 rows="1"
-                aria-label="Message input"
+                aria-label="Message input — type @ for file autocomplete, ⌘↵ to send"
+                aria-describedby="composer-status"
+                aria-autocomplete="list"
+                aria-expanded=${this.showMentions ? "true" : "false"}
               ></textarea>
               ${this.showMentions
                 ? html`<ul class="mention-list" role="listbox">
@@ -614,7 +619,7 @@ export class GcChatView extends LitElement {
                   </ul>`
                 : nothing}
               <div class="composer-row">
-                <span class="composer-hint">
+                <span class="composer-hint" id="composer-status" role="status">
                   ${this.error
                     ? html`<span class="err">⚠ ${this.error}</span>`
                     : this.sending
@@ -623,6 +628,7 @@ export class GcChatView extends LitElement {
                 </span>
                 <button
                   type="submit"
+                  aria-label="Send message"
                   class="send"
                   ?disabled=${this.sending || !this.input.trim()}
                 >
