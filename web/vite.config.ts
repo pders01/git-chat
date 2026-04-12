@@ -17,6 +17,9 @@ export default defineConfig({
     // components render empty shadow DOMs. See lit-framework README §Setup.
     useDefineForClassFields: false,
   },
+  optimizeDeps: {
+    include: ["three", "three/examples/jsm/controls/OrbitControls.js"],
+  },
   server: {
     port: 5173,
     host: "127.0.0.1",
