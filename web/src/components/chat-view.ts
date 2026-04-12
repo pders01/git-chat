@@ -73,6 +73,7 @@ type ViewState =
 @customElement("gc-chat-view")
 export class GcChatView extends LitElement {
   @property({ type: String }) repoId = "";
+  @property({ type: String }) branch = "";
 
   @state() private state: ViewState = { phase: "loading" };
   @state() private turns: Turn[] = [];

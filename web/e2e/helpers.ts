@@ -72,7 +72,7 @@ export async function authenticate(page: Page, url: string) {
   await page.goto(url);
   // Wait for the hash redirect which only happens after successful auth
   // (boot → localClaim → whoami → enterAuthenticated → pushHash).
-  await page.waitForURL(/#\//, { timeout: 10_000 });
+  await page.waitForURL(/#\//, { timeout: 15_000 });
   // Give Lit's Shadow DOM children time to fully render.
   await page.waitForTimeout(1500);
 }

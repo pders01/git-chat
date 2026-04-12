@@ -26,6 +26,7 @@ type LogState =
 @customElement("gc-commit-log")
 export class GcCommitLog extends LitElement {
   @property({ type: String }) repoId = "";
+  @property({ type: String }) branch = "";
   @state() private state: LogState = { phase: "loading" };
   @state() private selectedSha = "";
   @state() private diffHtml = "";
@@ -57,7 +58,7 @@ export class GcCommitLog extends LitElement {
   }
 
   override updated(changed: Map<string, unknown>) {
-    if (changed.has("repoId") && this.repoId) {
+    if ((changed.has("repoId") || changed.has("branch")) && this.repoId) {
       void this.load(0);
     }
   }
@@ -66,6 +67,7 @@ export class GcCommitLog extends LitElement {
     try {
       const resp = await repoClient.listCommits({
         repoId: this.repoId,
+        ref: this.branch,
         limit: 50,
         offset,
       });
@@ -120,7 +122,28 @@ export class GcCommitLog extends LitElement {
     // Support prefix matching (e.g. 7-char short SHA from blame).
     if (this.state.phase === "ready" && sha.length < 40) {
       const match = this.state.commits.find((c) => c.sha.startsWith(sha));
-      if (match) sha = match.sha;
+      if (match) {
+        sha = match.sha;
+      } else if (this.state.hasMore) {
+        // Commit not in loaded page — resolve via listCommits with ref.
+        try {
+          const resp = await repoClient.listCommits({
+            repoId: this.repoId,
+            ref: sha,
+            limit: 1,
+          });
+          if (resp.commits.length > 0) {
+            sha = resp.commits[0].sha;
+            // Append to loaded commits so it's selectable.
+            this.state = {
+              ...this.state,
+              commits: [...this.state.commits, resp.commits[0]],
+            };
+          }
+        } catch {
+          // Can't resolve — proceed with short SHA anyway.
+        }
+      }
     }
     if (this.selectedSha === sha) {
       this.selectedSha = "";

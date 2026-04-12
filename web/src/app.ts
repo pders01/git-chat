@@ -36,6 +36,8 @@ export class GcApp extends LitElement {
   @state() private searchQuery = "";
   @state() private searchResults: Array<{ source: string; id: string; title: string; body: string }> = [];
   @state() private searchSelectedIdx = -1;
+  @state() private currentBranch = ""; // empty = repo default branch
+  @state() private branches: Array<{ name: string }> = [];
 
   // Server config state
   @state() private configEntries: any[] = [];
@@ -243,6 +245,8 @@ export class GcApp extends LitElement {
         tab: tab ?? "chat",
       };
       this.pushHash();
+      // Load branches for the selected repo.
+      void this.loadBranches(validRepo);
     } catch (e) {
       this.state = { phase: "error", message: messageOf(e) };
     }
@@ -291,6 +295,26 @@ export class GcApp extends LitElement {
     if (this.state.phase !== "authenticated") return;
     this.state = { ...this.state, selectedRepo: repoId };
     this.pushHash();
+    // Reset branch and reload branches for the new repo.
+    this.currentBranch = "";
+    void this.loadBranches(repoId);
+  }
+
+  private async loadBranches(repoId: string) {
+    if (!repoId) return;
+    try {
+      const resp = await repoClient.listBranches({ repoId });
+      this.branches = resp.branches;
+      // Find the repo's default branch and select it.
+      if (this.state.phase === "authenticated") {
+        const repo = this.state.repos.find((r) => r.id === repoId);
+        const defaultBranch = repo?.defaultBranch || this.branches[0]?.name || "";
+        this.currentBranch = defaultBranch;
+      }
+    } catch {
+      this.branches = [];
+      this.currentBranch = "";
+    }
   }
 
   // ── Hash routing ─────────────────────────────────────────────
@@ -370,6 +394,25 @@ export class GcApp extends LitElement {
                   </select>
                 `
               : nothing}
+            ${this.branches.length > 0
+              ? html`
+                  <select
+                    class="branch-select"
+                    .value=${this.currentBranch}
+                    aria-label="Select branch"
+                    @change=${(e: Event) => {
+                      this.currentBranch = (e.target as HTMLSelectElement).value;
+                    }}
+                  >
+                    ${this.branches.map(
+                      (b) =>
+                        html`<option value=${b.name} ?selected=${b.name === this.currentBranch}>
+                          ${b.name}
+                        </option>`,
+                    )}
+                  </select>
+                `
+              : nothing}
             <nav class="tabs" role="tablist" aria-label="Views">
               <button
                 role="tab"
@@ -434,9 +477,9 @@ export class GcApp extends LitElement {
           </div>
         </header>
         <main class="shell-main" id="main-content">
-          <gc-chat-view .repoId=${selectedRepo} class="tab-panel" ?hidden=${tab !== "chat"}></gc-chat-view>
-          <gc-repo-browser .repoId=${selectedRepo} class="tab-panel" ?hidden=${tab !== "browse"}></gc-repo-browser>
-          <gc-commit-log .repoId=${selectedRepo} class="tab-panel" ?hidden=${tab !== "log"}></gc-commit-log>
+          <gc-chat-view .repoId=${selectedRepo} .branch=${this.currentBranch} class="tab-panel" ?hidden=${tab !== "chat"}></gc-chat-view>
+          <gc-repo-browser .repoId=${selectedRepo} .branch=${this.currentBranch} class="tab-panel" ?hidden=${tab !== "browse"}></gc-repo-browser>
+          <gc-commit-log .repoId=${selectedRepo} .branch=${this.currentBranch} class="tab-panel" ?hidden=${tab !== "log"}></gc-commit-log>
           <gc-kb-view .repoId=${selectedRepo} class="tab-panel" ?hidden=${tab !== "kb"}></gc-kb-view>
         </main>
       </div>
@@ -1018,6 +1061,29 @@ export class GcApp extends LitElement {
     .repo-select:focus {
       outline: none;
       border-color: var(--border-strong);
+    }
+    .branch-select {
+      font-family: inherit;
+      font-size: var(--text-xs);
+      min-width: 60px;
+      max-width: 200px;
+      height: 24px;
+      padding: 0 var(--space-2);
+      padding-right: 20px;
+      background: var(--surface-0);
+      color: var(--text);
+      border: 1px solid var(--surface-4);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23888'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 6px center;
+    }
+    .branch-select:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
     }
     .repo-label {
       font-size: var(--text-xs);

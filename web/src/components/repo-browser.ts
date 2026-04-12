@@ -29,6 +29,7 @@ type BrowserState =
 @customElement("gc-repo-browser")
 export class GcRepoBrowser extends LitElement {
   @property({ type: String }) repoId = "";
+  @property({ type: String }) branch = "";
 
   @state() private state: BrowserState = { phase: "loading" };
   @state() private selectedFile = "";
@@ -106,7 +107,7 @@ export class GcRepoBrowser extends LitElement {
   }
 
   override updated(changed: Map<string, unknown>) {
-    if (changed.has("repoId") && this.repoId) {
+    if ((changed.has("repoId") || changed.has("branch")) && this.repoId) {
       void this.boot();
     }
   }
@@ -139,7 +140,7 @@ export class GcRepoBrowser extends LitElement {
   }
 
   private async fetchChildren(repoId: string, path: string): Promise<TreeNode[]> {
-    const { entries } = await repoClient.listTree({ repoId, ref: "", path });
+    const { entries } = await repoClient.listTree({ repoId, ref: this.branch, path });
     return entries.map((e) => ({
       name: e.name,
       fullPath: path ? `${path}/${e.name}` : e.name,
@@ -226,7 +227,7 @@ export class GcRepoBrowser extends LitElement {
                     ${this.branches.map((b) => html`<option value=${b.name} ?selected=${b.name === this.headRef}>${b.name}</option>`)}
                   </select>`
               : html`
-                  <span class="branch">${s.repo.defaultBranch}@${s.repo.headCommit}</span>`}
+                  <span class="branch">${this.branch || s.repo.defaultBranch}@${s.repo.headCommit}</span>`}
             <button
               class="hd-btn"
               @click=${() => this.toggleChanges()}
@@ -269,7 +270,7 @@ export class GcRepoBrowser extends LitElement {
               : html`<gc-file-view
                   .repoId=${s.repo.id}
                   .path=${this.selectedFile}
-                  .branch=${""}
+                  .branch=${this.branch}
                 ></gc-file-view>`}
         </section>
       </div>

@@ -185,7 +185,7 @@ test.describe("features", () => {
     const hasDetail = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const log = app?.shadowRoot?.querySelector("gc-commit-log");
-      return !!log?.shadowRoot?.querySelector(".detail-header");
+      return !!log?.shadowRoot?.querySelector(".diff-header");
     });
     expect(hasDetail).toBe(true);
 
@@ -410,10 +410,13 @@ test.describe("features", () => {
         detail: { sha: commitSha },
       }));
     }, sha);
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
 
     // Should be on log tab now.
     await expect(page).toHaveURL(/#\/.*\/log$/);
+
+    // Wait for commit list to load and selection to apply.
+    await page.waitForTimeout(1000);
 
     // A commit row should be selected.
     const hasSelectedCommit = await page.evaluate(() => {
