@@ -132,12 +132,24 @@ export class GcFileView extends LitElement {
     const b = this.hoveredBlame;
     if (!b) return nothing;
     const age = new Date(Number(b.date) * 1000).toISOString().slice(0, 10);
-    const subject = (b.commitMessage || "").split("\n")[0] || "(no message)";
+    const lines = (b.commitMessage || "").split("\n");
+    const subject = lines[0] || "(no message)";
+    const body = lines.slice(2).join("\n").trim();
     return html`
-      <div class="blame-tip" style=${this.blameTooltipStyle}>
-        <span class="bt-sha">${b.commitSha}</span>
-        <span class="bt-subject">${subject}</span>
-        <span class="bt-meta">${b.authorName} · ${age}</span>
+      <div class="blame-tip" style=${this.blameTooltipStyle}
+        @mouseenter=${() => { if (this.hoverTimer) clearTimeout(this.hoverTimer); }}
+        @mouseleave=${this.onGutterLeave}
+      >
+        <div class="bt-header">
+          <span class="bt-sha">${b.commitSha}</span>
+          <span class="bt-meta">${b.authorName} · ${age}</span>
+        </div>
+        <div class="bt-subject">${subject}</div>
+        ${body ? html`<div class="bt-body">${body}</div>` : nothing}
+        <div class="bt-actions">
+          <button class="bt-btn" @click=${() => this.viewCommitInLog(b.commitSha)}>view in log</button>
+          <button class="bt-btn" @click=${() => this.askAboutCommit(b.commitSha, subject)}>ask in chat</button>
+        </div>
       </div>
     `;
   }
@@ -185,7 +197,7 @@ export class GcFileView extends LitElement {
       this.hoveredBlame = this.blameLines[idx]!;
       // Position to the right of the gutter, clamped to viewport.
       const gutterRect = target.getBoundingClientRect();
-      const tipW = 420, tipH = 60;
+      const tipW = 560, tipH = 120;
       let left = gutterRect.right + 8;
       let top = e.clientY - 20;
       if (left + tipW > window.innerWidth) left = gutterRect.left - tipW - 8;
@@ -222,6 +234,11 @@ export class GcFileView extends LitElement {
         @mouseout=${this.onGutterLeave}
       >
         <table class="blame-table">
+          <colgroup>
+            <col class="blame-col" />
+            <col class="lno-col" />
+            <col />
+          </colgroup>
           <tbody>
             ${lines.map((line, i) => {
               const blame = this.blameLines[i];
@@ -233,9 +250,10 @@ export class GcFileView extends LitElement {
                 <tr class="${band} ${isNewBlock ? "blame-start" : ""}">
                   <td class="blame-cell" data-idx=${i}>
                     ${blame && isNewBlock
-                      ? html`<span class="blame-sha">${blame.commitSha}</span><span class="blame-msg">${(blame.commitMessage || "").slice(0, 24)}</span>`
-                      : nothing}
+                      ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span> <span class="blame-msg">${(blame.commitMessage || "").split("\n")[0].slice(0, 20)}</span>`
+                      : html`<span class="blame-cont">│</span>`}
                   </td>
+                  <td class="lno-cell">${i + 1}</td>
                   <td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">${isHighlighted ? unsafeHTML(line) : line}</td>
                 </tr>`;
             })}
@@ -260,6 +278,31 @@ export class GcFileView extends LitElement {
         this.showBlame = false;
       }
     }
+  }
+
+  private viewCommitInLog(sha: string) {
+    this.hoveredBlame = null;
+    this.dispatchEvent(
+      new CustomEvent("gc:view-commit", {
+        bubbles: true,
+        composed: true,
+        detail: { sha, tab: "log" },
+      }),
+    );
+  }
+
+  private askAboutCommit(sha: string, subject: string) {
+    this.hoveredBlame = null;
+    this.dispatchEvent(
+      new CustomEvent("gc:ask-about", {
+        bubbles: true,
+        composed: true,
+        detail: {
+          prompt: `Explain commit ${sha.slice(0, 7)} "${subject}" — what changed and why?`,
+          tab: "chat",
+        },
+      }),
+    );
   }
 
   private askAboutFile() {
@@ -355,27 +398,93 @@ export class GcFileView extends LitElement {
       min-width: 0;
       gap: var(--space-3);
     }
+    /* ── Blame tooltip (hover popup) ────────────── */
+    .blame-tip {
+      position: fixed;
+      z-index: 50;
+      width: min(560px, calc(100vw - 32px));
+      padding: var(--space-3) var(--space-4);
+      background: var(--surface-2);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      font-size: var(--text-xs);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+    }
+    .bt-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-bottom: var(--space-1);
+    }
+    .bt-sha {
+      color: var(--accent-user);
+      font-variant-numeric: tabular-nums;
+    }
+    .bt-meta {
+      opacity: 0.5;
+      margin-left: auto;
+    }
+    .bt-subject {
+      font-size: var(--text-sm);
+      font-weight: 500;
+      margin-bottom: var(--space-1);
+      word-break: break-word;
+    }
+    .bt-body {
+      opacity: 0.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: min(200px, 40vh);
+      overflow-y: auto;
+      line-height: 1.5;
+    }
+    .bt-actions {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-2);
+      padding-top: var(--space-2);
+      border-top: 1px solid var(--border-default);
+    }
+    .bt-btn {
+      padding: var(--space-1) var(--space-3);
+      background: var(--surface-3);
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+    }
+    .bt-btn:hover {
+      background: var(--action-bg-hover);
+      border-color: var(--border-accent);
+    }
     /* ── Blame table layout ──────────────────────── */
     .blame-table-wrap {
       overflow: auto;
       font-size: 0.8rem;
     }
     .blame-table {
+      table-layout: fixed;
       border-collapse: collapse;
       width: 100%;
       font-family: inherit;
       font-size: inherit;
     }
+    .blame-col {
+      width: 180px;
+    }
+    .lno-col {
+      width: 3.5em;
+    }
     .blame-table tr.blame-start td {
       border-top: 1px solid var(--surface-4);
     }
     .blame-cell {
-      width: 200px;
-      min-width: 200px;
-      max-width: 200px;
       padding: 0 var(--space-2);
       white-space: nowrap;
       overflow: hidden;
+      text-overflow: ellipsis;
       font-size: 0.7rem;
       background: var(--surface-0);
       border-right: 1px solid var(--surface-4);
@@ -385,9 +494,24 @@ export class GcFileView extends LitElement {
     .blame-cell:hover {
       background: var(--surface-3);
     }
+    .blame-cont {
+      opacity: 0.3;
+      color: var(--surface-4);
+    }
+    .lno-cell {
+      padding: 0 var(--space-2);
+      text-align: right;
+      color: var(--text);
+      opacity: 0.25;
+      font-size: 0.7rem;
+      user-select: none;
+      border-right: 1px solid var(--surface-4);
+      vertical-align: top;
+    }
     .code-cell {
       padding: 0 var(--space-4);
       white-space: pre;
+      overflow-x: auto;
       vertical-align: top;
     }
     .code-cell.plain-cell {
@@ -396,9 +520,6 @@ export class GcFileView extends LitElement {
     }
     .band-even .blame-cell { background: var(--surface-0); }
     .band-odd .blame-cell { background: var(--surface-1); }
-    .blame-start {
-      border-top: 1px solid var(--surface-4);
-    }
     /* ── Blame info bar (below file header, inline) ─────────── */
     .blame-bar {
       display: flex;

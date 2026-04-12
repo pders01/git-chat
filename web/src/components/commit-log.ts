@@ -30,9 +30,17 @@ export class GcCommitLog extends LitElement {
   @state() private diffHtml = "";
   @state() private diffLoading = false;
   @state() private drawerOpen = false;
+  private pendingSha = "";
 
   override connectedCallback() {
     super.connectedCallback();
+    this.addEventListener("gc:select-commit", ((e: CustomEvent<{ sha: string }>) => {
+      if (this.state.phase === "ready") {
+        void this.selectCommit(e.detail.sha);
+      } else {
+        this.pendingSha = e.detail.sha;
+      }
+    }) as EventListener);
     if (this.repoId) void this.load(0);
   }
 
@@ -58,6 +66,11 @@ export class GcCommitLog extends LitElement {
         hasMore: resp.hasMore,
         offset,
       };
+      if (this.pendingSha) {
+        const sha = this.pendingSha;
+        this.pendingSha = "";
+        void this.selectCommit(sha);
+      }
     } catch (e) {
       this.state = {
         phase: "error",
@@ -80,8 +93,12 @@ export class GcCommitLog extends LitElement {
   }
 
   private async selectCommit(sha: string) {
+    // Support prefix matching (e.g. 7-char short SHA from blame).
+    if (this.state.phase === "ready" && sha.length < 40) {
+      const match = this.state.commits.find((c) => c.sha.startsWith(sha));
+      if (match) sha = match.sha;
+    }
     if (this.selectedSha === sha) {
-      // Toggle off.
       this.selectedSha = "";
       this.diffHtml = "";
       return;
