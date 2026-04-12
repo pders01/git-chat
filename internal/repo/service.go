@@ -7,6 +7,7 @@ import (
 	"connectrpc.com/connect"
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 	"github.com/pders01/git-chat/gen/go/gitchat/v1/gitchatv1connect"
+	"github.com/pders01/git-chat/internal/config"
 )
 
 // Service implements gitchat.v1.RepoService backed by a Registry.
@@ -17,6 +18,7 @@ import (
 type Service struct {
 	gitchatv1connect.UnimplementedRepoServiceHandler
 	Registry *Registry
+	Config   *config.Registry
 }
 
 var _ gitchatv1connect.RepoServiceHandler = (*Service)(nil)
@@ -194,6 +196,27 @@ func (s *Service) GetWorkingTreeDiff(
 		UnifiedDiff: diff,
 		Empty:       empty,
 	}), nil
+}
+
+func (s *Service) GetConfig(
+	ctx context.Context,
+	_ *connect.Request[gitchatv1.GetConfigRequest],
+) (*connect.Response[gitchatv1.GetConfigResponse], error) {
+	entries := s.Config.All(ctx)
+	return connect.NewResponse(&gitchatv1.GetConfigResponse{Entries: entries}), nil
+}
+
+func (s *Service) UpdateConfig(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.UpdateConfigRequest],
+) (*connect.Response[gitchatv1.UpdateConfigResponse], error) {
+	if req.Msg.Key == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("key is required"))
+	}
+	if err := s.Config.Set(ctx, req.Msg.Key, req.Msg.Value); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&gitchatv1.UpdateConfigResponse{}), nil
 }
 
 func (s *Service) lookup(id string) *Entry {

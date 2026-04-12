@@ -14,6 +14,7 @@ import (
 
 	"github.com/pders01/git-chat/internal/auth"
 	"github.com/pders01/git-chat/internal/chat"
+	"github.com/pders01/git-chat/internal/config"
 	"github.com/pders01/git-chat/internal/repo"
 	"github.com/pders01/git-chat/internal/rpc"
 )
@@ -75,6 +76,9 @@ func runServe(args []string) error {
 	defer db.Close()
 	slog.Info("storage opened", "path", db.Path)
 
+	cfg := config.New(db)
+	config.RegisterDefaults(cfg)
+
 	pairings := auth.NewPairingStore()
 	sessions := auth.NewSessionStore(false) // HTTP, not TLS
 	llmAdapter, err := buildLLM(*llmBackend, *llmBase, *llmKey, llmModel)
@@ -87,7 +91,7 @@ func runServe(args []string) error {
 		Pairings: pairings,
 		Signers:  signers,
 	}
-	repoSvc := &repo.Service{Registry: registry}
+	repoSvc := &repo.Service{Registry: registry, Config: cfg}
 	chatSvc := &chat.Service{
 		DB:          db,
 		LLM:         llmAdapter,

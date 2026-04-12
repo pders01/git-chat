@@ -60,6 +60,14 @@ service RepoService {
   // GetWorkingTreeDiff returns a unified diff between HEAD and the
   // working tree for a single file.
   rpc GetWorkingTreeDiff(GetWorkingTreeDiffRequest) returns (GetWorkingTreeDiffResponse);
+
+  // GetConfig returns all registered configuration entries with their
+  // resolved values (SQLite override → env var → compiled default).
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+
+  // UpdateConfig writes a configuration override into SQLite. The new
+  // value takes effect immediately for future Get() calls.
+  rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
 }
 
 // ─── Repo ───────────────────────────────────────────────────────────────
@@ -245,3 +253,25 @@ message GetWorkingTreeDiffResponse {
   string unified_diff = 1;
   bool   empty = 2;
 }
+
+// ─── Config ────────────────────────────────────────────────────────────
+message GetConfigRequest {}
+
+message ConfigEntry {
+  string key = 1;
+  string value = 2;
+  string default_value = 3;
+  string description = 4;
+  string group = 5;
+}
+
+message GetConfigResponse {
+  repeated ConfigEntry entries = 1;
+}
+
+message UpdateConfigRequest {
+  string key = 1;
+  string value = 2;
+}
+
+message UpdateConfigResponse {}

@@ -1739,6 +1739,251 @@ func (x *GetWorkingTreeDiffResponse) GetEmpty() bool {
 	return false
 }
 
+// ─── Config ────────────────────────────────────────────────────────────
+type GetConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConfigRequest) Reset() {
+	*x = GetConfigRequest{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigRequest) ProtoMessage() {}
+
+func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigRequest.ProtoReflect.Descriptor instead.
+func (*GetConfigRequest) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{27}
+}
+
+type ConfigEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	DefaultValue  string                 `protobuf:"bytes,3,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"`
+	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	Group         string                 `protobuf:"bytes,5,opt,name=group,proto3" json:"group,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigEntry) Reset() {
+	*x = ConfigEntry{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigEntry) ProtoMessage() {}
+
+func (x *ConfigEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigEntry.ProtoReflect.Descriptor instead.
+func (*ConfigEntry) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *ConfigEntry) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *ConfigEntry) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *ConfigEntry) GetDefaultValue() string {
+	if x != nil {
+		return x.DefaultValue
+	}
+	return ""
+}
+
+func (x *ConfigEntry) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *ConfigEntry) GetGroup() string {
+	if x != nil {
+		return x.Group
+	}
+	return ""
+}
+
+type GetConfigResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entries       []*ConfigEntry         `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConfigResponse) Reset() {
+	*x = GetConfigResponse{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigResponse) ProtoMessage() {}
+
+func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigResponse.ProtoReflect.Descriptor instead.
+func (*GetConfigResponse) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *GetConfigResponse) GetEntries() []*ConfigEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+type UpdateConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateConfigRequest) Reset() {
+	*x = UpdateConfigRequest{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateConfigRequest) ProtoMessage() {}
+
+func (x *UpdateConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateConfigRequest.ProtoReflect.Descriptor instead.
+func (*UpdateConfigRequest) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *UpdateConfigRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *UpdateConfigRequest) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+type UpdateConfigResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateConfigResponse) Reset() {
+	*x = UpdateConfigResponse{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateConfigResponse) ProtoMessage() {}
+
+func (x *UpdateConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateConfigResponse.ProtoReflect.Descriptor instead.
+func (*UpdateConfigResponse) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{31}
+}
+
 var File_gitchat_v1_repo_proto protoreflect.FileDescriptor
 
 const file_gitchat_v1_repo_proto_rawDesc = "" +
@@ -1864,13 +2109,26 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x04path\x18\x02 \x01(\tR\x04path\"U\n" +
 	"\x1aGetWorkingTreeDiffResponse\x12!\n" +
 	"\funified_diff\x18\x01 \x01(\tR\vunifiedDiff\x12\x14\n" +
-	"\x05empty\x18\x02 \x01(\bR\x05empty*\x82\x01\n" +
+	"\x05empty\x18\x02 \x01(\bR\x05empty\"\x12\n" +
+	"\x10GetConfigRequest\"\x92\x01\n" +
+	"\vConfigEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\x12#\n" +
+	"\rdefault_value\x18\x03 \x01(\tR\fdefaultValue\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x14\n" +
+	"\x05group\x18\x05 \x01(\tR\x05group\"F\n" +
+	"\x11GetConfigResponse\x121\n" +
+	"\aentries\x18\x01 \x03(\v2\x17.gitchat.v1.ConfigEntryR\aentries\"=\n" +
+	"\x13UpdateConfigRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\x16\n" +
+	"\x14UpdateConfigResponse*\x82\x01\n" +
 	"\tEntryType\x12\x1a\n" +
 	"\x16ENTRY_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fENTRY_TYPE_FILE\x10\x01\x12\x12\n" +
 	"\x0eENTRY_TYPE_DIR\x10\x02\x12\x16\n" +
 	"\x12ENTRY_TYPE_SYMLINK\x10\x03\x12\x18\n" +
-	"\x14ENTRY_TYPE_SUBMODULE\x10\x042\x9b\x06\n" +
+	"\x14ENTRY_TYPE_SUBMODULE\x10\x042\xb8\a\n" +
 	"\vRepoService\x12H\n" +
 	"\tListRepos\x12\x1c.gitchat.v1.ListReposRequest\x1a\x1d.gitchat.v1.ListReposResponse\x12Q\n" +
 	"\fListBranches\x12\x1f.gitchat.v1.ListBranchesRequest\x1a .gitchat.v1.ListBranchesResponse\x12E\n" +
@@ -1881,7 +2139,9 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x0fCompareBranches\x12\".gitchat.v1.CompareBranchesRequest\x1a#.gitchat.v1.CompareBranchesResponse\x12B\n" +
 	"\aGetDiff\x12\x1a.gitchat.v1.GetDiffRequest\x1a\x1b.gitchat.v1.GetDiffResponse\x12H\n" +
 	"\tGetStatus\x12\x1c.gitchat.v1.GetStatusRequest\x1a\x1d.gitchat.v1.GetStatusResponse\x12c\n" +
-	"\x12GetWorkingTreeDiff\x12%.gitchat.v1.GetWorkingTreeDiffRequest\x1a&.gitchat.v1.GetWorkingTreeDiffResponseB\x9d\x01\n" +
+	"\x12GetWorkingTreeDiff\x12%.gitchat.v1.GetWorkingTreeDiffRequest\x1a&.gitchat.v1.GetWorkingTreeDiffResponse\x12H\n" +
+	"\tGetConfig\x12\x1c.gitchat.v1.GetConfigRequest\x1a\x1d.gitchat.v1.GetConfigResponse\x12Q\n" +
+	"\fUpdateConfig\x12\x1f.gitchat.v1.UpdateConfigRequest\x1a .gitchat.v1.UpdateConfigResponseB\x9d\x01\n" +
 	"\x0ecom.gitchat.v1B\tRepoProtoP\x01Z7github.com/pders01/git-chat/gen/go/gitchat/v1;gitchatv1\xa2\x02\x03GXX\xaa\x02\n" +
 	"Gitchat.V1\xca\x02\n" +
 	"Gitchat\\V1\xe2\x02\x16Gitchat\\V1\\GPBMetadata\xea\x02\vGitchat::V1b\x06proto3"
@@ -1899,7 +2159,7 @@ func file_gitchat_v1_repo_proto_rawDescGZIP() []byte {
 }
 
 var file_gitchat_v1_repo_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_gitchat_v1_repo_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_gitchat_v1_repo_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_gitchat_v1_repo_proto_goTypes = []any{
 	(EntryType)(0),                     // 0: gitchat.v1.EntryType
 	(*Repo)(nil),                       // 1: gitchat.v1.Repo
@@ -1929,6 +2189,11 @@ var file_gitchat_v1_repo_proto_goTypes = []any{
 	(*StatusFile)(nil),                 // 25: gitchat.v1.StatusFile
 	(*GetWorkingTreeDiffRequest)(nil),  // 26: gitchat.v1.GetWorkingTreeDiffRequest
 	(*GetWorkingTreeDiffResponse)(nil), // 27: gitchat.v1.GetWorkingTreeDiffResponse
+	(*GetConfigRequest)(nil),           // 28: gitchat.v1.GetConfigRequest
+	(*ConfigEntry)(nil),                // 29: gitchat.v1.ConfigEntry
+	(*GetConfigResponse)(nil),          // 30: gitchat.v1.GetConfigResponse
+	(*UpdateConfigRequest)(nil),        // 31: gitchat.v1.UpdateConfigRequest
+	(*UpdateConfigResponse)(nil),       // 32: gitchat.v1.UpdateConfigResponse
 }
 var file_gitchat_v1_repo_proto_depIdxs = []int32{
 	1,  // 0: gitchat.v1.ListReposResponse.repos:type_name -> gitchat.v1.Repo
@@ -1942,31 +2207,36 @@ var file_gitchat_v1_repo_proto_depIdxs = []int32{
 	25, // 8: gitchat.v1.GetStatusResponse.staged:type_name -> gitchat.v1.StatusFile
 	25, // 9: gitchat.v1.GetStatusResponse.unstaged:type_name -> gitchat.v1.StatusFile
 	25, // 10: gitchat.v1.GetStatusResponse.untracked:type_name -> gitchat.v1.StatusFile
-	2,  // 11: gitchat.v1.RepoService.ListRepos:input_type -> gitchat.v1.ListReposRequest
-	4,  // 12: gitchat.v1.RepoService.ListBranches:input_type -> gitchat.v1.ListBranchesRequest
-	7,  // 13: gitchat.v1.RepoService.ListTree:input_type -> gitchat.v1.ListTreeRequest
-	10, // 14: gitchat.v1.RepoService.GetFile:input_type -> gitchat.v1.GetFileRequest
-	12, // 15: gitchat.v1.RepoService.ListCommits:input_type -> gitchat.v1.ListCommitsRequest
-	15, // 16: gitchat.v1.RepoService.GetBlame:input_type -> gitchat.v1.GetBlameRequest
-	18, // 17: gitchat.v1.RepoService.CompareBranches:input_type -> gitchat.v1.CompareBranchesRequest
-	21, // 18: gitchat.v1.RepoService.GetDiff:input_type -> gitchat.v1.GetDiffRequest
-	23, // 19: gitchat.v1.RepoService.GetStatus:input_type -> gitchat.v1.GetStatusRequest
-	26, // 20: gitchat.v1.RepoService.GetWorkingTreeDiff:input_type -> gitchat.v1.GetWorkingTreeDiffRequest
-	3,  // 21: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
-	5,  // 22: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
-	8,  // 23: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
-	11, // 24: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
-	13, // 25: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
-	16, // 26: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
-	19, // 27: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
-	22, // 28: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
-	24, // 29: gitchat.v1.RepoService.GetStatus:output_type -> gitchat.v1.GetStatusResponse
-	27, // 30: gitchat.v1.RepoService.GetWorkingTreeDiff:output_type -> gitchat.v1.GetWorkingTreeDiffResponse
-	21, // [21:31] is the sub-list for method output_type
-	11, // [11:21] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	29, // 11: gitchat.v1.GetConfigResponse.entries:type_name -> gitchat.v1.ConfigEntry
+	2,  // 12: gitchat.v1.RepoService.ListRepos:input_type -> gitchat.v1.ListReposRequest
+	4,  // 13: gitchat.v1.RepoService.ListBranches:input_type -> gitchat.v1.ListBranchesRequest
+	7,  // 14: gitchat.v1.RepoService.ListTree:input_type -> gitchat.v1.ListTreeRequest
+	10, // 15: gitchat.v1.RepoService.GetFile:input_type -> gitchat.v1.GetFileRequest
+	12, // 16: gitchat.v1.RepoService.ListCommits:input_type -> gitchat.v1.ListCommitsRequest
+	15, // 17: gitchat.v1.RepoService.GetBlame:input_type -> gitchat.v1.GetBlameRequest
+	18, // 18: gitchat.v1.RepoService.CompareBranches:input_type -> gitchat.v1.CompareBranchesRequest
+	21, // 19: gitchat.v1.RepoService.GetDiff:input_type -> gitchat.v1.GetDiffRequest
+	23, // 20: gitchat.v1.RepoService.GetStatus:input_type -> gitchat.v1.GetStatusRequest
+	26, // 21: gitchat.v1.RepoService.GetWorkingTreeDiff:input_type -> gitchat.v1.GetWorkingTreeDiffRequest
+	28, // 22: gitchat.v1.RepoService.GetConfig:input_type -> gitchat.v1.GetConfigRequest
+	31, // 23: gitchat.v1.RepoService.UpdateConfig:input_type -> gitchat.v1.UpdateConfigRequest
+	3,  // 24: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
+	5,  // 25: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
+	8,  // 26: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
+	11, // 27: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
+	13, // 28: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
+	16, // 29: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
+	19, // 30: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
+	22, // 31: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
+	24, // 32: gitchat.v1.RepoService.GetStatus:output_type -> gitchat.v1.GetStatusResponse
+	27, // 33: gitchat.v1.RepoService.GetWorkingTreeDiff:output_type -> gitchat.v1.GetWorkingTreeDiffResponse
+	30, // 34: gitchat.v1.RepoService.GetConfig:output_type -> gitchat.v1.GetConfigResponse
+	32, // 35: gitchat.v1.RepoService.UpdateConfig:output_type -> gitchat.v1.UpdateConfigResponse
+	24, // [24:36] is the sub-list for method output_type
+	12, // [12:24] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_gitchat_v1_repo_proto_init() }
@@ -1980,7 +2250,7 @@ func file_gitchat_v1_repo_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gitchat_v1_repo_proto_rawDesc), len(file_gitchat_v1_repo_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   27,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

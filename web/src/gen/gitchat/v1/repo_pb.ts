@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file gitchat/v1/repo.proto.
  */
 export const file_gitchat_v1_repo: GenFile = /*@__PURE__*/
-  fileDesc("ChVnaXRjaGF0L3YxL3JlcG8ucHJvdG8SCmdpdGNoYXQudjEiTgoEUmVwbxIKCgJpZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIWCg5kZWZhdWx0X2JyYW5jaBgDIAEoCRITCgtoZWFkX2NvbW1pdBgEIAEoCSISChBMaXN0UmVwb3NSZXF1ZXN0IjQKEUxpc3RSZXBvc1Jlc3BvbnNlEh8KBXJlcG9zGAEgAygLMhAuZ2l0Y2hhdC52MS5SZXBvIiYKE0xpc3RCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCSI8ChRMaXN0QnJhbmNoZXNSZXNwb25zZRIkCghicmFuY2hlcxgBIAMoCzISLmdpdGNoYXQudjEuQnJhbmNoIk8KBkJyYW5jaBIMCgRuYW1lGAEgASgJEg4KBmNvbW1pdBgCIAEoCRIWCg5jb21taXR0ZXJfdGltZRgDIAEoAxIPCgdzdWJqZWN0GAQgASgJIj0KD0xpc3RUcmVlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIlAKEExpc3RUcmVlUmVzcG9uc2USJgoHZW50cmllcxgBIAMoCzIVLmdpdGNoYXQudjEuVHJlZUVudHJ5EhQKDHJlZl9yZXNvbHZlZBgCIAEoCSJeCglUcmVlRW50cnkSDAoEbmFtZRgBIAEoCRIjCgR0eXBlGAIgASgOMhUuZ2l0Y2hhdC52MS5FbnRyeVR5cGUSDAoEc2l6ZRgDIAEoAxIQCghibG9iX3NoYRgEIAEoCSJPCg5HZXRGaWxlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJEhEKCW1heF9ieXRlcxgEIAEoAyJ6Cg9HZXRGaWxlUmVzcG9uc2USDwoHY29udGVudBgBIAEoDBIMCgRzaXplGAIgASgDEhEKCXRydW5jYXRlZBgDIAEoCBIRCglpc19iaW5hcnkYBCABKAgSEAoIYmxvYl9zaGEYBSABKAkSEAoIbGFuZ3VhZ2UYBiABKAkiUQoSTGlzdENvbW1pdHNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSCwoDcmVmGAIgASgJEg0KBWxpbWl0GAMgASgFEg4KBm9mZnNldBgEIAEoBSJRChNMaXN0Q29tbWl0c1Jlc3BvbnNlEigKB2NvbW1pdHMYASADKAsyFy5naXRjaGF0LnYxLkNvbW1pdEVudHJ5EhAKCGhhc19tb3JlGAIgASgIIskBCgtDb21taXRFbnRyeRILCgNzaGEYASABKAkSEQoJc2hvcnRfc2hhGAIgASgJEg8KB21lc3NhZ2UYAyABKAkSEwoLYXV0aG9yX25hbWUYBCABKAkSFAoMYXV0aG9yX2VtYWlsGAUgASgJEhMKC2F1dGhvcl90aW1lGAYgASgDEhUKDWZpbGVzX2NoYW5nZWQYByABKAUSEQoJYWRkaXRpb25zGAggASgFEhEKCWRlbGV0aW9ucxgJIAEoBRIMCgRib2R5GAogASgJIj0KD0dldEJsYW1lUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIjgKEEdldEJsYW1lUmVzcG9uc2USJAoFbGluZXMYASADKAsyFS5naXRjaGF0LnYxLkJsYW1lTGluZSJ+CglCbGFtZUxpbmUSDAoEdGV4dBgBIAEoCRITCgthdXRob3JfbmFtZRgCIAEoCRIUCgxhdXRob3JfZW1haWwYAyABKAkSDAoEZGF0ZRgEIAEoAxISCgpjb21taXRfc2hhGAUgASgJEhYKDmNvbW1pdF9tZXNzYWdlGAYgASgJIk0KFkNvbXBhcmVCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRIQCghiYXNlX3JlZhgCIAEoCRIQCghoZWFkX3JlZhgDIAEoCSJzChdDb21wYXJlQnJhbmNoZXNSZXNwb25zZRImCgVmaWxlcxgBIAMoCzIXLmdpdGNoYXQudjEuQ2hhbmdlZEZpbGUSFwoPdG90YWxfYWRkaXRpb25zGAIgASgFEhcKD3RvdGFsX2RlbGV0aW9ucxgDIAEoBSJRCgtDaGFuZ2VkRmlsZRIMCgRwYXRoGAEgASgJEg4KBnN0YXR1cxgCIAEoCRIRCglhZGRpdGlvbnMYAyABKAUSEQoJZGVsZXRpb25zGAQgASgFIlEKDkdldERpZmZSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSEAoIZnJvbV9yZWYYAiABKAkSDgoGdG9fcmVmGAMgASgJEgwKBHBhdGgYBCABKAkihgEKD0dldERpZmZSZXNwb25zZRIUCgx1bmlmaWVkX2RpZmYYASABKAkSEwoLZnJvbV9jb21taXQYAiABKAkSEQoJdG9fY29tbWl0GAMgASgJEg0KBWVtcHR5GAQgASgIEiYKBWZpbGVzGAUgAygLMhcuZ2l0Y2hhdC52MS5DaGFuZ2VkRmlsZSIjChBHZXRTdGF0dXNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkikAEKEUdldFN0YXR1c1Jlc3BvbnNlEiYKBnN0YWdlZBgBIAMoCzIWLmdpdGNoYXQudjEuU3RhdHVzRmlsZRIoCgh1bnN0YWdlZBgCIAMoCzIWLmdpdGNoYXQudjEuU3RhdHVzRmlsZRIpCgl1bnRyYWNrZWQYAyADKAsyFi5naXRjaGF0LnYxLlN0YXR1c0ZpbGUiKgoKU3RhdHVzRmlsZRIMCgRwYXRoGAEgASgJEg4KBnN0YXR1cxgCIAEoCSI6ChlHZXRXb3JraW5nVHJlZURpZmZSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSDAoEcGF0aBgCIAEoCSJBChpHZXRXb3JraW5nVHJlZURpZmZSZXNwb25zZRIUCgx1bmlmaWVkX2RpZmYYASABKAkSDQoFZW1wdHkYAiABKAgqggEKCUVudHJ5VHlwZRIaChZFTlRSWV9UWVBFX1VOU1BFQ0lGSUVEEAASEwoPRU5UUllfVFlQRV9GSUxFEAESEgoORU5UUllfVFlQRV9ESVIQAhIWChJFTlRSWV9UWVBFX1NZTUxJTksQAxIYChRFTlRSWV9UWVBFX1NVQk1PRFVMRRAEMpsGCgtSZXBvU2VydmljZRJICglMaXN0UmVwb3MSHC5naXRjaGF0LnYxLkxpc3RSZXBvc1JlcXVlc3QaHS5naXRjaGF0LnYxLkxpc3RSZXBvc1Jlc3BvbnNlElEKDExpc3RCcmFuY2hlcxIfLmdpdGNoYXQudjEuTGlzdEJyYW5jaGVzUmVxdWVzdBogLmdpdGNoYXQudjEuTGlzdEJyYW5jaGVzUmVzcG9uc2USRQoITGlzdFRyZWUSGy5naXRjaGF0LnYxLkxpc3RUcmVlUmVxdWVzdBocLmdpdGNoYXQudjEuTGlzdFRyZWVSZXNwb25zZRJCCgdHZXRGaWxlEhouZ2l0Y2hhdC52MS5HZXRGaWxlUmVxdWVzdBobLmdpdGNoYXQudjEuR2V0RmlsZVJlc3BvbnNlEk4KC0xpc3RDb21taXRzEh4uZ2l0Y2hhdC52MS5MaXN0Q29tbWl0c1JlcXVlc3QaHy5naXRjaGF0LnYxLkxpc3RDb21taXRzUmVzcG9uc2USRQoIR2V0QmxhbWUSGy5naXRjaGF0LnYxLkdldEJsYW1lUmVxdWVzdBocLmdpdGNoYXQudjEuR2V0QmxhbWVSZXNwb25zZRJaCg9Db21wYXJlQnJhbmNoZXMSIi5naXRjaGF0LnYxLkNvbXBhcmVCcmFuY2hlc1JlcXVlc3QaIy5naXRjaGF0LnYxLkNvbXBhcmVCcmFuY2hlc1Jlc3BvbnNlEkIKB0dldERpZmYSGi5naXRjaGF0LnYxLkdldERpZmZSZXF1ZXN0GhsuZ2l0Y2hhdC52MS5HZXREaWZmUmVzcG9uc2USSAoJR2V0U3RhdHVzEhwuZ2l0Y2hhdC52MS5HZXRTdGF0dXNSZXF1ZXN0Gh0uZ2l0Y2hhdC52MS5HZXRTdGF0dXNSZXNwb25zZRJjChJHZXRXb3JraW5nVHJlZURpZmYSJS5naXRjaGF0LnYxLkdldFdvcmtpbmdUcmVlRGlmZlJlcXVlc3QaJi5naXRjaGF0LnYxLkdldFdvcmtpbmdUcmVlRGlmZlJlc3BvbnNlQp0BCg5jb20uZ2l0Y2hhdC52MUIJUmVwb1Byb3RvUAFaN2dpdGh1Yi5jb20vcGRlcnMwMS9naXQtY2hhdC9nZW4vZ28vZ2l0Y2hhdC92MTtnaXRjaGF0djGiAgNHWFiqAgpHaXRjaGF0LlYxygIKR2l0Y2hhdFxWMeICFkdpdGNoYXRcVjFcR1BCTWV0YWRhdGHqAgtHaXRjaGF0OjpWMWIGcHJvdG8z");
+  fileDesc("ChVnaXRjaGF0L3YxL3JlcG8ucHJvdG8SCmdpdGNoYXQudjEiTgoEUmVwbxIKCgJpZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIWCg5kZWZhdWx0X2JyYW5jaBgDIAEoCRITCgtoZWFkX2NvbW1pdBgEIAEoCSISChBMaXN0UmVwb3NSZXF1ZXN0IjQKEUxpc3RSZXBvc1Jlc3BvbnNlEh8KBXJlcG9zGAEgAygLMhAuZ2l0Y2hhdC52MS5SZXBvIiYKE0xpc3RCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCSI8ChRMaXN0QnJhbmNoZXNSZXNwb25zZRIkCghicmFuY2hlcxgBIAMoCzISLmdpdGNoYXQudjEuQnJhbmNoIk8KBkJyYW5jaBIMCgRuYW1lGAEgASgJEg4KBmNvbW1pdBgCIAEoCRIWCg5jb21taXR0ZXJfdGltZRgDIAEoAxIPCgdzdWJqZWN0GAQgASgJIj0KD0xpc3RUcmVlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIlAKEExpc3RUcmVlUmVzcG9uc2USJgoHZW50cmllcxgBIAMoCzIVLmdpdGNoYXQudjEuVHJlZUVudHJ5EhQKDHJlZl9yZXNvbHZlZBgCIAEoCSJeCglUcmVlRW50cnkSDAoEbmFtZRgBIAEoCRIjCgR0eXBlGAIgASgOMhUuZ2l0Y2hhdC52MS5FbnRyeVR5cGUSDAoEc2l6ZRgDIAEoAxIQCghibG9iX3NoYRgEIAEoCSJPCg5HZXRGaWxlUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJEhEKCW1heF9ieXRlcxgEIAEoAyJ6Cg9HZXRGaWxlUmVzcG9uc2USDwoHY29udGVudBgBIAEoDBIMCgRzaXplGAIgASgDEhEKCXRydW5jYXRlZBgDIAEoCBIRCglpc19iaW5hcnkYBCABKAgSEAoIYmxvYl9zaGEYBSABKAkSEAoIbGFuZ3VhZ2UYBiABKAkiUQoSTGlzdENvbW1pdHNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSCwoDcmVmGAIgASgJEg0KBWxpbWl0GAMgASgFEg4KBm9mZnNldBgEIAEoBSJRChNMaXN0Q29tbWl0c1Jlc3BvbnNlEigKB2NvbW1pdHMYASADKAsyFy5naXRjaGF0LnYxLkNvbW1pdEVudHJ5EhAKCGhhc19tb3JlGAIgASgIIskBCgtDb21taXRFbnRyeRILCgNzaGEYASABKAkSEQoJc2hvcnRfc2hhGAIgASgJEg8KB21lc3NhZ2UYAyABKAkSEwoLYXV0aG9yX25hbWUYBCABKAkSFAoMYXV0aG9yX2VtYWlsGAUgASgJEhMKC2F1dGhvcl90aW1lGAYgASgDEhUKDWZpbGVzX2NoYW5nZWQYByABKAUSEQoJYWRkaXRpb25zGAggASgFEhEKCWRlbGV0aW9ucxgJIAEoBRIMCgRib2R5GAogASgJIj0KD0dldEJsYW1lUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIjgKEEdldEJsYW1lUmVzcG9uc2USJAoFbGluZXMYASADKAsyFS5naXRjaGF0LnYxLkJsYW1lTGluZSJ+CglCbGFtZUxpbmUSDAoEdGV4dBgBIAEoCRITCgthdXRob3JfbmFtZRgCIAEoCRIUCgxhdXRob3JfZW1haWwYAyABKAkSDAoEZGF0ZRgEIAEoAxISCgpjb21taXRfc2hhGAUgASgJEhYKDmNvbW1pdF9tZXNzYWdlGAYgASgJIk0KFkNvbXBhcmVCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRIQCghiYXNlX3JlZhgCIAEoCRIQCghoZWFkX3JlZhgDIAEoCSJzChdDb21wYXJlQnJhbmNoZXNSZXNwb25zZRImCgVmaWxlcxgBIAMoCzIXLmdpdGNoYXQudjEuQ2hhbmdlZEZpbGUSFwoPdG90YWxfYWRkaXRpb25zGAIgASgFEhcKD3RvdGFsX2RlbGV0aW9ucxgDIAEoBSJRCgtDaGFuZ2VkRmlsZRIMCgRwYXRoGAEgASgJEg4KBnN0YXR1cxgCIAEoCRIRCglhZGRpdGlvbnMYAyABKAUSEQoJZGVsZXRpb25zGAQgASgFIlEKDkdldERpZmZSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSEAoIZnJvbV9yZWYYAiABKAkSDgoGdG9fcmVmGAMgASgJEgwKBHBhdGgYBCABKAkihgEKD0dldERpZmZSZXNwb25zZRIUCgx1bmlmaWVkX2RpZmYYASABKAkSEwoLZnJvbV9jb21taXQYAiABKAkSEQoJdG9fY29tbWl0GAMgASgJEg0KBWVtcHR5GAQgASgIEiYKBWZpbGVzGAUgAygLMhcuZ2l0Y2hhdC52MS5DaGFuZ2VkRmlsZSIjChBHZXRTdGF0dXNSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkikAEKEUdldFN0YXR1c1Jlc3BvbnNlEiYKBnN0YWdlZBgBIAMoCzIWLmdpdGNoYXQudjEuU3RhdHVzRmlsZRIoCgh1bnN0YWdlZBgCIAMoCzIWLmdpdGNoYXQudjEuU3RhdHVzRmlsZRIpCgl1bnRyYWNrZWQYAyADKAsyFi5naXRjaGF0LnYxLlN0YXR1c0ZpbGUiKgoKU3RhdHVzRmlsZRIMCgRwYXRoGAEgASgJEg4KBnN0YXR1cxgCIAEoCSI6ChlHZXRXb3JraW5nVHJlZURpZmZSZXF1ZXN0Eg8KB3JlcG9faWQYASABKAkSDAoEcGF0aBgCIAEoCSJBChpHZXRXb3JraW5nVHJlZURpZmZSZXNwb25zZRIUCgx1bmlmaWVkX2RpZmYYASABKAkSDQoFZW1wdHkYAiABKAgiEgoQR2V0Q29uZmlnUmVxdWVzdCJkCgtDb25maWdFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAkSFQoNZGVmYXVsdF92YWx1ZRgDIAEoCRITCgtkZXNjcmlwdGlvbhgEIAEoCRINCgVncm91cBgFIAEoCSI9ChFHZXRDb25maWdSZXNwb25zZRIoCgdlbnRyaWVzGAEgAygLMhcuZ2l0Y2hhdC52MS5Db25maWdFbnRyeSIxChNVcGRhdGVDb25maWdSZXF1ZXN0EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCSIWChRVcGRhdGVDb25maWdSZXNwb25zZSqCAQoJRW50cnlUeXBlEhoKFkVOVFJZX1RZUEVfVU5TUEVDSUZJRUQQABITCg9FTlRSWV9UWVBFX0ZJTEUQARISCg5FTlRSWV9UWVBFX0RJUhACEhYKEkVOVFJZX1RZUEVfU1lNTElOSxADEhgKFEVOVFJZX1RZUEVfU1VCTU9EVUxFEAQyuAcKC1JlcG9TZXJ2aWNlEkgKCUxpc3RSZXBvcxIcLmdpdGNoYXQudjEuTGlzdFJlcG9zUmVxdWVzdBodLmdpdGNoYXQudjEuTGlzdFJlcG9zUmVzcG9uc2USUQoMTGlzdEJyYW5jaGVzEh8uZ2l0Y2hhdC52MS5MaXN0QnJhbmNoZXNSZXF1ZXN0GiAuZ2l0Y2hhdC52MS5MaXN0QnJhbmNoZXNSZXNwb25zZRJFCghMaXN0VHJlZRIbLmdpdGNoYXQudjEuTGlzdFRyZWVSZXF1ZXN0GhwuZ2l0Y2hhdC52MS5MaXN0VHJlZVJlc3BvbnNlEkIKB0dldEZpbGUSGi5naXRjaGF0LnYxLkdldEZpbGVSZXF1ZXN0GhsuZ2l0Y2hhdC52MS5HZXRGaWxlUmVzcG9uc2USTgoLTGlzdENvbW1pdHMSHi5naXRjaGF0LnYxLkxpc3RDb21taXRzUmVxdWVzdBofLmdpdGNoYXQudjEuTGlzdENvbW1pdHNSZXNwb25zZRJFCghHZXRCbGFtZRIbLmdpdGNoYXQudjEuR2V0QmxhbWVSZXF1ZXN0GhwuZ2l0Y2hhdC52MS5HZXRCbGFtZVJlc3BvbnNlEloKD0NvbXBhcmVCcmFuY2hlcxIiLmdpdGNoYXQudjEuQ29tcGFyZUJyYW5jaGVzUmVxdWVzdBojLmdpdGNoYXQudjEuQ29tcGFyZUJyYW5jaGVzUmVzcG9uc2USQgoHR2V0RGlmZhIaLmdpdGNoYXQudjEuR2V0RGlmZlJlcXVlc3QaGy5naXRjaGF0LnYxLkdldERpZmZSZXNwb25zZRJICglHZXRTdGF0dXMSHC5naXRjaGF0LnYxLkdldFN0YXR1c1JlcXVlc3QaHS5naXRjaGF0LnYxLkdldFN0YXR1c1Jlc3BvbnNlEmMKEkdldFdvcmtpbmdUcmVlRGlmZhIlLmdpdGNoYXQudjEuR2V0V29ya2luZ1RyZWVEaWZmUmVxdWVzdBomLmdpdGNoYXQudjEuR2V0V29ya2luZ1RyZWVEaWZmUmVzcG9uc2USSAoJR2V0Q29uZmlnEhwuZ2l0Y2hhdC52MS5HZXRDb25maWdSZXF1ZXN0Gh0uZ2l0Y2hhdC52MS5HZXRDb25maWdSZXNwb25zZRJRCgxVcGRhdGVDb25maWcSHy5naXRjaGF0LnYxLlVwZGF0ZUNvbmZpZ1JlcXVlc3QaIC5naXRjaGF0LnYxLlVwZGF0ZUNvbmZpZ1Jlc3BvbnNlQp0BCg5jb20uZ2l0Y2hhdC52MUIJUmVwb1Byb3RvUAFaN2dpdGh1Yi5jb20vcGRlcnMwMS9naXQtY2hhdC9nZW4vZ28vZ2l0Y2hhdC92MTtnaXRjaGF0djGiAgNHWFiqAgpHaXRjaGF0LlYxygIKR2l0Y2hhdFxWMeICFkdpdGNoYXRcVjFcR1BCTWV0YWRhdGHqAgtHaXRjaGF0OjpWMWIGcHJvdG8z");
 
 /**
  * ─── Repo ───────────────────────────────────────────────────────────────
@@ -881,6 +881,110 @@ export const GetWorkingTreeDiffResponseSchema: GenMessage<GetWorkingTreeDiffResp
   messageDesc(file_gitchat_v1_repo, 26);
 
 /**
+ * ─── Config ────────────────────────────────────────────────────────────
+ *
+ * @generated from message gitchat.v1.GetConfigRequest
+ */
+export type GetConfigRequest = Message<"gitchat.v1.GetConfigRequest"> & {
+};
+
+/**
+ * Describes the message gitchat.v1.GetConfigRequest.
+ * Use `create(GetConfigRequestSchema)` to create a new message.
+ */
+export const GetConfigRequestSchema: GenMessage<GetConfigRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 27);
+
+/**
+ * @generated from message gitchat.v1.ConfigEntry
+ */
+export type ConfigEntry = Message<"gitchat.v1.ConfigEntry"> & {
+  /**
+   * @generated from field: string key = 1;
+   */
+  key: string;
+
+  /**
+   * @generated from field: string value = 2;
+   */
+  value: string;
+
+  /**
+   * @generated from field: string default_value = 3;
+   */
+  defaultValue: string;
+
+  /**
+   * @generated from field: string description = 4;
+   */
+  description: string;
+
+  /**
+   * @generated from field: string group = 5;
+   */
+  group: string;
+};
+
+/**
+ * Describes the message gitchat.v1.ConfigEntry.
+ * Use `create(ConfigEntrySchema)` to create a new message.
+ */
+export const ConfigEntrySchema: GenMessage<ConfigEntry> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 28);
+
+/**
+ * @generated from message gitchat.v1.GetConfigResponse
+ */
+export type GetConfigResponse = Message<"gitchat.v1.GetConfigResponse"> & {
+  /**
+   * @generated from field: repeated gitchat.v1.ConfigEntry entries = 1;
+   */
+  entries: ConfigEntry[];
+};
+
+/**
+ * Describes the message gitchat.v1.GetConfigResponse.
+ * Use `create(GetConfigResponseSchema)` to create a new message.
+ */
+export const GetConfigResponseSchema: GenMessage<GetConfigResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 29);
+
+/**
+ * @generated from message gitchat.v1.UpdateConfigRequest
+ */
+export type UpdateConfigRequest = Message<"gitchat.v1.UpdateConfigRequest"> & {
+  /**
+   * @generated from field: string key = 1;
+   */
+  key: string;
+
+  /**
+   * @generated from field: string value = 2;
+   */
+  value: string;
+};
+
+/**
+ * Describes the message gitchat.v1.UpdateConfigRequest.
+ * Use `create(UpdateConfigRequestSchema)` to create a new message.
+ */
+export const UpdateConfigRequestSchema: GenMessage<UpdateConfigRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 30);
+
+/**
+ * @generated from message gitchat.v1.UpdateConfigResponse
+ */
+export type UpdateConfigResponse = Message<"gitchat.v1.UpdateConfigResponse"> & {
+};
+
+/**
+ * Describes the message gitchat.v1.UpdateConfigResponse.
+ * Use `create(UpdateConfigResponseSchema)` to create a new message.
+ */
+export const UpdateConfigResponseSchema: GenMessage<UpdateConfigResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 31);
+
+/**
  * @generated from enum gitchat.v1.EntryType
  */
 export enum EntryType {
@@ -1046,6 +1150,28 @@ export const RepoService: GenService<{
     methodKind: "unary";
     input: typeof GetWorkingTreeDiffRequestSchema;
     output: typeof GetWorkingTreeDiffResponseSchema;
+  },
+  /**
+   * GetConfig returns all registered configuration entries with their
+   * resolved values (SQLite override → env var → compiled default).
+   *
+   * @generated from rpc gitchat.v1.RepoService.GetConfig
+   */
+  getConfig: {
+    methodKind: "unary";
+    input: typeof GetConfigRequestSchema;
+    output: typeof GetConfigResponseSchema;
+  },
+  /**
+   * UpdateConfig writes a configuration override into SQLite. The new
+   * value takes effect immediately for future Get() calls.
+   *
+   * @generated from rpc gitchat.v1.RepoService.UpdateConfig
+   */
+  updateConfig: {
+    methodKind: "unary";
+    input: typeof UpdateConfigRequestSchema;
+    output: typeof UpdateConfigResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_gitchat_v1_repo, 0);

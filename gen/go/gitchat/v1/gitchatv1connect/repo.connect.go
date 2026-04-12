@@ -56,6 +56,11 @@ const (
 	// RepoServiceGetWorkingTreeDiffProcedure is the fully-qualified name of the RepoService's
 	// GetWorkingTreeDiff RPC.
 	RepoServiceGetWorkingTreeDiffProcedure = "/gitchat.v1.RepoService/GetWorkingTreeDiff"
+	// RepoServiceGetConfigProcedure is the fully-qualified name of the RepoService's GetConfig RPC.
+	RepoServiceGetConfigProcedure = "/gitchat.v1.RepoService/GetConfig"
+	// RepoServiceUpdateConfigProcedure is the fully-qualified name of the RepoService's UpdateConfig
+	// RPC.
+	RepoServiceUpdateConfigProcedure = "/gitchat.v1.RepoService/UpdateConfig"
 )
 
 // RepoServiceClient is a client for the gitchat.v1.RepoService service.
@@ -99,6 +104,12 @@ type RepoServiceClient interface {
 	// GetWorkingTreeDiff returns a unified diff between HEAD and the
 	// working tree for a single file.
 	GetWorkingTreeDiff(context.Context, *connect.Request[v1.GetWorkingTreeDiffRequest]) (*connect.Response[v1.GetWorkingTreeDiffResponse], error)
+	// GetConfig returns all registered configuration entries with their
+	// resolved values (SQLite override → env var → compiled default).
+	GetConfig(context.Context, *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error)
+	// UpdateConfig writes a configuration override into SQLite. The new
+	// value takes effect immediately for future Get() calls.
+	UpdateConfig(context.Context, *connect.Request[v1.UpdateConfigRequest]) (*connect.Response[v1.UpdateConfigResponse], error)
 }
 
 // NewRepoServiceClient constructs a client for the gitchat.v1.RepoService service. By default, it
@@ -172,6 +183,18 @@ func NewRepoServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(repoServiceMethods.ByName("GetWorkingTreeDiff")),
 			connect.WithClientOptions(opts...),
 		),
+		getConfig: connect.NewClient[v1.GetConfigRequest, v1.GetConfigResponse](
+			httpClient,
+			baseURL+RepoServiceGetConfigProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("GetConfig")),
+			connect.WithClientOptions(opts...),
+		),
+		updateConfig: connect.NewClient[v1.UpdateConfigRequest, v1.UpdateConfigResponse](
+			httpClient,
+			baseURL+RepoServiceUpdateConfigProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("UpdateConfig")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -187,6 +210,8 @@ type repoServiceClient struct {
 	getDiff            *connect.Client[v1.GetDiffRequest, v1.GetDiffResponse]
 	getStatus          *connect.Client[v1.GetStatusRequest, v1.GetStatusResponse]
 	getWorkingTreeDiff *connect.Client[v1.GetWorkingTreeDiffRequest, v1.GetWorkingTreeDiffResponse]
+	getConfig          *connect.Client[v1.GetConfigRequest, v1.GetConfigResponse]
+	updateConfig       *connect.Client[v1.UpdateConfigRequest, v1.UpdateConfigResponse]
 }
 
 // ListRepos calls gitchat.v1.RepoService.ListRepos.
@@ -239,6 +264,16 @@ func (c *repoServiceClient) GetWorkingTreeDiff(ctx context.Context, req *connect
 	return c.getWorkingTreeDiff.CallUnary(ctx, req)
 }
 
+// GetConfig calls gitchat.v1.RepoService.GetConfig.
+func (c *repoServiceClient) GetConfig(ctx context.Context, req *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error) {
+	return c.getConfig.CallUnary(ctx, req)
+}
+
+// UpdateConfig calls gitchat.v1.RepoService.UpdateConfig.
+func (c *repoServiceClient) UpdateConfig(ctx context.Context, req *connect.Request[v1.UpdateConfigRequest]) (*connect.Response[v1.UpdateConfigResponse], error) {
+	return c.updateConfig.CallUnary(ctx, req)
+}
+
 // RepoServiceHandler is an implementation of the gitchat.v1.RepoService service.
 type RepoServiceHandler interface {
 	// ListRepos returns every repository the server has been configured to
@@ -280,6 +315,12 @@ type RepoServiceHandler interface {
 	// GetWorkingTreeDiff returns a unified diff between HEAD and the
 	// working tree for a single file.
 	GetWorkingTreeDiff(context.Context, *connect.Request[v1.GetWorkingTreeDiffRequest]) (*connect.Response[v1.GetWorkingTreeDiffResponse], error)
+	// GetConfig returns all registered configuration entries with their
+	// resolved values (SQLite override → env var → compiled default).
+	GetConfig(context.Context, *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error)
+	// UpdateConfig writes a configuration override into SQLite. The new
+	// value takes effect immediately for future Get() calls.
+	UpdateConfig(context.Context, *connect.Request[v1.UpdateConfigRequest]) (*connect.Response[v1.UpdateConfigResponse], error)
 }
 
 // NewRepoServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -349,6 +390,18 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(repoServiceMethods.ByName("GetWorkingTreeDiff")),
 		connect.WithHandlerOptions(opts...),
 	)
+	repoServiceGetConfigHandler := connect.NewUnaryHandler(
+		RepoServiceGetConfigProcedure,
+		svc.GetConfig,
+		connect.WithSchema(repoServiceMethods.ByName("GetConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
+	repoServiceUpdateConfigHandler := connect.NewUnaryHandler(
+		RepoServiceUpdateConfigProcedure,
+		svc.UpdateConfig,
+		connect.WithSchema(repoServiceMethods.ByName("UpdateConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/gitchat.v1.RepoService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RepoServiceListReposProcedure:
@@ -371,6 +424,10 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 			repoServiceGetStatusHandler.ServeHTTP(w, r)
 		case RepoServiceGetWorkingTreeDiffProcedure:
 			repoServiceGetWorkingTreeDiffHandler.ServeHTTP(w, r)
+		case RepoServiceGetConfigProcedure:
+			repoServiceGetConfigHandler.ServeHTTP(w, r)
+		case RepoServiceUpdateConfigProcedure:
+			repoServiceUpdateConfigHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -418,4 +475,12 @@ func (UnimplementedRepoServiceHandler) GetStatus(context.Context, *connect.Reque
 
 func (UnimplementedRepoServiceHandler) GetWorkingTreeDiff(context.Context, *connect.Request[v1.GetWorkingTreeDiffRequest]) (*connect.Response[v1.GetWorkingTreeDiffResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.GetWorkingTreeDiff is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) GetConfig(context.Context, *connect.Request[v1.GetConfigRequest]) (*connect.Response[v1.GetConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.GetConfig is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) UpdateConfig(context.Context, *connect.Request[v1.UpdateConfigRequest]) (*connect.Response[v1.UpdateConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.UpdateConfig is not implemented"))
 }

@@ -36,6 +36,12 @@ export class GcApp extends LitElement {
   @state() private searchResults: Array<{ source: string; id: string; title: string; body: string }> = [];
   @state() private searchSelectedIdx = -1;
 
+  // Server config state
+  @state() private configEntries: any[] = [];
+  @state() private configLoading = false;
+  @state() private expandedGroups: Set<string> = new Set();
+  private configDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
   override async connectedCallback() {
     super.connectedCallback();
     window.addEventListener("hashchange", this.onHashChange);
@@ -402,7 +408,7 @@ export class GcApp extends LitElement {
             <span class="principal">${principal}</span>
             <span class="dot">·</span>
             <span class="mode">${modeLabel}</span>
-            <button class="settings-btn" @click=${() => (this.showSettings = !this.showSettings)} aria-label="Settings" title="Settings">
+            <button class="settings-btn" @click=${() => { this.showSettings = !this.showSettings; if (this.showSettings) this.loadConfig(); }} aria-label="Settings" title="Settings">
               ⚙
             </button>
             <button class="logout" @click=${() => this.logout()} aria-label="Log out">
@@ -456,6 +462,159 @@ export class GcApp extends LitElement {
           </dl>
           <p class="modal-hint">press <kbd>?</kbd> or <kbd>Esc</kbd> to close</p>
         </div>
+      </div>
+    `;
+  }
+
+  // ── Server config helpers ────────────────────────────────────
+  private async loadConfig() {
+    this.configLoading = true;
+    try {
+      const resp = await (repoClient as any).getConfig({});
+      this.configEntries = resp.entries ?? [];
+    } catch {
+      this.configEntries = [];
+    } finally {
+      this.configLoading = false;
+    }
+  }
+
+  private updateConfigEntry(key: string, value: string) {
+    // Update local state immediately
+    this.configEntries = this.configEntries.map((e: any) =>
+      e.key === key ? { ...e, value } : e,
+    );
+    // Debounce the RPC call
+    const existing = this.configDebounceTimers.get(key);
+    if (existing) clearTimeout(existing);
+    this.configDebounceTimers.set(
+      key,
+      setTimeout(async () => {
+        try {
+          await (repoClient as any).updateConfig({ key, value });
+        } catch {
+          /* toast could go here */
+        }
+        this.configDebounceTimers.delete(key);
+      }, 300),
+    );
+  }
+
+  private async resetConfigEntry(entry: any) {
+    this.updateConfigEntry(entry.key, entry.defaultValue);
+  }
+
+  private toggleGroup(group: string) {
+    const next = new Set(this.expandedGroups);
+    if (next.has(group)) next.delete(group);
+    else next.add(group);
+    this.expandedGroups = next;
+  }
+
+  private humanizeKey(key: string): string {
+    return key
+      .replace(/^GITCHAT_/, "")
+      .toLowerCase()
+      .replace(/_/g, " ");
+  }
+
+  private isApiKeyEntry(key: string): boolean {
+    const k = key.toUpperCase();
+    return k.includes("API_KEY") || k.includes("SECRET") || k.includes("TOKEN");
+  }
+
+  private renderServerConfig() {
+    const GROUP_ORDER = ["llm", "chat", "repo", "session"];
+    const GROUP_LABELS: Record<string, string> = {
+      llm: "LLM",
+      chat: "Chat",
+      repo: "Repository",
+      session: "Session",
+    };
+
+    if (this.configLoading) {
+      return html`<div class="config-section"><span class="config-loading">loading server config…</span></div>`;
+    }
+    if (this.configEntries.length === 0) {
+      return nothing;
+    }
+
+    // Group entries
+    const grouped = new Map<string, any[]>();
+    for (const entry of this.configEntries) {
+      const g = entry.group || "other";
+      if (!grouped.has(g)) grouped.set(g, []);
+      grouped.get(g)!.push(entry);
+    }
+
+    // Sort groups by defined order, unknown groups last
+    const sortedGroups = [...grouped.keys()].sort((a, b) => {
+      const ai = GROUP_ORDER.indexOf(a);
+      const bi = GROUP_ORDER.indexOf(b);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+
+    return html`
+      <div class="config-section">
+        <h3 class="config-title">Server Config</h3>
+        ${sortedGroups.map((group) => {
+          const entries = grouped.get(group)!;
+          const expanded = this.expandedGroups.has(group);
+          const label = GROUP_LABELS[group] ?? group;
+          const modifiedCount = entries.filter((e: any) => e.value !== e.defaultValue).length;
+          return html`
+            <div class="config-group">
+              <button
+                class="config-group-header"
+                @click=${() => this.toggleGroup(group)}
+                aria-expanded=${expanded ? "true" : "false"}
+              >
+                <span class="config-chevron">${expanded ? "\u25BE" : "\u25B8"}</span>
+                <span>${label}</span>
+                ${modifiedCount > 0
+                  ? html`<span class="config-modified-badge">${modifiedCount} modified</span>`
+                  : nothing}
+              </button>
+              ${expanded
+                ? html`
+                    <div class="config-group-body">
+                      ${entries.map((entry: any) => {
+                        const isSecret = this.isApiKeyEntry(entry.key);
+                        const modified = entry.value !== entry.defaultValue;
+                        return html`
+                          <div class="config-entry">
+                            <div class="config-entry-header">
+                              <span class="config-key ${modified ? "config-modified" : ""}">${this.humanizeKey(entry.key)}</span>
+                              ${modified
+                                ? html`<button
+                                    class="config-reset-btn"
+                                    @click=${() => this.resetConfigEntry(entry)}
+                                    title="Reset to default: ${entry.defaultValue}"
+                                  >reset</button>`
+                                : nothing}
+                            </div>
+                            <input
+                              class="config-input"
+                              type=${isSecret ? "password" : "text"}
+                              .value=${entry.value}
+                              ?readonly=${isSecret}
+                              @input=${(e: Event) => {
+                                if (isSecret) return;
+                                this.updateConfigEntry(entry.key, (e.target as HTMLInputElement).value);
+                              }}
+                            />
+                            ${entry.description
+                              ? html`<span class="config-desc">${entry.description}</span>`
+                              : nothing}
+                          </div>
+                        `;
+                      })}
+                    </div>
+                  `
+                : nothing}
+            </div>
+          `;
+        })}
       </div>
     `;
   }
@@ -539,10 +698,18 @@ export class GcApp extends LitElement {
             </div>
           </label>
 
+          ${this.renderServerConfig()}
+
           <div class="setting-actions">
-            <button class="action-btn" @click=${() => {
+            <button class="action-btn" @click=${async () => {
               for (const k of settings.allKeys()) settings.reset(k);
               settings.setTheme("system");
+              // Reset modified server config entries to defaults
+              for (const entry of this.configEntries) {
+                if ((entry as any).value !== (entry as any).defaultValue) {
+                  await this.resetConfigEntry(entry);
+                }
+              }
               this.requestUpdate();
             }}>
               reset defaults
@@ -950,8 +1117,10 @@ export class GcApp extends LitElement {
       border: 1px solid var(--border-default);
       border-radius: var(--radius-xl);
       padding: var(--space-6) var(--space-7);
-      max-width: 420px;
+      max-width: 480px;
       width: 90vw;
+      max-height: 80vh;
+      overflow-y: auto;
     }
     .modal-title {
       margin: 0 0 var(--space-4);
@@ -1144,6 +1313,126 @@ export class GcApp extends LitElement {
       margin-top: var(--space-4);
       display: flex;
       justify-content: flex-end;
+    }
+
+    /* ── Server config section ────────────────────────────────── */
+    .config-section {
+      margin-top: var(--space-4);
+      padding-top: var(--space-4);
+      border-top: 1px solid var(--surface-4);
+    }
+    .config-title {
+      margin: 0 0 var(--space-3);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      opacity: 0.5;
+    }
+    .config-loading {
+      font-size: var(--text-xs);
+      opacity: 0.45;
+    }
+    .config-group {
+      margin-bottom: var(--space-2);
+    }
+    .config-group-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      width: 100%;
+      padding: var(--space-2) 0;
+      background: transparent;
+      color: var(--text);
+      border: none;
+      border-bottom: 1px solid var(--surface-4);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      opacity: 0.55;
+      cursor: pointer;
+      transition: opacity 0.12s ease;
+    }
+    .config-group-header:hover {
+      opacity: 0.85;
+    }
+    .config-chevron {
+      font-size: 0.7rem;
+      line-height: 1;
+    }
+    .config-modified-badge {
+      margin-left: auto;
+      font-size: 0.6rem;
+      color: var(--accent-user);
+      text-transform: none;
+      letter-spacing: normal;
+      opacity: 1;
+    }
+    .config-group-body {
+      padding: var(--space-2) 0 var(--space-2) var(--space-3);
+    }
+    .config-entry {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: var(--space-2) 0;
+    }
+    .config-entry + .config-entry {
+      border-top: 1px solid var(--surface-4);
+    }
+    .config-entry-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .config-key {
+      font-size: var(--text-xs);
+      font-weight: 500;
+    }
+    .config-modified {
+      color: var(--accent-user);
+    }
+    .config-reset-btn {
+      font-family: inherit;
+      font-size: 0.6rem;
+      padding: 0.05rem 0.35rem;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      opacity: 0.5;
+      transition: opacity 0.12s ease;
+    }
+    .config-reset-btn:hover {
+      opacity: 1;
+    }
+    .config-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: var(--space-1) var(--space-2);
+      background: var(--surface-0);
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      outline: none;
+      transition: border-color 0.12s ease;
+    }
+    .config-input:focus {
+      border-color: var(--accent-assistant);
+    }
+    .config-input[readonly] {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .config-desc {
+      font-size: 0.65rem;
+      opacity: 0.4;
+      line-height: 1.3;
     }
 
     /* ── Responsive ─────────────────────────────────────────── */

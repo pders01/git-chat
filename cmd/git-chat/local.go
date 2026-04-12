@@ -17,6 +17,7 @@ import (
 
 	"github.com/pders01/git-chat/internal/auth"
 	"github.com/pders01/git-chat/internal/chat"
+	"github.com/pders01/git-chat/internal/config"
 	"github.com/pders01/git-chat/internal/repo"
 	"github.com/pders01/git-chat/internal/rpc"
 )
@@ -72,6 +73,9 @@ func runLocal(args []string) error {
 	defer db.Close()
 	slog.Info("storage opened", "path", db.Path)
 
+	cfg := config.New(db)
+	config.RegisterDefaults(cfg)
+
 	sessions := auth.NewSessionStore(false)
 	localTok := auth.NewLocalTokens()
 	token, _, err := localTok.Mint()
@@ -87,7 +91,7 @@ func runLocal(args []string) error {
 		Sessions: sessions,
 		Local:    localTok,
 	}
-	repoSvc := &repo.Service{Registry: registry}
+	repoSvc := &repo.Service{Registry: registry, Config: cfg}
 	chatSvc := &chat.Service{
 		DB:          db,
 		LLM:         llmAdapter,
