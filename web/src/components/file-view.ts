@@ -123,40 +123,49 @@ export class GcFileView extends LitElement {
           <p class="empty">binary file · ${this.view.file.size} bytes</p>
         `;
       case "plain":
-        return html`
-          ${this.renderHeader(this.view.file)}
-          ${this.showBlame ? this.renderBlameStrip() : nothing}
-          ${this.showBlame
-            ? this.renderBlameTable(this.view.text.split("\n"), false)
-            : html`<pre class="plain">${this.view.text}</pre>`}
-          ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
-        `;
+        return this.showBlame
+          ? html`<div class="blame-shell">
+              ${this.renderHeader(this.view.file)}
+              ${this.renderBlameView(this.view.text.split("\n"), false)}
+            </div>`
+          : html`
+              ${this.renderHeader(this.view.file)}
+              <pre class="plain">${this.view.text}</pre>
+              ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
+            `;
       case "highlighted":
-        return html`
-          ${this.renderHeader(this.view.file)}
-          ${this.showBlame ? this.renderBlameStrip() : nothing}
-          ${this.showBlame
-            ? this.renderBlameTable(this.getShikiLines(this.view.html), true)
-            : html`<div class="shiki-wrap">${unsafeHTML(this.view.html)}</div>`}
-          ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
-        `;
+        return this.showBlame
+          ? html`<div class="blame-shell">
+              ${this.renderHeader(this.view.file)}
+              ${this.renderBlameView(this.getShikiLines(this.view.html), true)}
+            </div>`
+          : html`
+              ${this.renderHeader(this.view.file)}
+              <div class="shiki-wrap">${unsafeHTML(this.view.html)}</div>
+              ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
+            `;
     }
   }
 
-  private renderBlameStrip() {
+  private renderBlameInfoPane() {
     const b = this.hoveredBlame;
-    if (!b) return nothing;
+    if (!b) return html`<div class="blame-info empty">click a SHA to view commit details</div>`;
     const age = new Date(Number(b.date) * 1000).toISOString().slice(0, 10);
-    const subject = (b.commitMessage || "").split("\n")[0] || "(no message)";
+    const lines = (b.commitMessage || "").split("\n");
+    const subject = lines[0] || "(no message)";
+    const body = lines.slice(2).join("\n").trim();
     return html`
-      <div class="blame-strip">
-        <span class="bs-sha">${b.commitSha.slice(0, 7)}</span>
-        <span class="bs-subject">${subject}</span>
-        <span class="bs-meta">${b.authorName} · ${age}</span>
-        <span class="bs-spacer"></span>
-        <button class="bs-btn" @click=${() => this.viewCommitInLog(b.commitSha)}>log</button>
-        <button class="bs-btn" @click=${() => this.askAboutCommit(b.commitSha, subject)}>chat</button>
-        <button class="bs-btn bs-close" @click=${() => { this.hoveredBlame = null; }} aria-label="Dismiss">×</button>
+      <div class="blame-info">
+        <div class="bi-header">
+          <span class="bi-sha">${b.commitSha.slice(0, 7)}</span>
+          <span class="bi-meta">${b.authorName} · ${age}</span>
+        </div>
+        <div class="bi-subject">${subject}</div>
+        ${body ? html`<pre class="bi-body">${body}</pre>` : nothing}
+        <div class="bi-actions">
+          <button class="bi-btn" @click=${() => this.viewCommitInLog(b.commitSha)}>view in log</button>
+          <button class="bi-btn" @click=${() => this.askAboutCommit(b.commitSha, subject)}>ask in chat</button>
+        </div>
       </div>
     `;
   }
@@ -267,36 +276,45 @@ export class GcFileView extends LitElement {
     return shikiHtml.split("\n");
   }
 
-  private renderBlameTable(lines: string[], isHighlighted: boolean) {
+  private renderBlameView(lines: string[], isHighlighted: boolean) {
     return html`
-      <div class="blame-table-wrap"
-        @click=${this.onGutterClick}
-        @keydown=${this.onBlameKeydown}
-      >
-        <table class="blame-table">
-          <colgroup>
-            <col class="blame-col" />
-            <col class="lno-col" />
-            <col />
-          </colgroup>
-          <tbody>
-            ${lines.map((line, i) => {
-              const blame = this.blameLines[i];
-              const prev = i > 0 ? this.blameLines[i - 1] : undefined;
-              const isNewBlock = blame != null && (!prev || prev.commitSha !== blame.commitSha);
-              return html`
-                <tr class="${isNewBlock ? "blame-start" : ""}">
-                  <td class="blame-cell" data-idx=${i} tabindex="0" role="button">
-                    ${isNewBlock && blame
-                      ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span>`
-                      : nothing}
-                  </td>
-                  <td class="lno-cell">${i + 1}</td>
-                  <td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">${isHighlighted ? unsafeHTML(line) : line}</td>
-                </tr>`;
-            })}
-          </tbody>
-        </table>
+      <div class="blame-layout">
+        <!-- Left: commit info pane -->
+        <aside class="blame-info-pane">
+          ${this.renderBlameInfoPane()}
+        </aside>
+
+        <!-- Right: single table with blame SHA + line numbers + code -->
+        <div class="blame-table-wrap"
+          @click=${this.onGutterClick}
+          @keydown=${this.onBlameKeydown}
+        >
+          <table class="blame-table">
+            <colgroup>
+              <col class="blame-col" />
+              <col class="lno-col" />
+              <col />
+            </colgroup>
+            <tbody>
+              ${lines.map((line, i) => {
+                const blame = this.blameLines[i];
+                const prev = i > 0 ? this.blameLines[i - 1] : undefined;
+                const isNewBlock = blame != null && (!prev || prev.commitSha !== blame.commitSha);
+                const isSelected = blame && this.hoveredBlame?.commitSha === blame.commitSha;
+                return html`
+                  <tr class="${isNewBlock ? "blame-start" : ""} ${isSelected ? "blame-selected" : ""}">
+                    <td class="blame-cell" data-idx=${i} tabindex=${isNewBlock ? "0" : "-1"} role="button">
+                      ${isNewBlock && blame
+                        ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span>`
+                        : nothing}
+                    </td>
+                    <td class="lno-cell">${i + 1}</td>
+                    <td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">${isHighlighted ? unsafeHTML(line) : line}</td>
+                  </tr>`;
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     `;
   }
@@ -439,62 +457,93 @@ export class GcFileView extends LitElement {
       min-width: 0;
       gap: var(--space-3);
     }
-    /* ── Blame detail strip (click-to-select) ──── */
-    .blame-strip {
+    /* ── Blame shell (fills host, prevents host scroll) ── */
+    .blame-shell {
       display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      padding: 0 var(--space-4);
-      height: 32px;
-      background: var(--surface-2);
-      border-bottom: 1px solid var(--surface-4);
-      font-size: var(--text-xs);
-      flex-shrink: 0;
-    }
-    .bs-sha {
-      color: var(--accent-user);
-      font-variant-numeric: tabular-nums;
-      flex-shrink: 0;
-    }
-    .bs-subject {
-      font-weight: 500;
+      flex-direction: column;
+      height: 100%;
       overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
-    .bs-meta {
-      opacity: 0.5;
-      flex-shrink: 0;
-      white-space: nowrap;
-    }
-    .bs-spacer { flex: 1; }
-    .bs-btn {
-      padding: 2px var(--space-2);
-      background: transparent;
-      color: var(--text);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-sm);
-      font-family: inherit;
-      font-size: 0.65rem;
-      cursor: pointer;
-      opacity: 0.6;
-    }
-    .bs-btn:hover { opacity: 1; background: var(--surface-3); }
-    .bs-close { border: none; font-size: 0.8rem; }
-    /* ── Blame table layout ──────────────────────── */
-    .blame-table-wrap {
+    /* ── Blame 2-panel layout (info pane + table) ─ */
+    .blame-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      grid-template-rows: 1fr;
+      flex: 1;
+      min-height: 0;
       font-size: 0.8rem;
+    }
+    .blame-info-pane {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--surface-4);
+      background: var(--surface-1);
+      overflow-y: auto;
+      padding: var(--space-3);
+      gap: var(--space-2);
+      min-height: 0;
+    }
+    .blame-info.empty {
+      opacity: 0.4;
+      font-size: var(--text-xs);
       padding-top: var(--space-4);
     }
+    .bi-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .bi-sha {
+      color: var(--accent-user);
+      font-size: var(--text-xs);
+      font-variant-numeric: tabular-nums;
+    }
+    .bi-subject {
+      font-size: var(--text-sm);
+      font-weight: 500;
+      line-height: 1.4;
+    }
+    .bi-body {
+      margin: 0;
+      font-family: inherit;
+      font-size: var(--text-xs);
+      white-space: pre-wrap;
+      opacity: 0.7;
+      line-height: 1.5;
+      padding: var(--space-2) 0 var(--space-2) var(--space-3);
+      border-left: 2px solid var(--surface-4);
+    }
+    .bi-meta {
+      font-size: var(--text-xs);
+      opacity: 0.5;
+    }
+    .bi-actions {
+      display: flex;
+      gap: var(--space-2);
+    }
+    .bi-btn {
+      padding: var(--space-1) var(--space-3);
+      background: var(--action-bg);
+      color: var(--text);
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+    }
+    .bi-btn:hover { background: var(--action-bg-hover); }
+    .blame-table-wrap {
+      overflow: auto;
+      min-width: 0;
+    }
     .blame-table {
-      table-layout: fixed;
       border-collapse: collapse;
-      width: 100%;
+      min-width: 100%;
       font-family: inherit;
       font-size: inherit;
     }
     .blame-col {
-      width: 80px;
+      width: 70px;
     }
     .lno-col {
       width: 3.5em;
@@ -502,11 +551,12 @@ export class GcFileView extends LitElement {
     .blame-table tr.blame-start:not(:first-child) td {
       border-top: 1px solid var(--surface-4);
     }
+    .blame-table tr.blame-selected td {
+      background: var(--surface-2);
+    }
     .blame-cell {
       padding: 0 var(--space-2);
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
       font-size: 0.7rem;
       background: var(--surface-1-alt);
       border-right: 1px solid var(--surface-4);
@@ -552,6 +602,10 @@ export class GcFileView extends LitElement {
     .blame-sha {
       color: var(--accent-user);
       font-variant-numeric: tabular-nums;
+    }
+    .blame-msg {
+      color: var(--text);
+      opacity: 0.65;
     }
     .hd-btn {
       flex-shrink: 0;
