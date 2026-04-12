@@ -99,9 +99,10 @@ export class GcCompareView extends LitElement {
       }
     } catch (e) {
       if (gen !== this.compareGeneration) return;
+      this.lastCompareKey = "";
       this.diffError = e instanceof Error ? e.message : String(e);
     } finally {
-      this.compareLoading = false;
+      if (gen === this.compareGeneration) this.compareLoading = false;
     }
   }
 
@@ -112,6 +113,7 @@ export class GcCompareView extends LitElement {
 
     if (path === "") {
       this.diffHtml = this.fullDiffHtml;
+      this.diffLoading = false;
       return;
     }
 
@@ -139,7 +141,7 @@ export class GcCompareView extends LitElement {
       if (gen !== this.compareGeneration || this.selectedFile !== path) return;
       this.diffError = e instanceof Error ? e.message : String(e);
     } finally {
-      this.diffLoading = false;
+      if (gen === this.compareGeneration && this.selectedFile === path) this.diffLoading = false;
     }
   }
 
@@ -234,6 +236,7 @@ export class GcCompareView extends LitElement {
   }
 
   static override styles = css`
+    :host([hidden]) { display: none !important; }
     :host {
       display: flex;
       flex: 1;

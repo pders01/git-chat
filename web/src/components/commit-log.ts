@@ -172,6 +172,7 @@ export class GcCommitLog extends LitElement {
     // "All files" — restore cached full diff.
     if (path === "") {
       this.diffHtml = this.fullDiffHtml;
+      this.diffLoading = false;
       return;
     }
 
@@ -604,11 +605,6 @@ export class GcCommitLog extends LitElement {
       font-size: var(--text-xs);
       opacity: 0.6;
     }
-    .info-stats {
-      display: flex;
-      gap: var(--space-2);
-      font-size: var(--text-xs);
-    }
     .info-files {
       opacity: 0.5;
     }
@@ -781,13 +777,20 @@ export class GcCommitLog extends LitElement {
     @media (max-width: 1100px) and (min-width: 769px) {
       .layout {
         grid-template-columns: var(--sidebar-width) 1fr;
+        grid-template-rows: auto 1fr;
+      }
+      .commit-list {
+        grid-row: 1 / -1;
       }
       .info-pane {
+        grid-column: 2;
+        grid-row: 1;
         border-right: none;
         border-bottom: 1px solid var(--surface-4);
       }
       .diff-pane {
         grid-column: 2;
+        grid-row: 2;
       }
     }
     .drawer-toggle { display: none; }

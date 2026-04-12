@@ -438,16 +438,14 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 	// ── Whole-commit path ──────────────────────────────────────────
 	// Enumerate every path touched between from and to, compute each
 	// file's single-file patch, and concatenate. Sort for determinism.
-	changed, err := changedPaths(fromCommit, toCommit)
+	// Also builds per-file metadata in a single tree-diff pass.
+	changed, files, err := changedPathsWithFiles(fromCommit, toCommit)
 	if err != nil {
 		return "", fromResolved, toResolved, false, nil, err
 	}
 	if len(changed) == 0 {
 		return "", fromResolved, toResolved, true, nil, nil
 	}
-
-	// Build per-file metadata using tree diff stats.
-	files = buildChangedFiles(fromCommit, toCommit)
 
 	var sb bytes.Buffer
 	truncated := 0
@@ -473,41 +471,66 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 	return sb.String(), fromResolved, toResolved, false, files, nil
 }
 
-// buildChangedFiles computes per-file metadata (path, status, additions,
-// deletions) between two commits. Returns nil on error (best-effort).
-func buildChangedFiles(from, to *object.Commit) []*gitchatv1.ChangedFile {
-	var fromTree, toTree *object.Tree
-	if from != nil {
-		var err error
-		fromTree, err = from.Tree()
-		if err != nil {
+// changedPathsWithFiles returns sorted changed paths AND per-file metadata
+// in a single tree-diff pass, avoiding the double diff that changedPaths +
+// a separate buildChangedFiles would incur.
+func changedPathsWithFiles(from, to *object.Commit) ([]string, []*gitchatv1.ChangedFile, error) {
+	toTree, err := to.Tree()
+	if err != nil {
+		return nil, nil, fmt.Errorf("to tree: %w", err)
+	}
+	if from == nil {
+		// Root commit — every file is new. No patch stats available
+		// without materialising the full patch, so skip per-file stats.
+		var paths []string
+		err := toTree.Files().ForEach(func(f *object.File) error {
+			paths = append(paths, f.Name)
 			return nil
-		}
-	}
-	if to != nil {
-		var err error
-		toTree, err = to.Tree()
+		})
 		if err != nil {
-			return nil
+			return nil, nil, err
 		}
+		sort.Strings(paths)
+		// Build files without stats (status = "added", counts = 0).
+		files := make([]*gitchatv1.ChangedFile, len(paths))
+		for i, p := range paths {
+			files[i] = &gitchatv1.ChangedFile{Path: p, Status: "added"}
+		}
+		return paths, files, nil
 	}
-	// Nil fromTree means root commit — everything is new.
-	if fromTree == nil {
-		fromTree = &object.Tree{}
-	}
-	if toTree == nil {
-		toTree = &object.Tree{}
+
+	fromTree, err := from.Tree()
+	if err != nil {
+		return nil, nil, fmt.Errorf("from tree: %w", err)
 	}
 	changes, err := fromTree.Diff(toTree)
 	if err != nil {
-		return nil
+		return nil, nil, fmt.Errorf("tree diff: %w", err)
 	}
+
+	// Extract sorted paths.
+	seen := map[string]struct{}{}
+	for _, c := range changes {
+		name := c.To.Name
+		if name == "" {
+			name = c.From.Name
+		}
+		seen[name] = struct{}{}
+	}
+	paths := make([]string, 0, len(seen))
+	for p := range seen {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+
+	// Build per-file metadata from patch stats.
 	patch, err := changes.Patch()
 	if err != nil {
-		return nil
+		// Paths are valid, stats are best-effort.
+		return paths, nil, nil
 	}
 	stats := patch.Stats()
-	out := make([]*gitchatv1.ChangedFile, 0, len(stats))
+	files := make([]*gitchatv1.ChangedFile, 0, len(stats))
 	for _, s := range stats {
 		status := "modified"
 		for _, c := range changes {
@@ -526,65 +549,16 @@ func buildChangedFiles(from, to *object.Commit) []*gitchatv1.ChangedFile {
 				break
 			}
 		}
-		out = append(out, &gitchatv1.ChangedFile{
+		files = append(files, &gitchatv1.ChangedFile{
 			Path:      s.Name,
 			Status:    status,
 			Additions: int32(s.Addition),
 			Deletions: int32(s.Deletion),
 		})
 	}
-	return out
+	return paths, files, nil
 }
 
-// changedPaths returns every path that differs between two commits.
-// Nil from is treated as the empty tree (every file in `to` is new).
-// Paths are returned sorted for deterministic output.
-func changedPaths(from, to *object.Commit) ([]string, error) {
-	toTree, err := to.Tree()
-	if err != nil {
-		return nil, fmt.Errorf("to tree: %w", err)
-	}
-	if from == nil {
-		var paths []string
-		err := toTree.Files().ForEach(func(f *object.File) error {
-			paths = append(paths, f.Name)
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
-		sort.Strings(paths)
-		return paths, nil
-	}
-	fromTree, err := from.Tree()
-	if err != nil {
-		return nil, fmt.Errorf("from tree: %w", err)
-	}
-	changes, err := fromTree.Diff(toTree)
-	if err != nil {
-		return nil, fmt.Errorf("tree diff: %w", err)
-	}
-	seen := map[string]struct{}{}
-	for _, c := range changes {
-		// Either From.Name or To.Name may be empty (add/delete). We
-		// want the canonical path on the "to" side, falling back to
-		// the "from" side for deletions.
-		name := c.To.Name
-		if name == "" {
-			name = c.From.Name
-		}
-		if name == "" {
-			continue
-		}
-		seen[name] = struct{}{}
-	}
-	out := make([]string, 0, len(seen))
-	for p := range seen {
-		out = append(out, p)
-	}
-	sort.Strings(out)
-	return out, nil
-}
 
 // fileContent returns the contents of `path` at `commit`. Returns the
 // empty string with no error if the path doesn't exist at that commit

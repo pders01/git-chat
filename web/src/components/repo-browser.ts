@@ -47,11 +47,16 @@ export class GcRepoBrowser extends LitElement {
     writeFocus(this.focused);
   };
 
+  private compareFetching = false;
+
   private async toggleCompare() {
+    if (this.compareFetching) return;
     this.comparing = !this.comparing;
     if (this.comparing && this.branches.length === 0) {
+      this.compareFetching = true;
       try {
         const resp = await repoClient.listBranches({ repoId: this.repoId });
+        if (!this.comparing) return; // toggled off while fetching
         this.branches = resp.branches;
         if (this.state.phase === "ready") {
           this.baseRef = this.state.repo.defaultBranch || this.branches[0]?.name || "";
@@ -59,7 +64,9 @@ export class GcRepoBrowser extends LitElement {
           this.headRef = other ? other.name : this.baseRef;
         }
       } catch {
-        // stay in compare mode with empty branches
+        this.comparing = false;
+      } finally {
+        this.compareFetching = false;
       }
     }
   }
