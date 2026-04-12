@@ -169,6 +169,7 @@ message CommitEntry {
   int32  additions = 8;       // total lines added
   int32  deletions = 9;       // total lines removed
   string body = 10;           // full commit body (after subject + blank line)
+  repeated string parent_shas = 11;  // parent commit SHAs (for graph rendering)
 }
 
 // ─── GetBlame ───────────────────────────────────────────────────────────

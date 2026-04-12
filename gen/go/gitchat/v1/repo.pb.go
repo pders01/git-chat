@@ -850,6 +850,7 @@ type CommitEntry struct {
 	Additions     int32                  `protobuf:"varint,8,opt,name=additions,proto3" json:"additions,omitempty"`                           // total lines added
 	Deletions     int32                  `protobuf:"varint,9,opt,name=deletions,proto3" json:"deletions,omitempty"`                           // total lines removed
 	Body          string                 `protobuf:"bytes,10,opt,name=body,proto3" json:"body,omitempty"`                                     // full commit body (after subject + blank line)
+	ParentShas    []string               `protobuf:"bytes,11,rep,name=parent_shas,json=parentShas,proto3" json:"parent_shas,omitempty"`       // parent commit SHAs (for graph rendering)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -952,6 +953,13 @@ func (x *CommitEntry) GetBody() string {
 		return x.Body
 	}
 	return ""
+}
+
+func (x *CommitEntry) GetParentShas() []string {
+	if x != nil {
+		return x.ParentShas
+	}
+	return nil
 }
 
 // ─── GetBlame ───────────────────────────────────────────────────────────
@@ -2039,7 +2047,7 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x06offset\x18\x04 \x01(\x05R\x06offset\"c\n" +
 	"\x13ListCommitsResponse\x121\n" +
 	"\acommits\x18\x01 \x03(\v2\x17.gitchat.v1.CommitEntryR\acommits\x12\x19\n" +
-	"\bhas_more\x18\x02 \x01(\bR\ahasMore\"\xb0\x02\n" +
+	"\bhas_more\x18\x02 \x01(\bR\ahasMore\"\xd1\x02\n" +
 	"\vCommitEntry\x12\x10\n" +
 	"\x03sha\x18\x01 \x01(\tR\x03sha\x12\x1b\n" +
 	"\tshort_sha\x18\x02 \x01(\tR\bshortSha\x12\x18\n" +
@@ -2053,7 +2061,9 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\tadditions\x18\b \x01(\x05R\tadditions\x12\x1c\n" +
 	"\tdeletions\x18\t \x01(\x05R\tdeletions\x12\x12\n" +
 	"\x04body\x18\n" +
-	" \x01(\tR\x04body\"P\n" +
+	" \x01(\tR\x04body\x12\x1f\n" +
+	"\vparent_shas\x18\v \x03(\tR\n" +
+	"parentShas\"P\n" +
 	"\x0fGetBlameRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x10\n" +
 	"\x03ref\x18\x02 \x01(\tR\x03ref\x12\x12\n" +

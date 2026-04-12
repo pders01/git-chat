@@ -30,6 +30,7 @@ export class GcCommitLog extends LitElement {
   @state() private diffHtml = "";
   @state() private diffLoading = false;
   @state() private drawerOpen = false;
+  @state() private graphMode = false;
   @state() private files: ChangedFile[] = [];
   @state() private selectedFile = ""; // "" = all files
   private fullDiffHtml = ""; // cached full-commit diff
@@ -214,6 +215,113 @@ export class GcCommitLog extends LitElement {
     );
   }
 
+  private renderGraph(commits: CommitEntry[]) {
+    // Assign each commit to a lane. Simple algorithm:
+    // - First commit gets lane 0
+    // - If a commit's parent is in a different lane, draw a merge line
+    const ROW_H = 32;
+    const LANE_W = 16;
+    const DOT_R = 4;
+    const shaToRow = new Map<string, number>();
+    const lanes: string[] = []; // lane[i] = SHA currently "active" in that lane
+
+    interface NodeInfo { row: number; lane: number; parents: string[]; }
+    const nodes: NodeInfo[] = [];
+
+    for (let i = 0; i < commits.length; i++) {
+      const c = commits[i];
+      shaToRow.set(c.sha, i);
+
+      // Find lane: reuse lane where this commit was expected, or take a new one
+      let lane = lanes.indexOf(c.sha);
+      if (lane === -1) {
+        lane = lanes.indexOf("");
+        if (lane === -1) { lane = lanes.length; lanes.push(""); }
+      }
+
+      // Assign first parent to this lane (continues the line)
+      const parentShas = (c as any).parentShas as string[] ?? [];
+      if (parentShas.length > 0) {
+        lanes[lane] = parentShas[0];
+      } else {
+        lanes[lane] = "";
+      }
+
+      // Additional parents get new lanes
+      for (let p = 1; p < parentShas.length; p++) {
+        const existing = lanes.indexOf(parentShas[p]);
+        if (existing === -1) {
+          const free = lanes.indexOf("");
+          if (free !== -1) lanes[free] = parentShas[p];
+          else lanes.push(parentShas[p]);
+        }
+      }
+
+      nodes.push({ row: i, lane, parents: parentShas });
+    }
+
+    const maxLane = Math.max(0, ...nodes.map(n => n.lane));
+    const svgW = (maxLane + 1) * LANE_W + 8;
+    const svgH = commits.length * ROW_H;
+
+    // Build SVG paths
+    const lines: string[] = [];
+    const dots: string[] = [];
+
+    for (const node of nodes) {
+      const x = node.lane * LANE_W + LANE_W / 2 + 4;
+      const y = node.row * ROW_H + ROW_H / 2;
+
+      // Dot
+      const isSelected = commits[node.row].sha === this.selectedSha;
+      dots.push(`<circle cx="${x}" cy="${y}" r="${DOT_R}" fill="${isSelected ? "var(--accent-user)" : "var(--accent-assistant)"}" />`);
+
+      // Lines to parents
+      for (const pSha of node.parents) {
+        const pRow = shaToRow.get(pSha);
+        if (pRow === undefined) {
+          // Parent not in loaded commits — draw line to bottom
+          lines.push(`<line x1="${x}" y1="${y}" x2="${x}" y2="${svgH}" stroke="var(--surface-4)" stroke-width="1.5" />`);
+          continue;
+        }
+        const pNode = nodes[pRow];
+        const px = pNode.lane * LANE_W + LANE_W / 2 + 4;
+        const py = pRow * ROW_H + ROW_H / 2;
+
+        if (px === x) {
+          // Same lane — straight line
+          lines.push(`<line x1="${x}" y1="${y}" x2="${px}" y2="${py}" stroke="var(--surface-4)" stroke-width="1.5" />`);
+        } else {
+          // Different lane — bezier curve
+          const midY = (y + py) / 2;
+          lines.push(`<path d="M${x},${y} C${x},${midY} ${px},${midY} ${px},${py}" fill="none" stroke="var(--accent-user)" stroke-width="1.5" opacity="0.4" />`);
+        }
+      }
+    }
+
+    return html`
+      <div class="graph-view" @keydown=${this.onListKeydown}>
+        ${commits.map((c, i) => {
+          const y = i * ROW_H;
+          return html`
+            <button
+              class="graph-row ${c.sha === this.selectedSha ? "selected" : ""}"
+              style="height:${ROW_H}px; top:${y}px"
+              @click=${() => this.selectCommit(c.sha)}
+              title="${c.message} — ${c.authorName}"
+            >
+              <span class="graph-msg">${c.shortSha} ${c.message}</span>
+              <span class="graph-age">${formatAge(Number(c.authorTime))}</span>
+            </button>`;
+        })}
+        <svg class="graph-svg" width="${svgW}" height="${svgH}" style="left:0">
+          ${unsafeHTML(lines.join(""))}
+          ${unsafeHTML(dots.join(""))}
+        </svg>
+      </div>
+    `;
+  }
+
   override render() {
     if (this.state.phase === "loading") {
       return html`<div class="loading">loading commits…</div>`;
@@ -233,7 +341,18 @@ export class GcCommitLog extends LitElement {
         ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
         <!-- Left: commit list sidebar -->
         <aside class="commit-list" aria-label="Commit history">
-          <ul class="commits" role="list" @keydown=${this.onListKeydown}>
+          <div class="list-header">
+            <button
+              class="graph-toggle ${this.graphMode ? "active" : ""}"
+              @click=${() => { this.graphMode = !this.graphMode; }}
+              aria-label="Toggle graph view"
+              aria-pressed=${this.graphMode ? "true" : "false"}
+              title="Toggle graph view"
+            >⑂</button>
+          </div>
+          ${this.graphMode
+            ? this.renderGraph(commits)
+            : html`<ul class="commits" role="list" @keydown=${this.onListKeydown}>
             ${commits.map(
               (c) => html`
                 <li>
@@ -261,7 +380,7 @@ export class GcCommitLog extends LitElement {
                 </li>
               `,
             )}
-          </ul>
+          </ul>`}
           ${hasMore
             ? html`<button
                 class="load-more"
@@ -534,6 +653,78 @@ export class GcCommitLog extends LitElement {
     }
     .load-more:hover {
       background: var(--surface-3);
+    }
+
+    /* ── List header + graph toggle ─────────────────────────── */
+    .list-header {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: var(--space-1) var(--space-2);
+      border-bottom: 1px solid var(--surface-4);
+      flex-shrink: 0;
+    }
+    .graph-toggle {
+      padding: 2px var(--space-2);
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      opacity: 0.4;
+    }
+    .graph-toggle:hover { opacity: 0.8; }
+    .graph-toggle.active {
+      opacity: 1;
+      background: var(--surface-3);
+      border-color: var(--accent-user);
+    }
+
+    /* ── Graph view ──────────────────────────────────────────── */
+    .graph-view {
+      position: relative;
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+    .graph-svg {
+      position: absolute;
+      top: 0;
+      pointer-events: none;
+    }
+    .graph-row {
+      display: flex;
+      align-items: center;
+      position: absolute;
+      left: 0;
+      right: 0;
+      padding: 0 var(--space-2) 0 calc(var(--space-2) + 40px);
+      background: transparent;
+      border: none;
+      border-left: 2px solid transparent;
+      color: var(--text);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      text-align: left;
+      cursor: pointer;
+      gap: var(--space-2);
+    }
+    .graph-row:hover { background: var(--surface-2); }
+    .graph-row.selected {
+      background: var(--surface-2);
+      border-left-color: var(--accent-assistant);
+    }
+    .graph-msg {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .graph-age {
+      flex-shrink: 0;
+      opacity: 0.45;
+      font-size: 0.65rem;
     }
 
     /* ── Right: diff pane ─────────────────────────────────────── */

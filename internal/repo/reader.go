@@ -222,6 +222,10 @@ func (e *Entry) ListCommits(ref string, limit, offset int) ([]*gitchatv1.CommitE
 			// One extra to detect has_more.
 			return out, true, nil
 		}
+		parents := make([]string, c.NumParents())
+		for pi := range parents {
+			parents[pi] = c.ParentHashes[pi].String()
+		}
 		entry := &gitchatv1.CommitEntry{
 			Sha:         c.Hash.String(),
 			ShortSha:    c.Hash.String()[:7],
@@ -230,6 +234,7 @@ func (e *Entry) ListCommits(ref string, limit, offset int) ([]*gitchatv1.CommitE
 			AuthorName:  c.Author.Name,
 			AuthorEmail: c.Author.Email,
 			AuthorTime:  c.Author.When.Unix(),
+			ParentShas:  parents,
 		}
 		// Diff stats — compare against first parent (root commits
 		// show as all-additions).
