@@ -31,6 +31,8 @@ var (
 
 // ListBranches returns local branches sorted by committer time, newest first.
 func (e *Entry) ListBranches() ([]*gitchatv1.Branch, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	iter, err := e.repo.Branches()
 	if err != nil {
 		return nil, fmt.Errorf("iterate branches: %w", err)
@@ -65,6 +67,8 @@ func (e *Entry) ListBranches() ([]*gitchatv1.Branch, error) {
 // wire-compatibility — name holds the tag name, Commit the target SHA,
 // CommitterTime the tagger timestamp, and Subject the tag message.
 func (e *Entry) ListTags() ([]*gitchatv1.Branch, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	iter, err := e.repo.Tags()
 	if err != nil {
 		return nil, fmt.Errorf("iterate tags: %w", err)
@@ -103,6 +107,8 @@ func (e *Entry) ListTags() ([]*gitchatv1.Branch, error) {
 // ListTree returns entries at a path under a given ref. Empty path lists
 // the repository root. Empty ref uses the default branch.
 func (e *Entry) ListTree(ref, path string) ([]*gitchatv1.TreeEntry, string, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	commit, resolved, err := e.resolveCommit(ref)
 	if err != nil {
 		return nil, "", err
@@ -159,6 +165,8 @@ func (e *Entry) ListTree(ref, path string) ([]*gitchatv1.TreeEntry, string, erro
 // Not indexed — callers should only invoke this on the slow path (when
 // there's already a miss to explain).
 func (e *Entry) AllFilePaths() ([]string, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	commit, _, err := e.resolveCommit("")
 	if err != nil {
 		return nil, err
@@ -182,6 +190,8 @@ func (e *Entry) AllFilePaths() ([]string, error) {
 
 // GetFile returns the blob contents at path under ref.
 func (e *Entry) GetFile(ref, path string, maxBytes int64) (*gitchatv1.GetFileResponse, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	if maxBytes <= 0 {
 		maxBytes = DefaultMaxFileBytes
 	}
@@ -235,6 +245,8 @@ func (e *Entry) GetFile(ref, path string, maxBytes int64) (*gitchatv1.GetFileRes
 // When pathFilter is non-empty, only commits that touched that file are
 // included (the offset/limit still apply to the filtered result set).
 func (e *Entry) ListCommits(ref string, limit, offset int, pathFilter string) ([]*gitchatv1.CommitEntry, bool, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	if limit <= 0 {
 		limit = defaultCommitLimit
 	}
@@ -384,6 +396,10 @@ func commitDiffStats(c *object.Commit) *diffStats {
 // last modified timestamp, and file size over a time window [since, until].
 // If both since and until are 0 the entire history is walked.
 func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.FileChurn, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	commit, _, err := e.resolveCommit(ref)
 	if err != nil {
 		return nil, err
@@ -514,6 +530,8 @@ func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.Fi
 // CompareBranches returns the files changed between two refs with
 // per-file add/delete stats.
 func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFile, int32, int32, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	baseCommit, _, err := e.resolveCommit(baseRef)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("resolve base: %w", err)
@@ -574,6 +592,8 @@ func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFi
 
 // GetBlame returns per-line author attribution for a file.
 func (e *Entry) GetBlame(ref, path string) ([]*gitchatv1.BlameLine, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	commit, _, err := e.resolveCommit(ref)
 	if err != nil {
 		return nil, err
@@ -618,6 +638,8 @@ func (e *Entry) GetBlame(ref, path string) ([]*gitchatv1.BlameLine, error) {
 // commit do"); empty toRef defaults to HEAD. Returns empty=true if
 // nothing changed between the two commits for the scope requested.
 func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA string, empty bool, files []*gitchatv1.ChangedFile, err error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	// Resolve to-side first so we can default fromRef to its parent.
 	toCommit, toResolved, err := e.resolveCommit(toRef)
 	if err != nil {
@@ -787,6 +809,8 @@ func changedPathsWithFiles(from, to *object.Commit) ([]string, []*gitchatv1.Chan
 // GetStatus returns the working tree status: staged, unstaged, and
 // untracked files categorized by their git status.
 func (e *Entry) GetStatus() (staged, unstaged, untracked []*gitchatv1.StatusFile, err error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	w, err := e.repo.Worktree()
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("worktree: %w", err)
@@ -837,6 +861,8 @@ func mapStatusCode(c git.StatusCode) string {
 // GetWorkingTreeDiff returns a unified diff for a single file between
 // its HEAD version and its current working tree content.
 func (e *Entry) GetWorkingTreeDiff(path string) (string, bool, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	headCommit, _, err := e.resolveCommit("")
 	if err != nil {
 		return "", false, err

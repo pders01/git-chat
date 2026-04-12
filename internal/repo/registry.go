@@ -19,12 +19,15 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
-// Entry is a registered repository.
+// Entry is a registered repository. The mu mutex serializes go-git
+// operations — go-git's packfile index uses internal maps that are
+// not safe for concurrent access.
 type Entry struct {
 	ID            string
 	Label         string
 	Path          string // absolute
 	DefaultBranch string
+	mu            sync.Mutex
 	repo          *git.Repository
 }
 
