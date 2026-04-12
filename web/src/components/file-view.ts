@@ -310,7 +310,7 @@ export class GcFileView extends LitElement {
                 <tr class="${isNewBlock ? "blame-start" : ""}">
                   <td class="blame-cell" data-idx=${i} tabindex="0" role="button">
                     ${isNewBlock && blame
-                      ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span> <span class="blame-msg">${(blame.commitMessage || "").split("\n")[0].slice(0, 20)}</span>`
+                      ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span> <span class="blame-msg">${(blame.commitMessage || "").split("\n")[0]}</span>`
                       : nothing}
                   </td>
                   <td class="lno-cell">${i + 1}</td>
@@ -536,7 +536,7 @@ export class GcFileView extends LitElement {
       font-size: inherit;
     }
     .blame-col {
-      width: 180px;
+      width: 280px;
     }
     .lno-col {
       width: 3.5em;
@@ -596,9 +596,8 @@ export class GcFileView extends LitElement {
       font-variant-numeric: tabular-nums;
     }
     .blame-msg {
-      opacity: 0.5;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      color: var(--text);
+      opacity: 0.65;
     }
     .hd-btn {
       flex-shrink: 0;
