@@ -26,6 +26,7 @@ export class GcRepoBrowser extends LitElement {
   // as a source browser.
   @state() private focused = readFocus();
   @state() private drawerOpen = false;
+  private pendingFile = "";
 
   private toggleFocus = () => {
     this.focused = !this.focused;
@@ -36,6 +37,15 @@ export class GcRepoBrowser extends LitElement {
     super.connectedCallback();
     if (this.repoId) void this.boot();
     this.addEventListener("gc:toggle-focus", () => this.toggleFocus());
+    this.addEventListener("gc:open-file", ((e: CustomEvent<{ path: string }>) => {
+      if (this.state.phase === "ready") {
+        this.selectedFile = e.detail.path;
+        this.requestUpdate();
+      } else {
+        // Boot still in progress — queue for when it completes.
+        this.pendingFile = e.detail.path;
+      }
+    }) as EventListener);
   }
 
   override updated(changed: Map<string, unknown>) {
@@ -59,6 +69,11 @@ export class GcRepoBrowser extends LitElement {
       }
       this.selectedFile = "";
       await this.loadPath(repo, "");
+      // Apply pending file from search navigation.
+      if (this.pendingFile) {
+        this.selectedFile = this.pendingFile;
+        this.pendingFile = "";
+      }
     } catch (e) {
       this.state = { phase: "error", message: messageOf(e) };
     }

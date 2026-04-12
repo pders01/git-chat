@@ -198,6 +198,113 @@ test.describe("features", () => {
     await page.waitForTimeout(300);
   });
 
+  // ── Search navigation ───────────────────────────────────────
+
+  test("search: ↑↓ keyboard navigation highlights results", async () => {
+    await page.locator("body").click();
+    await page.keyboard.press("Control+f");
+    await page.waitForTimeout(300);
+
+    // Type query that returns results.
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const input = app?.shadowRoot?.querySelector(".search-input") as HTMLInputElement;
+      if (input) {
+        input.value = "go";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+    await page.waitForTimeout(300);
+
+    // Arrow down should move selection.
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(100);
+
+    const selectedIdx = await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const selected = app?.shadowRoot?.querySelector(".search-hit.selected");
+      if (!selected) return -1;
+      const hits = [...(app?.shadowRoot?.querySelectorAll(".search-hit") ?? [])];
+      return hits.indexOf(selected);
+    });
+    expect(selectedIdx).toBeGreaterThanOrEqual(0);
+
+    // Close search.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+  });
+
+  test("search: Enter on file result opens browse with file", async () => {
+    // Switch back to chat first.
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
+      (tabs?.[0] as HTMLElement)?.click();
+    });
+    await page.waitForTimeout(300);
+
+    // Open search and find Makefile.
+    await page.locator("body").click();
+    await page.keyboard.press("Control+f");
+    await page.waitForTimeout(300);
+
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const input = app?.shadowRoot?.querySelector(".search-input") as HTMLInputElement;
+      if (input) {
+        input.value = "Makefile";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+    await page.waitForTimeout(500);
+
+    // Press Enter to activate first result.
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(1500);
+
+    // Should be on browse tab.
+    await expect(page).toHaveURL(/#\/.*\/browse$/);
+
+    // File should be selected (file-view header visible).
+    const hasFileHeader = await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const browser = app?.shadowRoot?.querySelector("gc-repo-browser");
+      const fileView = browser?.shadowRoot?.querySelector("gc-file-view");
+      return !!fileView?.shadowRoot?.querySelector(".hd");
+    });
+    expect(hasFileHeader).toBe(true);
+
+    // Back to chat.
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
+      (tabs?.[0] as HTMLElement)?.click();
+    });
+    await page.waitForTimeout(300);
+  });
+
+  test("search: command palette style (not centered modal)", async () => {
+    await page.locator("body").click();
+    await page.keyboard.press("Control+f");
+    await page.waitForTimeout(300);
+
+    const rect = await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const palette = app?.shadowRoot?.querySelector(".search-palette");
+      if (!palette) return null;
+      const r = palette.getBoundingClientRect();
+      return { top: Math.round(r.top), width: Math.round(r.width) };
+    });
+    expect(rect).not.toBeNull();
+    // Should be near top of viewport (60px), not vertically centered.
+    expect(rect!.top).toBeLessThan(100);
+    // Should be max ~560px wide (+ 2px border).
+    expect(rect!.width).toBeLessThanOrEqual(564);
+
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+  });
+
   // ── Browse file view ───────────────────────────────────────
 
   test("browse: clicking file shows content", async () => {

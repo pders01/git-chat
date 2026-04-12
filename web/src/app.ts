@@ -34,6 +34,7 @@ export class GcApp extends LitElement {
   @state() private showSearch = false;
   @state() private searchQuery = "";
   @state() private searchResults: Array<{ source: string; id: string; title: string; body: string }> = [];
+  @state() private searchSelectedIdx = -1;
 
   override async connectedCallback() {
     super.connectedCallback();
@@ -508,8 +509,8 @@ export class GcApp extends LitElement {
       this.searchResults = [];
       return;
     }
-    // Debounce 300ms.
-    this.searchTimer = setTimeout(() => void this.runSearch(q), 300);
+    // Debounce 100ms for snappy feel.
+    this.searchTimer = setTimeout(() => void this.runSearch(q), 100);
   }
 
   private async runSearch(query: string) {
@@ -520,6 +521,7 @@ export class GcApp extends LitElement {
         repoId: this.state.selectedRepo,
         limit: 10,
       });
+      this.searchSelectedIdx = 0;
       this.searchResults = resp.hits.map((h) => ({
         source: h.source,
         id: h.id,
@@ -531,6 +533,70 @@ export class GcApp extends LitElement {
     }
   }
 
+  private onSearchKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      this.showSearch = false;
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      this.searchSelectedIdx = Math.min(
+        this.searchSelectedIdx + 1,
+        this.searchResults.length - 1,
+      );
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      this.searchSelectedIdx = Math.max(this.searchSelectedIdx - 1, 0);
+      return;
+    }
+    if (e.key === "Enter" && this.searchSelectedIdx >= 0) {
+      e.preventDefault();
+      this.activateSearchResult(this.searchResults[this.searchSelectedIdx]!);
+    }
+  }
+
+  private activateSearchResult(r: { source: string; id: string; title: string }) {
+    this.showSearch = false;
+    if (this.state.phase !== "authenticated") return;
+
+    if (r.source === "file") {
+      this.switchTab("browse");
+      requestAnimationFrame(() => {
+        const browser = this.renderRoot.querySelector("gc-repo-browser");
+        browser?.dispatchEvent(
+          new CustomEvent("gc:open-file", {
+            detail: { path: r.id },
+          }),
+        );
+      });
+    } else if (r.source === "message") {
+      // r.title is the session_id for message hits.
+      this.switchTab("chat");
+      // Defer so chat-view mounts, then select the session.
+      requestAnimationFrame(() => {
+        const chatView = this.renderRoot.querySelector("gc-chat-view");
+        chatView?.dispatchEvent(
+          new CustomEvent("gc:select-session", {
+            detail: { sessionId: r.title },
+          }),
+        );
+      });
+    } else if (r.source === "card") {
+      // Show card answer in chat via prefill.
+      this.switchTab("chat");
+      requestAnimationFrame(() => {
+        const chatView = this.renderRoot.querySelector("gc-chat-view");
+        chatView?.dispatchEvent(
+          new CustomEvent("gc:prefill", {
+            detail: { text: r.title },
+          }),
+        );
+      });
+    }
+  }
+
   private renderSearchOverlay() {
     const sourceLabels: Record<string, string> = {
       card: "knowledge base",
@@ -538,24 +604,34 @@ export class GcApp extends LitElement {
       file: "files",
     };
     return html`
-      <div class="modal-backdrop" @click=${() => (this.showSearch = false)}>
-        <div class="modal search-modal" role="dialog" aria-label="Search" @click=${(e: Event) => e.stopPropagation()}>
+      <div class="search-backdrop" @click=${() => (this.showSearch = false)}></div>
+      <div class="search-palette" role="dialog" aria-label="Search">
           <input
             class="search-input"
             type="search"
             placeholder="Search files, chats, knowledge cards…"
             .value=${this.searchQuery}
             @input=${(e: Event) => this.onSearchInput(e)}
-            @keydown=${(e: KeyboardEvent) => {
-              if (e.key === "Escape") this.showSearch = false;
-            }}
+            @keydown=${(e: KeyboardEvent) => this.onSearchKeydown(e)}
             aria-label="Global search"
+            aria-controls="search-results-list"
+            aria-activedescendant=${this.searchSelectedIdx >= 0 ? `search-hit-${this.searchSelectedIdx}` : ""}
+            role="combobox"
+            aria-expanded=${this.searchResults.length > 0 ? "true" : "false"}
+            autocomplete="off"
           />
           ${this.searchResults.length > 0
-            ? html`<ul class="search-results" role="listbox">
+            ? html`<ul class="search-results" id="search-results-list" role="listbox">
                 ${this.searchResults.map(
-                  (r) => html`
-                    <li class="search-hit" role="option">
+                  (r, i) => html`
+                    <li
+                      class="search-hit ${i === this.searchSelectedIdx ? "selected" : ""}"
+                      id="search-hit-${i}"
+                      role="option"
+                      aria-selected=${i === this.searchSelectedIdx ? "true" : "false"}
+                      @click=${() => this.activateSearchResult(r)}
+                      @mouseenter=${() => { this.searchSelectedIdx = i; }}
+                    >
                       <span class="hit-source">${sourceLabels[r.source] ?? r.source}</span>
                       <span class="hit-title">${r.title}</span>
                       ${r.body
@@ -568,7 +644,7 @@ export class GcApp extends LitElement {
             : this.searchQuery.trim()
               ? html`<p class="search-empty">no results</p>`
               : nothing}
-        </div>
+          <div class="search-hint">↑↓ navigate · ↵ open · esc close</div>
       </div>
     `;
   }
@@ -869,10 +945,30 @@ export class GcApp extends LitElement {
       text-align: center;
     }
 
-    /* ── Search overlay ─────────────────────────────────────────── */
-    .search-modal {
+    /* ── Search — command palette style (top-fixed) ─────────── */
+    .search-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 50;
+    }
+    .search-palette {
+      position: fixed;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90vw;
       max-width: 560px;
-      padding: 0;
+      background: var(--surface-2);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      z-index: 51;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      animation: palette-in 0.12s ease;
+    }
+    @keyframes palette-in {
+      from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
     }
     .search-input {
       width: 100%;
@@ -889,22 +985,18 @@ export class GcApp extends LitElement {
     .search-results {
       list-style: none;
       margin: 0;
-      padding: var(--space-2) 0;
-      max-height: 400px;
+      padding: var(--space-1) 0;
+      max-height: 360px;
       overflow-y: auto;
     }
     .search-hit {
       display: flex;
       flex-direction: column;
-      gap: 0.15rem;
+      gap: 0.1rem;
       padding: var(--space-2) var(--space-4);
       cursor: pointer;
-      border-bottom: 1px solid var(--surface-4);
     }
-    .search-hit:last-child {
-      border-bottom: none;
-    }
-    .search-hit:hover {
+    .search-hit.selected {
       background: var(--surface-3);
     }
     .hit-source {
@@ -924,11 +1016,21 @@ export class GcApp extends LitElement {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .search-hint {
+      padding: var(--space-2) var(--space-4);
+      font-size: var(--text-xs);
+      opacity: 0.3;
+      text-align: center;
+      border-top: 1px solid var(--surface-4);
+    }
     .search-empty {
       padding: var(--space-4);
       opacity: 0.45;
       text-align: center;
       font-size: var(--text-sm);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .search-palette { animation: none; }
     }
 
     /* ── Settings modal ───────────────────────────────────────── */

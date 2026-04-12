@@ -89,6 +89,10 @@ export class GcChatView extends LitElement {
     // Listen for global shortcut events from gc-app.
     this.addEventListener("gc:new-chat", () => this.newChat());
     this.addEventListener("gc:toggle-focus", () => this.toggleFocus());
+    // Cross-view bridge: select a specific session (from search).
+    this.addEventListener("gc:select-session", ((e: CustomEvent<{ sessionId: string }>) => {
+      void this.selectSession(e.detail.sessionId);
+    }) as EventListener);
     // Cross-view bridge: prefill composer from other views.
     this.addEventListener("gc:prefill", ((e: CustomEvent<{ text: string }>) => {
       this.newChat();
