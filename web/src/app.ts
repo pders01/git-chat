@@ -391,8 +391,12 @@ export class GcApp extends LitElement {
   private applyRoute(route: ParsedRoute) {
     if (routesEqual(route, this.currentRoute) && this.currentRoute.repoId) return;
     this.currentRoute = route;
+    // Keep AppState.tab in sync so the tab panel visibility updates.
+    if (this.state.phase === "authenticated" && this.state.tab !== route.tab) {
+      this.state = { ...this.state, tab: route.tab };
+    }
     const url = buildRoute(route);
-    if (window.location.hash + window.location.search !== url) {
+    if (window.location.hash !== url) {
       window.history.pushState(null, "", url);
     }
     this.requestUpdate();

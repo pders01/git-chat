@@ -109,6 +109,7 @@ export class GcChatView extends LitElement {
 
   override updated(changed: Map<string, unknown>) {
     if (changed.has("repoId") && this.repoId) {
+      this._lastRestoredSession = "";
       void this.loadSessions();
     }
     if (
@@ -317,8 +318,10 @@ export class GcChatView extends LitElement {
     const diffResolver = this.diffResolver();
     await Promise.all(
       targets.map(async (t) => {
-        t.html = await renderMarkdown(t.content, diffResolver);
-        this.turns = [...this.turns];
+        const rendered = await renderMarkdown(t.content, diffResolver);
+        // Re-find the turn in the current array (it may have been replaced
+        // by a concurrent send() creating a new array).
+        this.turns = this.turns.map((x) => (x.id === t.id ? { ...x, html: rendered } : x));
       }),
     );
   }
@@ -605,6 +608,8 @@ export class GcChatView extends LitElement {
               sessions: list.sessions,
               selected: newId,
             };
+            this._lastRestoredSession = newId;
+            this.dispatchNav({ sessionId: newId });
           }
           this.turns = [...this.turns];
         }

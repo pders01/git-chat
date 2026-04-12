@@ -126,6 +126,7 @@ export class GcRepoBrowser extends LitElement {
 
   override updated(changed: Map<string, unknown>) {
     if ((changed.has("repoId") || changed.has("branch")) && this.repoId) {
+      this._lastRestoredFile = "";
       void this.boot();
     }
     if (
