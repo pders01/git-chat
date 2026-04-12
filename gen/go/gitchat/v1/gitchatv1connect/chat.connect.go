@@ -56,6 +56,9 @@ const (
 	ChatServiceDeleteCardProcedure = "/gitchat.v1.ChatService/DeleteCard"
 	// ChatServiceGetCardProcedure is the fully-qualified name of the ChatService's GetCard RPC.
 	ChatServiceGetCardProcedure = "/gitchat.v1.ChatService/GetCard"
+	// ChatServiceSummarizeActivityProcedure is the fully-qualified name of the ChatService's
+	// SummarizeActivity RPC.
+	ChatServiceSummarizeActivityProcedure = "/gitchat.v1.ChatService/SummarizeActivity"
 )
 
 // ChatServiceClient is a client for the gitchat.v1.ChatService service.
@@ -86,6 +89,9 @@ type ChatServiceClient interface {
 	// GetCard returns the full detail of a single knowledge card, including
 	// provenance (file dependencies).
 	GetCard(context.Context, *connect.Request[v1.GetCardRequest]) (*connect.Response[v1.GetCardResponse], error)
+	// SummarizeActivity returns an LLM-generated summary of recent repo
+	// activity for the chat dashboard.
+	SummarizeActivity(context.Context, *connect.Request[v1.SummarizeActivityRequest]) (*connect.Response[v1.SummarizeActivityResponse], error)
 }
 
 // NewChatServiceClient constructs a client for the gitchat.v1.ChatService service. By default, it
@@ -159,21 +165,28 @@ func NewChatServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(chatServiceMethods.ByName("GetCard")),
 			connect.WithClientOptions(opts...),
 		),
+		summarizeActivity: connect.NewClient[v1.SummarizeActivityRequest, v1.SummarizeActivityResponse](
+			httpClient,
+			baseURL+ChatServiceSummarizeActivityProcedure,
+			connect.WithSchema(chatServiceMethods.ByName("SummarizeActivity")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // chatServiceClient implements ChatServiceClient.
 type chatServiceClient struct {
-	listSessions  *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
-	getSession    *connect.Client[v1.GetSessionRequest, v1.GetSessionResponse]
-	sendMessage   *connect.Client[v1.SendMessageRequest, v1.MessageChunk]
-	search        *connect.Client[v1.SearchRequest, v1.SearchResponse]
-	renameSession *connect.Client[v1.RenameSessionRequest, v1.RenameSessionResponse]
-	deleteSession *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
-	pinSession    *connect.Client[v1.PinSessionRequest, v1.PinSessionResponse]
-	listCards     *connect.Client[v1.ListCardsRequest, v1.ListCardsResponse]
-	deleteCard    *connect.Client[v1.DeleteCardRequest, v1.DeleteCardResponse]
-	getCard       *connect.Client[v1.GetCardRequest, v1.GetCardResponse]
+	listSessions      *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
+	getSession        *connect.Client[v1.GetSessionRequest, v1.GetSessionResponse]
+	sendMessage       *connect.Client[v1.SendMessageRequest, v1.MessageChunk]
+	search            *connect.Client[v1.SearchRequest, v1.SearchResponse]
+	renameSession     *connect.Client[v1.RenameSessionRequest, v1.RenameSessionResponse]
+	deleteSession     *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
+	pinSession        *connect.Client[v1.PinSessionRequest, v1.PinSessionResponse]
+	listCards         *connect.Client[v1.ListCardsRequest, v1.ListCardsResponse]
+	deleteCard        *connect.Client[v1.DeleteCardRequest, v1.DeleteCardResponse]
+	getCard           *connect.Client[v1.GetCardRequest, v1.GetCardResponse]
+	summarizeActivity *connect.Client[v1.SummarizeActivityRequest, v1.SummarizeActivityResponse]
 }
 
 // ListSessions calls gitchat.v1.ChatService.ListSessions.
@@ -226,6 +239,11 @@ func (c *chatServiceClient) GetCard(ctx context.Context, req *connect.Request[v1
 	return c.getCard.CallUnary(ctx, req)
 }
 
+// SummarizeActivity calls gitchat.v1.ChatService.SummarizeActivity.
+func (c *chatServiceClient) SummarizeActivity(ctx context.Context, req *connect.Request[v1.SummarizeActivityRequest]) (*connect.Response[v1.SummarizeActivityResponse], error) {
+	return c.summarizeActivity.CallUnary(ctx, req)
+}
+
 // ChatServiceHandler is an implementation of the gitchat.v1.ChatService service.
 type ChatServiceHandler interface {
 	// ListSessions returns every chat session for the authenticated
@@ -254,6 +272,9 @@ type ChatServiceHandler interface {
 	// GetCard returns the full detail of a single knowledge card, including
 	// provenance (file dependencies).
 	GetCard(context.Context, *connect.Request[v1.GetCardRequest]) (*connect.Response[v1.GetCardResponse], error)
+	// SummarizeActivity returns an LLM-generated summary of recent repo
+	// activity for the chat dashboard.
+	SummarizeActivity(context.Context, *connect.Request[v1.SummarizeActivityRequest]) (*connect.Response[v1.SummarizeActivityResponse], error)
 }
 
 // NewChatServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -323,6 +344,12 @@ func NewChatServiceHandler(svc ChatServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(chatServiceMethods.ByName("GetCard")),
 		connect.WithHandlerOptions(opts...),
 	)
+	chatServiceSummarizeActivityHandler := connect.NewUnaryHandler(
+		ChatServiceSummarizeActivityProcedure,
+		svc.SummarizeActivity,
+		connect.WithSchema(chatServiceMethods.ByName("SummarizeActivity")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/gitchat.v1.ChatService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ChatServiceListSessionsProcedure:
@@ -345,6 +372,8 @@ func NewChatServiceHandler(svc ChatServiceHandler, opts ...connect.HandlerOption
 			chatServiceDeleteCardHandler.ServeHTTP(w, r)
 		case ChatServiceGetCardProcedure:
 			chatServiceGetCardHandler.ServeHTTP(w, r)
+		case ChatServiceSummarizeActivityProcedure:
+			chatServiceSummarizeActivityHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -392,4 +421,8 @@ func (UnimplementedChatServiceHandler) DeleteCard(context.Context, *connect.Requ
 
 func (UnimplementedChatServiceHandler) GetCard(context.Context, *connect.Request[v1.GetCardRequest]) (*connect.Response[v1.GetCardResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.ChatService.GetCard is not implemented"))
+}
+
+func (UnimplementedChatServiceHandler) SummarizeActivity(context.Context, *connect.Request[v1.SummarizeActivityRequest]) (*connect.Response[v1.SummarizeActivityResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.ChatService.SummarizeActivity is not implemented"))
 }

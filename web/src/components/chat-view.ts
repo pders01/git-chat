@@ -98,7 +98,7 @@ export class GcChatView extends LitElement {
   @state() private sessionTokensIn = 0;
   @state() private sessionTokensOut = 0;
   // Dashboard: recent commits + auto-generated suggestions.
-  @state() private recentCommits: Array<{ shortSha: string; message: string; authorName: string; age: string; timestamp: number }> = [];
+  @state() private activitySummary = "";
   @state() private suggestions: Array<{ label: string; prompt: string }> = [];
 
   private toggleFocus = () => {
@@ -210,96 +210,24 @@ export class GcChatView extends LitElement {
 
   private async loadDashboard() {
     try {
-      const resp = await repoClient.listCommits({
-        repoId: this.repoId,
-        limit: 8,
-        offset: 0,
-      });
-      const now = Math.floor(Date.now() / 1000);
-      this.recentCommits = resp.commits.map((c) => {
-        const diff = now - Number(c.authorTime);
-        let age: string;
-        if (diff < 3600) age = Math.floor(diff / 60) + "m ago";
-        else if (diff < 86400) age = Math.floor(diff / 3600) + "h ago";
-        else age = Math.floor(diff / 86400) + "d ago";
-        return { shortSha: c.shortSha, message: c.message, authorName: c.authorName, age, timestamp: Number(c.authorTime) };
-      });
-
-      // Auto-generate suggestions from recent activity.
-      const suggestions: Array<{ label: string; prompt: string }> = [];
-      suggestions.push({ label: "overview", prompt: "What is this project about?" });
-      if (resp.commits.length > 0) {
-        const latest = resp.commits[0];
-        suggestions.push({
-          label: "latest change",
-          prompt: `Explain commit ${latest.shortSha} ("${latest.message}"). What does it change and why?`,
-        });
+      const resp = await (chatClient as any).summarizeActivity({ repoId: this.repoId });
+      this.activitySummary = resp.summary || "";
+      const llmSuggestions = (resp.suggestions || []) as string[];
+      this.suggestions = llmSuggestions
+        .filter((s: string) => s.trim())
+        .slice(0, 3)
+        .map((s: string) => ({ label: "ask", prompt: s }));
+      // Always include overview as first option if LLM didn't suggest it.
+      if (this.suggestions.length === 0 || !this.suggestions.some(s => s.prompt.toLowerCase().includes("about"))) {
+        this.suggestions.unshift({ label: "overview", prompt: "What is this project about?" });
+        this.suggestions = this.suggestions.slice(0, 3);
       }
-      if (resp.commits.length > 3) {
-        suggestions.push({
-          label: "recent activity",
-          prompt: "Summarize what changed in the last few commits. What areas of the codebase are being worked on?",
-        });
-      }
-      // Suggest asking about a specific recent commit.
-      for (const c of resp.commits.slice(1, 5)) {
-        if (c.filesChanged > 0 && c.filesChanged < 15) {
-          suggestions.push({
-            label: `commit ${c.shortSha}`,
-            prompt: `What does commit ${c.shortSha} ("${c.message}") do?`,
-          });
-          break;
-        }
-      }
-      this.suggestions = suggestions.slice(0, 3);
     } catch {
-      // Non-critical — fallback to static suggestions.
       this.suggestions = [
         { label: "overview", prompt: "What is this project about?" },
-        { label: "architecture", prompt: "Summarize the architecture in @docs/ARCHITECTURE.md" },
+        { label: "architecture", prompt: "Describe the architecture of this project" },
       ];
     }
-  }
-
-  private renderGroupedActivity() {
-    const now = Math.floor(Date.now() / 1000);
-    const buckets = [
-      { max: 3600, label: "last hour" },
-      { max: 86400, label: "today" },
-      { max: 604800, label: "this week" },
-      { max: Infinity, label: "older" },
-    ];
-
-    const groups: Array<{ label: string; scopes: string[]; count: number }> = [];
-    for (const bucket of buckets) {
-      const prevMax = buckets[buckets.indexOf(bucket) - 1]?.max ?? 0;
-      const matching = this.recentCommits.filter((c) => {
-        const age = now - c.timestamp;
-        return age < bucket.max && age >= prevMax;
-      });
-      if (matching.length === 0) continue;
-
-      // Extract unique scopes from conventional commit messages.
-      const scopes = new Set<string>();
-      for (const c of matching) {
-        const m = c.message.match(/^\w+\(([^)]+)\)/);
-        if (m) scopes.add(m[1]);
-        else {
-          // No scope — use first word of message as area.
-          const word = c.message.split(/[:\s]/)[0];
-          if (word) scopes.add(word);
-        }
-      }
-      groups.push({ label: bucket.label, scopes: [...scopes].slice(0, 5), count: matching.length });
-    }
-
-    return html`${groups.map((g) => html`
-      <div class="activity-line">
-        <span class="activity-period">${g.label}</span>
-        <span class="activity-count">${g.count} commit${g.count > 1 ? "s" : ""}</span>
-        <span class="activity-scopes">${g.scopes.join(", ")}</span>
-      </div>
-    `)}`;
   }
 
   private startRename(sessionId: string) {
@@ -895,10 +823,10 @@ export class GcChatView extends LitElement {
           </div>
         ` : nothing}
 
-        ${this.recentCommits.length > 0 ? html`
+        ${this.activitySummary ? html`
           <div class="recent-activity">
             <div class="recent-title">recent activity</div>
-            ${this.renderGroupedActivity()}
+            <p class="activity-text">${this.activitySummary}</p>
           </div>
         ` : nothing}
       </div>
@@ -1262,8 +1190,8 @@ export class GcChatView extends LitElement {
       font-size: 0.9em;
     }
     .empty-examples {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 0.55rem;
       text-align: left;
     }
@@ -1294,7 +1222,12 @@ export class GcChatView extends LitElement {
       color: var(--accent-assistant);
     }
     .example-body {
-      font-size: 0.82rem;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
 
     /* ── Recent activity ──────────────────────────────────────────── */
@@ -1309,30 +1242,11 @@ export class GcChatView extends LitElement {
       opacity: 0.4;
       margin-bottom: var(--space-2);
     }
-    .activity-line {
-      display: flex;
-      align-items: baseline;
-      gap: var(--space-2);
-      padding: var(--space-1) 0;
+    .activity-text {
       font-size: var(--text-xs);
-    }
-    .activity-period {
-      font-size: 0.6rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      opacity: 0.35;
-      flex-shrink: 0;
-      min-width: 70px;
-    }
-    .activity-count {
-      flex-shrink: 0;
+      line-height: 1.6;
       opacity: 0.6;
-    }
-    .activity-scopes {
-      opacity: 0.45;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      margin: 0;
     }
 
     /* ── Turns ───────────────────────────────────────────────────── */

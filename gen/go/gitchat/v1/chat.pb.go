@@ -1710,6 +1710,103 @@ func (x *GetCardResponse) GetProvenance() []*CardProvenance {
 	return nil
 }
 
+// ─── SummarizeActivity ────────────────────────────────────────────────
+type SummarizeActivityRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RepoId        string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SummarizeActivityRequest) Reset() {
+	*x = SummarizeActivityRequest{}
+	mi := &file_gitchat_v1_chat_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SummarizeActivityRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SummarizeActivityRequest) ProtoMessage() {}
+
+func (x *SummarizeActivityRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_chat_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SummarizeActivityRequest.ProtoReflect.Descriptor instead.
+func (*SummarizeActivityRequest) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *SummarizeActivityRequest) GetRepoId() string {
+	if x != nil {
+		return x.RepoId
+	}
+	return ""
+}
+
+type SummarizeActivityResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Summary       string                 `protobuf:"bytes,1,opt,name=summary,proto3" json:"summary,omitempty"`         // LLM-generated prose summary
+	Suggestions   []string               `protobuf:"bytes,2,rep,name=suggestions,proto3" json:"suggestions,omitempty"` // 2-3 contextual question suggestions
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SummarizeActivityResponse) Reset() {
+	*x = SummarizeActivityResponse{}
+	mi := &file_gitchat_v1_chat_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SummarizeActivityResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SummarizeActivityResponse) ProtoMessage() {}
+
+func (x *SummarizeActivityResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_chat_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SummarizeActivityResponse.ProtoReflect.Descriptor instead.
+func (*SummarizeActivityResponse) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_chat_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *SummarizeActivityResponse) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *SummarizeActivityResponse) GetSuggestions() []string {
+	if x != nil {
+		return x.Suggestions
+	}
+	return nil
+}
+
 var File_gitchat_v1_chat_proto protoreflect.FileDescriptor
 
 const file_gitchat_v1_chat_proto_rawDesc = "" +
@@ -1835,12 +1932,17 @@ const file_gitchat_v1_chat_proto_rawDesc = "" +
 	"\n" +
 	"provenance\x18\n" +
 	" \x03(\v2\x1a.gitchat.v1.CardProvenanceR\n" +
-	"provenance*w\n" +
+	"provenance\"3\n" +
+	"\x18SummarizeActivityRequest\x12\x17\n" +
+	"\arepo_id\x18\x01 \x01(\tR\x06repoId\"W\n" +
+	"\x19SummarizeActivityResponse\x12\x18\n" +
+	"\asummary\x18\x01 \x01(\tR\asummary\x12 \n" +
+	"\vsuggestions\x18\x02 \x03(\tR\vsuggestions*w\n" +
 	"\vMessageRole\x12\x1c\n" +
 	"\x18MESSAGE_ROLE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11MESSAGE_ROLE_USER\x10\x01\x12\x1a\n" +
 	"\x16MESSAGE_ROLE_ASSISTANT\x10\x02\x12\x17\n" +
-	"\x13MESSAGE_ROLE_SYSTEM\x10\x032\x8d\x06\n" +
+	"\x13MESSAGE_ROLE_SYSTEM\x10\x032\xef\x06\n" +
 	"\vChatService\x12Q\n" +
 	"\fListSessions\x12\x1f.gitchat.v1.ListSessionsRequest\x1a .gitchat.v1.ListSessionsResponse\x12K\n" +
 	"\n" +
@@ -1854,7 +1956,8 @@ const file_gitchat_v1_chat_proto_rawDesc = "" +
 	"\tListCards\x12\x1c.gitchat.v1.ListCardsRequest\x1a\x1d.gitchat.v1.ListCardsResponse\x12K\n" +
 	"\n" +
 	"DeleteCard\x12\x1d.gitchat.v1.DeleteCardRequest\x1a\x1e.gitchat.v1.DeleteCardResponse\x12B\n" +
-	"\aGetCard\x12\x1a.gitchat.v1.GetCardRequest\x1a\x1b.gitchat.v1.GetCardResponseB\x9d\x01\n" +
+	"\aGetCard\x12\x1a.gitchat.v1.GetCardRequest\x1a\x1b.gitchat.v1.GetCardResponse\x12`\n" +
+	"\x11SummarizeActivity\x12$.gitchat.v1.SummarizeActivityRequest\x1a%.gitchat.v1.SummarizeActivityResponseB\x9d\x01\n" +
 	"\x0ecom.gitchat.v1B\tChatProtoP\x01Z7github.com/pders01/git-chat/gen/go/gitchat/v1;gitchatv1\xa2\x02\x03GXX\xaa\x02\n" +
 	"Gitchat.V1\xca\x02\n" +
 	"Gitchat\\V1\xe2\x02\x16Gitchat\\V1\\GPBMetadata\xea\x02\vGitchat::V1b\x06proto3"
@@ -1872,36 +1975,38 @@ func file_gitchat_v1_chat_proto_rawDescGZIP() []byte {
 }
 
 var file_gitchat_v1_chat_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_gitchat_v1_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_gitchat_v1_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_gitchat_v1_chat_proto_goTypes = []any{
-	(MessageRole)(0),              // 0: gitchat.v1.MessageRole
-	(*SearchRequest)(nil),         // 1: gitchat.v1.SearchRequest
-	(*SearchResponse)(nil),        // 2: gitchat.v1.SearchResponse
-	(*SearchHit)(nil),             // 3: gitchat.v1.SearchHit
-	(*ChatSession)(nil),           // 4: gitchat.v1.ChatSession
-	(*ChatMessage)(nil),           // 5: gitchat.v1.ChatMessage
-	(*ListSessionsRequest)(nil),   // 6: gitchat.v1.ListSessionsRequest
-	(*ListSessionsResponse)(nil),  // 7: gitchat.v1.ListSessionsResponse
-	(*GetSessionRequest)(nil),     // 8: gitchat.v1.GetSessionRequest
-	(*GetSessionResponse)(nil),    // 9: gitchat.v1.GetSessionResponse
-	(*SendMessageRequest)(nil),    // 10: gitchat.v1.SendMessageRequest
-	(*MessageChunk)(nil),          // 11: gitchat.v1.MessageChunk
-	(*KnowledgeCardHit)(nil),      // 12: gitchat.v1.KnowledgeCardHit
-	(*Done)(nil),                  // 13: gitchat.v1.Done
-	(*RenameSessionRequest)(nil),  // 14: gitchat.v1.RenameSessionRequest
-	(*RenameSessionResponse)(nil), // 15: gitchat.v1.RenameSessionResponse
-	(*DeleteSessionRequest)(nil),  // 16: gitchat.v1.DeleteSessionRequest
-	(*DeleteSessionResponse)(nil), // 17: gitchat.v1.DeleteSessionResponse
-	(*PinSessionRequest)(nil),     // 18: gitchat.v1.PinSessionRequest
-	(*PinSessionResponse)(nil),    // 19: gitchat.v1.PinSessionResponse
-	(*ListCardsRequest)(nil),      // 20: gitchat.v1.ListCardsRequest
-	(*KBCard)(nil),                // 21: gitchat.v1.KBCard
-	(*ListCardsResponse)(nil),     // 22: gitchat.v1.ListCardsResponse
-	(*DeleteCardRequest)(nil),     // 23: gitchat.v1.DeleteCardRequest
-	(*DeleteCardResponse)(nil),    // 24: gitchat.v1.DeleteCardResponse
-	(*GetCardRequest)(nil),        // 25: gitchat.v1.GetCardRequest
-	(*CardProvenance)(nil),        // 26: gitchat.v1.CardProvenance
-	(*GetCardResponse)(nil),       // 27: gitchat.v1.GetCardResponse
+	(MessageRole)(0),                  // 0: gitchat.v1.MessageRole
+	(*SearchRequest)(nil),             // 1: gitchat.v1.SearchRequest
+	(*SearchResponse)(nil),            // 2: gitchat.v1.SearchResponse
+	(*SearchHit)(nil),                 // 3: gitchat.v1.SearchHit
+	(*ChatSession)(nil),               // 4: gitchat.v1.ChatSession
+	(*ChatMessage)(nil),               // 5: gitchat.v1.ChatMessage
+	(*ListSessionsRequest)(nil),       // 6: gitchat.v1.ListSessionsRequest
+	(*ListSessionsResponse)(nil),      // 7: gitchat.v1.ListSessionsResponse
+	(*GetSessionRequest)(nil),         // 8: gitchat.v1.GetSessionRequest
+	(*GetSessionResponse)(nil),        // 9: gitchat.v1.GetSessionResponse
+	(*SendMessageRequest)(nil),        // 10: gitchat.v1.SendMessageRequest
+	(*MessageChunk)(nil),              // 11: gitchat.v1.MessageChunk
+	(*KnowledgeCardHit)(nil),          // 12: gitchat.v1.KnowledgeCardHit
+	(*Done)(nil),                      // 13: gitchat.v1.Done
+	(*RenameSessionRequest)(nil),      // 14: gitchat.v1.RenameSessionRequest
+	(*RenameSessionResponse)(nil),     // 15: gitchat.v1.RenameSessionResponse
+	(*DeleteSessionRequest)(nil),      // 16: gitchat.v1.DeleteSessionRequest
+	(*DeleteSessionResponse)(nil),     // 17: gitchat.v1.DeleteSessionResponse
+	(*PinSessionRequest)(nil),         // 18: gitchat.v1.PinSessionRequest
+	(*PinSessionResponse)(nil),        // 19: gitchat.v1.PinSessionResponse
+	(*ListCardsRequest)(nil),          // 20: gitchat.v1.ListCardsRequest
+	(*KBCard)(nil),                    // 21: gitchat.v1.KBCard
+	(*ListCardsResponse)(nil),         // 22: gitchat.v1.ListCardsResponse
+	(*DeleteCardRequest)(nil),         // 23: gitchat.v1.DeleteCardRequest
+	(*DeleteCardResponse)(nil),        // 24: gitchat.v1.DeleteCardResponse
+	(*GetCardRequest)(nil),            // 25: gitchat.v1.GetCardRequest
+	(*CardProvenance)(nil),            // 26: gitchat.v1.CardProvenance
+	(*GetCardResponse)(nil),           // 27: gitchat.v1.GetCardResponse
+	(*SummarizeActivityRequest)(nil),  // 28: gitchat.v1.SummarizeActivityRequest
+	(*SummarizeActivityResponse)(nil), // 29: gitchat.v1.SummarizeActivityResponse
 }
 var file_gitchat_v1_chat_proto_depIdxs = []int32{
 	3,  // 0: gitchat.v1.SearchResponse.hits:type_name -> gitchat.v1.SearchHit
@@ -1923,18 +2028,20 @@ var file_gitchat_v1_chat_proto_depIdxs = []int32{
 	20, // 16: gitchat.v1.ChatService.ListCards:input_type -> gitchat.v1.ListCardsRequest
 	23, // 17: gitchat.v1.ChatService.DeleteCard:input_type -> gitchat.v1.DeleteCardRequest
 	25, // 18: gitchat.v1.ChatService.GetCard:input_type -> gitchat.v1.GetCardRequest
-	7,  // 19: gitchat.v1.ChatService.ListSessions:output_type -> gitchat.v1.ListSessionsResponse
-	9,  // 20: gitchat.v1.ChatService.GetSession:output_type -> gitchat.v1.GetSessionResponse
-	11, // 21: gitchat.v1.ChatService.SendMessage:output_type -> gitchat.v1.MessageChunk
-	2,  // 22: gitchat.v1.ChatService.Search:output_type -> gitchat.v1.SearchResponse
-	15, // 23: gitchat.v1.ChatService.RenameSession:output_type -> gitchat.v1.RenameSessionResponse
-	17, // 24: gitchat.v1.ChatService.DeleteSession:output_type -> gitchat.v1.DeleteSessionResponse
-	19, // 25: gitchat.v1.ChatService.PinSession:output_type -> gitchat.v1.PinSessionResponse
-	22, // 26: gitchat.v1.ChatService.ListCards:output_type -> gitchat.v1.ListCardsResponse
-	24, // 27: gitchat.v1.ChatService.DeleteCard:output_type -> gitchat.v1.DeleteCardResponse
-	27, // 28: gitchat.v1.ChatService.GetCard:output_type -> gitchat.v1.GetCardResponse
-	19, // [19:29] is the sub-list for method output_type
-	9,  // [9:19] is the sub-list for method input_type
+	28, // 19: gitchat.v1.ChatService.SummarizeActivity:input_type -> gitchat.v1.SummarizeActivityRequest
+	7,  // 20: gitchat.v1.ChatService.ListSessions:output_type -> gitchat.v1.ListSessionsResponse
+	9,  // 21: gitchat.v1.ChatService.GetSession:output_type -> gitchat.v1.GetSessionResponse
+	11, // 22: gitchat.v1.ChatService.SendMessage:output_type -> gitchat.v1.MessageChunk
+	2,  // 23: gitchat.v1.ChatService.Search:output_type -> gitchat.v1.SearchResponse
+	15, // 24: gitchat.v1.ChatService.RenameSession:output_type -> gitchat.v1.RenameSessionResponse
+	17, // 25: gitchat.v1.ChatService.DeleteSession:output_type -> gitchat.v1.DeleteSessionResponse
+	19, // 26: gitchat.v1.ChatService.PinSession:output_type -> gitchat.v1.PinSessionResponse
+	22, // 27: gitchat.v1.ChatService.ListCards:output_type -> gitchat.v1.ListCardsResponse
+	24, // 28: gitchat.v1.ChatService.DeleteCard:output_type -> gitchat.v1.DeleteCardResponse
+	27, // 29: gitchat.v1.ChatService.GetCard:output_type -> gitchat.v1.GetCardResponse
+	29, // 30: gitchat.v1.ChatService.SummarizeActivity:output_type -> gitchat.v1.SummarizeActivityResponse
+	20, // [20:31] is the sub-list for method output_type
+	9,  // [9:20] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name
@@ -1956,7 +2063,7 @@ func file_gitchat_v1_chat_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gitchat_v1_chat_proto_rawDesc), len(file_gitchat_v1_chat_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   27,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

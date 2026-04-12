@@ -49,6 +49,10 @@ service ChatService {
   // GetCard returns the full detail of a single knowledge card, including
   // provenance (file dependencies).
   rpc GetCard(GetCardRequest) returns (GetCardResponse);
+
+  // SummarizeActivity returns an LLM-generated summary of recent repo
+  // activity for the chat dashboard.
+  rpc SummarizeActivity(SummarizeActivityRequest) returns (SummarizeActivityResponse);
 }
 
 // ─── Search ─────────────────────────────────────────────────────────────
@@ -241,4 +245,14 @@ message GetCardResponse {
   bool invalidated = 8;
   string created_commit = 9;
   repeated CardProvenance provenance = 10;
+}
+
+// ─── SummarizeActivity ────────────────────────────────────────────────
+message SummarizeActivityRequest {
+  string repo_id = 1;
+}
+
+message SummarizeActivityResponse {
+  string summary = 1;            // LLM-generated prose summary
+  repeated string suggestions = 2; // 2-3 contextual question suggestions
 }

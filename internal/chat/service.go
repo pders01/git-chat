@@ -522,6 +522,81 @@ func (s *Service) GetCard(
 	}), nil
 }
 
+// ─── SummarizeActivity ────────────────────────────────────────────────
+
+func (s *Service) SummarizeActivity(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.SummarizeActivityRequest],
+) (*connect.Response[gitchatv1.SummarizeActivityResponse], error) {
+	r := s.Repos.Get(req.Msg.RepoId)
+	if r == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
+	}
+
+	commits, _, _ := r.ListCommits("", 10, 0)
+	if len(commits) == 0 {
+		return connect.NewResponse(&gitchatv1.SummarizeActivityResponse{
+			Summary: "No commits yet.",
+		}), nil
+	}
+
+	// Build a commit log for the LLM.
+	var commitLog strings.Builder
+	for _, c := range commits {
+		fmt.Fprintf(&commitLog, "- %s %s (%s)\n", c.ShortSha, c.Message, c.AuthorName)
+	}
+
+	prompt := []llm.Message{
+		{Role: llm.RoleSystem, Content: `You are summarizing recent git activity for a dashboard. Be concise and informative.
+Output exactly TWO sections separated by ---:
+1. A 2-3 sentence summary of what's been happening in the project recently. Mention key areas of work, not individual commits.
+2. Three suggested questions a developer might want to ask about this repo, one per line. Make them specific to the actual activity.`},
+		{Role: llm.RoleUser, Content: "Here are the recent commits:\n\n" + commitLog.String() + "\nSummarize the recent activity and suggest questions."},
+	}
+
+	ctx2, cancel := context.WithTimeout(ctx, titleTimeout)
+	defer cancel()
+
+	chunks, err := s.LLM.Stream(ctx2, llm.Request{
+		Model:    s.Model,
+		Messages: prompt,
+	})
+	if err != nil {
+		// Fallback: return raw commit list.
+		return connect.NewResponse(&gitchatv1.SummarizeActivityResponse{
+			Summary: "Recent commits:\n" + commitLog.String(),
+		}), nil
+	}
+
+	var sb strings.Builder
+	for chunk := range chunks {
+		if chunk.Kind == llm.ChunkToken {
+			sb.WriteString(chunk.Token)
+		} else if chunk.Kind == llm.ChunkDone {
+			break
+		}
+	}
+
+	result := sb.String()
+	parts := strings.SplitN(result, "---", 2)
+	summary := strings.TrimSpace(parts[0])
+	var suggestions []string
+	if len(parts) > 1 {
+		for _, line := range strings.Split(strings.TrimSpace(parts[1]), "\n") {
+			line = strings.TrimSpace(line)
+			line = strings.TrimLeft(line, "0123456789.-) ")
+			if line != "" {
+				suggestions = append(suggestions, line)
+			}
+		}
+	}
+
+	return connect.NewResponse(&gitchatv1.SummarizeActivityResponse{
+		Summary:     summary,
+		Suggestions: suggestions,
+	}), nil
+}
+
 // ─── DeleteCard ────────────────────────────────────────────────────────
 func (s *Service) DeleteCard(
 	ctx context.Context,
