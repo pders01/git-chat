@@ -97,6 +97,9 @@ export class GcChatView extends LitElement {
   // Cumulative token counts for the current session.
   @state() private sessionTokensIn = 0;
   @state() private sessionTokensOut = 0;
+  // Dashboard: recent commits + auto-generated suggestions.
+  @state() private recentCommits: Array<{ shortSha: string; message: string; authorName: string; age: string }> = [];
+  @state() private suggestions: Array<{ label: string; prompt: string }> = [];
 
   private toggleFocus = () => {
     this.focused = !this.focused;
@@ -199,8 +202,64 @@ export class GcChatView extends LitElement {
       };
       this.turns = [];
       this.error = "";
+      void this.loadDashboard();
     } catch (e) {
       this.state = { phase: "error", message: messageOf(e) };
+    }
+  }
+
+  private async loadDashboard() {
+    try {
+      const resp = await repoClient.listCommits({
+        repoId: this.repoId,
+        limit: 8,
+        offset: 0,
+      });
+      const now = Math.floor(Date.now() / 1000);
+      this.recentCommits = resp.commits.map((c) => {
+        const diff = now - Number(c.authorTime);
+        let age: string;
+        if (diff < 3600) age = Math.floor(diff / 60) + "m ago";
+        else if (diff < 86400) age = Math.floor(diff / 3600) + "h ago";
+        else age = Math.floor(diff / 86400) + "d ago";
+        return { shortSha: c.shortSha, message: c.message, authorName: c.authorName, age };
+      });
+
+      // Auto-generate suggestions from recent activity.
+      const suggestions: Array<{ label: string; prompt: string }> = [];
+      suggestions.push({ label: "overview", prompt: "What is this project about?" });
+      if (resp.commits.length > 0) {
+        const latest = resp.commits[0];
+        suggestions.push({
+          label: "latest change",
+          prompt: `Explain the latest commit "${latest.message}" — what does it change and why?\n\n[[diff to=${latest.sha}]]`,
+        });
+      }
+      if (resp.commits.length > 3) {
+        suggestions.push({
+          label: "recent activity",
+          prompt: "Summarize what changed in the last few commits. What areas of the codebase are being worked on?",
+        });
+      }
+      // Find a frequently changed file from recent commits to suggest.
+      const fileCounts = new Map<string, number>();
+      for (const c of resp.commits.slice(0, 5)) {
+        if (c.filesChanged > 0 && c.filesChanged < 10) {
+          // We don't have per-file info here, but we can suggest exploring.
+          suggestions.push({
+            label: `commit ${c.shortSha}`,
+            prompt: `What does commit ${c.shortSha} ("${c.message}") change?\n\n[[diff to=${c.sha}]]`,
+          });
+          break;
+        }
+      }
+      this.suggestions = suggestions.slice(0, 4);
+    } catch {
+      // Non-critical — fallback to static suggestions.
+      this.suggestions = [
+        { label: "overview", prompt: "What is this project about?" },
+        { label: "architecture", prompt: "Summarize the architecture in @docs/ARCHITECTURE.md" },
+      ];
     }
   }
 
@@ -777,30 +836,32 @@ export class GcChatView extends LitElement {
       <div class="empty-chat">
         <div class="empty-title">ready when you are</div>
         <p class="empty-sub">
-          ask a question about the repo. pin files with
-          <code>@path/to/file</code> to inject their contents into context.
+          ask about the repo — use <code>@path/to/file</code> to include file contents
         </p>
-        <div class="empty-examples">
-          <button
-            class="example"
-            @click=${() => this.prefillExample("What is this project about?")}
-          >
-            <span class="example-head">overview</span>
-            <span class="example-body">What is this project about?</span>
-          </button>
-          <button
-            class="example"
-            @click=${() =>
-              this.prefillExample(
-                "Summarize the architecture in @docs/ARCHITECTURE.md",
-              )}
-          >
-            <span class="example-head">with @file</span>
-            <span class="example-body">
-              Summarize the architecture in @docs/ARCHITECTURE.md
-            </span>
-          </button>
-        </div>
+
+        ${this.suggestions.length > 0 ? html`
+          <div class="empty-examples">
+            ${this.suggestions.map((s) => html`
+              <button class="example" @click=${() => this.prefillExample(s.prompt)}>
+                <span class="example-head">${s.label}</span>
+                <span class="example-body">${s.prompt.split("\n")[0].slice(0, 80)}</span>
+              </button>
+            `)}
+          </div>
+        ` : nothing}
+
+        ${this.recentCommits.length > 0 ? html`
+          <div class="recent-activity">
+            <div class="recent-title">recent activity</div>
+            ${this.recentCommits.map((c) => html`
+              <div class="recent-commit">
+                <span class="recent-sha">${c.shortSha}</span>
+                <span class="recent-msg">${c.message}</span>
+                <span class="recent-meta">${c.authorName} · ${c.age}</span>
+              </div>
+            `)}
+          </div>
+        ` : nothing}
       </div>
     `;
   }
@@ -1195,6 +1256,44 @@ export class GcChatView extends LitElement {
     }
     .example-body {
       font-size: 0.82rem;
+    }
+
+    /* ── Recent activity ──────────────────────────────────────────── */
+    .recent-activity {
+      margin-top: var(--space-4);
+      text-align: left;
+    }
+    .recent-title {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      opacity: 0.4;
+      margin-bottom: var(--space-2);
+    }
+    .recent-commit {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-2);
+      padding: var(--space-1) 0;
+      font-size: var(--text-xs);
+      border-bottom: 1px solid var(--surface-4);
+    }
+    .recent-commit:last-child { border-bottom: none; }
+    .recent-sha {
+      color: var(--accent-user);
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
+    .recent-msg {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .recent-meta {
+      flex-shrink: 0;
+      opacity: 0.4;
+      font-size: 0.65rem;
     }
 
     /* ── Turns ───────────────────────────────────────────────────── */
