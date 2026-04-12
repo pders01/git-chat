@@ -41,7 +41,29 @@ type Turn = {
   model?: string;
   streaming?: boolean;
   html?: string;
+  tokensIn?: number;
+  tokensOut?: number;
 };
+
+// Per-model pricing in dollars per million tokens.
+const MODEL_PRICING: Record<string, { in: number; out: number }> = {
+  "claude-opus-4": { in: 15, out: 75 },
+  "claude-sonnet-4": { in: 3, out: 15 },
+  "gpt-4o": { in: 2.5, out: 10 },
+};
+const DEFAULT_PRICING = { in: 5, out: 15 };
+
+function estimateCost(model: string, tokensIn: number, tokensOut: number): string {
+  const key = Object.keys(MODEL_PRICING).find((k) => model.toLowerCase().includes(k));
+  const rate = key ? MODEL_PRICING[key] : DEFAULT_PRICING;
+  const cost = (tokensIn * rate.in + tokensOut * rate.out) / 1_000_000;
+  if (cost < 0.001) return "<$0.001";
+  return `~$${cost.toFixed(3)}`;
+}
+
+function fmtNum(n: number): string {
+  return n.toLocaleString("en-US");
+}
 
 type ViewState =
   | { phase: "loading" }
@@ -71,6 +93,9 @@ export class GcChatView extends LitElement {
   @state() private focused = readFocus();
   // Mobile drawer state — sidebar slides in as overlay on narrow viewports.
   @state() private drawerOpen = false;
+  // Cumulative token counts for the current session.
+  @state() private sessionTokensIn = 0;
+  @state() private sessionTokensOut = 0;
 
   private toggleFocus = () => {
     this.focused = !this.focused;
@@ -185,9 +210,16 @@ export class GcChatView extends LitElement {
     if (this.state.phase !== "ready") return;
     this.drawerOpen = false;
     this.state = { ...this.state, selected: sessionId };
+    this.sessionTokensIn = 0;
+    this.sessionTokensOut = 0;
     try {
       const resp = await chatClient.getSession({ sessionId });
       this.turns = resp.messages.map(turnFromMessage);
+      // Tally historical token counts for the session summary.
+      for (const m of resp.messages) {
+        this.sessionTokensIn += Number(m.tokenCountIn) || 0;
+        this.sessionTokensOut += Number(m.tokenCountOut) || 0;
+      }
       // Kick off markdown rendering for all assistant turns in
       // parallel. Each resolution triggers an incremental re-render
       // via the triggered state update inside renderTurnMarkdown.
@@ -293,6 +325,8 @@ export class GcChatView extends LitElement {
     this.state = { ...this.state, selected: null };
     this.turns = [];
     this.error = "";
+    this.sessionTokensIn = 0;
+    this.sessionTokensOut = 0;
   }
 
   private onInput(e: Event) {
@@ -447,6 +481,13 @@ export class GcChatView extends LitElement {
           assistantTurn.streaming = false;
           assistantTurn.id = chunk.kind.value.assistantMessageId;
           assistantTurn.model = chunk.kind.value.model;
+          // Capture token counts from the Done payload.
+          const tIn = Number(chunk.kind.value.tokenCountIn) || 0;
+          const tOut = Number(chunk.kind.value.tokenCountOut) || 0;
+          assistantTurn.tokensIn = tIn;
+          assistantTurn.tokensOut = tOut;
+          this.sessionTokensIn += tIn;
+          this.sessionTokensOut += tOut;
           if (chunk.kind.value.error) {
             this.error = chunk.kind.value.error;
             // Surface the error inside the assistant bubble too, not
@@ -612,6 +653,9 @@ export class GcChatView extends LitElement {
 
         <section class="pane">
           <div class="pane-hd">
+            ${this.sessionTokensIn || this.sessionTokensOut
+              ? html`<span class="session-tokens">${fmtNum(this.sessionTokensIn)} in · ${fmtNum(this.sessionTokensOut)} out · ${estimateCost("", this.sessionTokensIn, this.sessionTokensOut)}</span>`
+              : nothing}
             ${s.selected
               ? html`<button
                   class="export-btn"
@@ -776,6 +820,12 @@ export class GcChatView extends LitElement {
         </article>
       `;
     }
+    // Token info: show "streaming..." while live, final counts once done.
+    const tokenInfo = t.streaming
+      ? html`<div class="token-info">streaming...</div>`
+      : t.tokensIn || t.tokensOut
+        ? html`<div class="token-info">${t.model ? t.model.toLowerCase() : ""}${t.model ? " · " : ""}${fmtNum(t.tokensIn ?? 0)} in · ${fmtNum(t.tokensOut ?? 0)} out · ${estimateCost(t.model ?? "", t.tokensIn ?? 0, t.tokensOut ?? 0)}</div>`
+        : nothing;
     return html`
       <article class="turn ${roleClass}">
         <div class="turn-label">
@@ -784,6 +834,7 @@ export class GcChatView extends LitElement {
             : nothing}
         </div>
         ${body}
+        ${tokenInfo}
       </article>
     `;
   }
@@ -1335,6 +1386,20 @@ export class GcChatView extends LitElement {
       }
     }
 
+    /* ── Token info ───────────────────────────────────────────────── */
+    .token-info {
+      margin-top: var(--space-2);
+      font-size: var(--text-xs);
+      opacity: 0.4;
+      letter-spacing: 0.01em;
+    }
+    .session-tokens {
+      font-size: var(--text-xs);
+      opacity: 0.4;
+      margin-right: auto;
+      letter-spacing: 0.01em;
+    }
+
     /* ── Composer ────────────────────────────────────────────────── */
     /* Sits at the bottom of .pane. We give it a subtle top gradient
        fade so content scrolling behind it dims slightly before reaching
@@ -1603,6 +1668,8 @@ function turnFromMessage(m: ChatMessage): Turn {
     role: m.role,
     content: m.content,
     model: m.model || undefined,
+    tokensIn: Number(m.tokenCountIn) || undefined,
+    tokensOut: Number(m.tokenCountOut) || undefined,
   };
 }
 
