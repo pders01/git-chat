@@ -176,8 +176,11 @@ export class GcFileView extends LitElement {
         <div class="hd-left">
           <span
             class="path copyable"
+            tabindex="0"
+            role="button"
             @click=${() => copyText(this, this.path, "Path copied")}
-            title="Click to copy path"
+            @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copyText(this, this.path, "Path copied"); } }}
+            title="Press Enter to copy path"
           >${this.path}</span>
           <span class="meta">
             ${file.language || "plain"} · ${file.size} B · ${file.blobSha.slice(0, 7)}
