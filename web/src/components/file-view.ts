@@ -327,30 +327,19 @@ export class GcFileView extends LitElement {
                 const prev = i > 0 ? this.blameLines[i - 1] : undefined;
                 const isNewBlock = blame != null && (!prev || prev.commitSha !== blame.commitSha);
                 const isSelected = blame && this.hoveredBlame?.commitSha === blame.commitSha;
-                return html` <tr
-                  class="${isNewBlock ? "blame-start" : ""} ${isSelected ? "blame-selected" : ""}"
-                >
-                  <td
-                    class="blame-cell"
-                    data-idx=${i}
-                    tabindex=${isNewBlock ? "0" : "-1"}
-                    role="button"
-                  >
-                    ${isNewBlock && blame
-                      ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span>`
-                      : nothing}
-                  </td>
-                  <td class="lno-cell">${i + 1}</td>
-                  <td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">
-                    ${isHighlighted ? unsafeHTML(line) : line}
-                  </td>
-                </tr>`;
+                return this.renderBlameRow(i, line, isHighlighted, isNewBlock, isSelected, blame);
               })}
             </tbody>
           </table>
         </div>
       </div>
     `;
+  }
+
+  // Single-line template: whitespace inside <td white-space:pre> becomes visible line gaps.
+  // prettier-ignore
+  private renderBlameRow(i: number, line: string, isHighlighted: boolean, isNewBlock: boolean, isSelected: boolean, blame: BlameLine | undefined) {
+    return html`<tr class="${isNewBlock ? "blame-start" : ""} ${isSelected ? "blame-selected" : ""}"><td class="blame-cell" data-idx=${i} tabindex=${isNewBlock ? "0" : "-1"} role="button">${isNewBlock && blame ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span>` : nothing}</td><td class="lno-cell">${i + 1}</td><td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">${isHighlighted ? unsafeHTML(line) : line}</td></tr>`;
   }
 
   private async toggleBlame() {

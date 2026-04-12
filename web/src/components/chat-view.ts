@@ -1008,6 +1008,7 @@ export class GcChatView extends LitElement {
       display: flex;
       flex-direction: column;
       min-height: 0;
+      overflow: hidden;
       border-right: 1px solid var(--surface-4);
       background: var(--surface-0);
     }

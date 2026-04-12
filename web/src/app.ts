@@ -1454,21 +1454,25 @@ export class GcApp extends LitElement {
     .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.6);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      background: rgba(0, 0, 0, 0.4);
       z-index: 50;
     }
     .modal {
+      position: fixed;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
       background: var(--surface-2);
       border: 1px solid var(--border-default);
       border-radius: var(--radius-xl);
       padding: var(--space-6) var(--space-7);
       max-width: 720px;
       width: 90vw;
-      max-height: 85vh;
+      max-height: calc(100vh - 120px);
       overflow-y: auto;
+      z-index: 51;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      animation: palette-in 0.12s ease;
     }
     .modal-title {
       margin: 0 0 var(--space-4);
