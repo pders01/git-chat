@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
 import type { ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
+import { onChange as onSettingsChange } from "../lib/settings.js";
 
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
 function loadHighlight() {
@@ -39,12 +40,31 @@ export class GcCompareView extends LitElement {
   @state() private diffError = "";
   @state() private compareLoading = false;
   private fullDiffHtml = "";
+  private rawDiff = "";
+  private fullRawDiff = "";
   private compareGeneration = 0;
   private lastCompareKey = "";
+  private unsubSettings: (() => void) | null = null;
 
   override connectedCallback() {
     super.connectedCallback();
+    this.unsubSettings = onSettingsChange(() => void this.rehighlight());
     if (this.repoId && this.baseRef && this.headRef) void this.compare();
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.unsubSettings?.();
+    this.unsubSettings = null;
+  }
+
+  private async rehighlight() {
+    if (!this.rawDiff) return;
+    const { highlight } = await loadHighlight();
+    this.diffHtml = await highlight(this.rawDiff, "diff");
+    if (this.selectedFile === "" && this.fullRawDiff) {
+      this.fullDiffHtml = this.diffHtml;
+    }
   }
 
   override updated(changed: Map<string, unknown>) {
@@ -90,12 +110,16 @@ export class GcCompareView extends LitElement {
       if (diff.empty) {
         this.diffHtml = "";
         this.fullDiffHtml = "";
+        this.rawDiff = "";
+        this.fullRawDiff = "";
       } else {
         const { highlight } = await loadHighlight();
         const highlighted = await highlight(diff.unifiedDiff, "diff");
         if (gen !== this.compareGeneration) return;
         this.diffHtml = highlighted;
         this.fullDiffHtml = highlighted;
+        this.rawDiff = diff.unifiedDiff;
+        this.fullRawDiff = diff.unifiedDiff;
       }
     } catch (e) {
       if (gen !== this.compareGeneration) return;
@@ -113,6 +137,7 @@ export class GcCompareView extends LitElement {
 
     if (path === "") {
       this.diffHtml = this.fullDiffHtml;
+      this.rawDiff = this.fullRawDiff;
       this.diffLoading = false;
       return;
     }
@@ -131,11 +156,13 @@ export class GcCompareView extends LitElement {
       if (gen !== this.compareGeneration || this.selectedFile !== path) return;
       if (resp.empty) {
         this.diffHtml = "";
+        this.rawDiff = "";
       } else {
         const { highlight } = await loadHighlight();
         const highlighted = await highlight(resp.unifiedDiff, "diff");
         if (gen !== this.compareGeneration || this.selectedFile !== path) return;
         this.diffHtml = highlighted;
+        this.rawDiff = resp.unifiedDiff;
       }
     } catch (e) {
       if (gen !== this.compareGeneration || this.selectedFile !== path) return;

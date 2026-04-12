@@ -5,6 +5,7 @@ import { repoClient } from "../lib/transport.js";
 import { copyText } from "../lib/clipboard.js";
 import type { BlameLine } from "../gen/gitchat/v1/repo_pb.js";
 import type { GetFileResponse } from "../gen/gitchat/v1/repo_pb.js";
+import { onChange as onSettingsChange } from "../lib/settings.js";
 
 // Shiki + its grammars are ~300 kB gzipped. Import lazily so the initial
 // bundle doesn't pay for them on the auth / pairing path — they only load
@@ -44,14 +45,33 @@ export class GcFileView extends LitElement {
   @state() private view: ViewState = { phase: "empty" };
   private cachedShikiLines: string[] | null = null;
   private cachedShikiSrc = "";
+  private rawText = "";
+  private rawLang = "";
+  private unsubSettings: (() => void) | null = null;
+
+  override connectedCallback() {
+    super.connectedCallback();
+    this.unsubSettings = onSettingsChange(() => void this.rehighlight());
+  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
+    this.unsubSettings?.();
+    this.unsubSettings = null;
     if (this.hoverTimer) {
       clearTimeout(this.hoverTimer);
       this.hoverTimer = null;
     }
     this.hoveredBlame = null;
+  }
+
+  private async rehighlight() {
+    if (!this.rawText || !this.rawLang || this.view.phase !== "highlighted") return;
+    const highlight = await loadHighlight();
+    const highlighted = await highlight(this.rawText, this.rawLang);
+    this.cachedShikiLines = null; // invalidate line cache
+    this.cachedShikiSrc = "";
+    this.view = { ...this.view, html: highlighted };
   }
 
   override updated(changed: Map<string, unknown>) {
@@ -88,13 +108,17 @@ export class GcFileView extends LitElement {
       }
       const text = new TextDecoder().decode(resp.content);
       if (!resp.language) {
+        this.rawText = "";
+        this.rawLang = "";
         this.view = { phase: "plain", text, file: resp };
         return;
       }
       const highlight = await loadHighlight();
-      const html = await highlight(text, resp.language);
+      const highlighted = await highlight(text, resp.language);
       if (this.path !== requestedPath) return; // navigated during highlight
-      this.view = { phase: "highlighted", html, file: resp };
+      this.rawText = text;
+      this.rawLang = resp.language;
+      this.view = { phase: "highlighted", html: highlighted, file: resp };
     } catch (e) {
       this.view = {
         phase: "error",

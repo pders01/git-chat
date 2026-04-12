@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
 import type { StatusFile } from "../gen/gitchat/v1/repo_pb.js";
+import { onChange as onSettingsChange } from "../lib/settings.js";
 
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
 function loadHighlight() {
@@ -39,10 +40,25 @@ export class GcChangesView extends LitElement {
   @state() private statusLoading = true;
   @state() private statusError = "";
   private loadGeneration = 0;
+  private rawDiff = "";
+  private unsubSettings: (() => void) | null = null;
 
   override connectedCallback() {
     super.connectedCallback();
+    this.unsubSettings = onSettingsChange(() => void this.rehighlight());
     if (this.repoId) void this.loadStatus();
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.unsubSettings?.();
+    this.unsubSettings = null;
+  }
+
+  private async rehighlight() {
+    if (!this.rawDiff) return;
+    const { highlight } = await loadHighlight();
+    this.diffHtml = await highlight(this.rawDiff, "diff");
   }
 
   override updated(changed: Map<string, unknown>) {
@@ -93,11 +109,13 @@ export class GcChangesView extends LitElement {
       if (gen !== this.loadGeneration || this.selectedFile !== path) return;
       if (resp.empty) {
         this.diffHtml = "";
+        this.rawDiff = "";
       } else {
         const { highlight } = await loadHighlight();
         const highlighted = await highlight(resp.unifiedDiff, "diff");
         if (gen !== this.loadGeneration || this.selectedFile !== path) return;
         this.diffHtml = highlighted;
+        this.rawDiff = resp.unifiedDiff;
       }
     } catch (e) {
       if (gen !== this.loadGeneration || this.selectedFile !== path) return;

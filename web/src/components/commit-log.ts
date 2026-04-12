@@ -5,6 +5,7 @@ import { svg } from "lit";
 import { repoClient } from "../lib/transport.js";
 import type { CommitEntry, ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { copyText } from "../lib/clipboard.js";
+import { onChange as onSettingsChange } from "../lib/settings.js";
 
 // Lazy-load highlight for diff rendering.
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
@@ -39,7 +40,10 @@ export class GcCommitLog extends LitElement {
   @state() private splitView = false;
   @property({ type: String }) filterPath = "";
   private fullDiffHtml = ""; // cached full-commit diff
+  private rawDiff = ""; // raw diff text for current view
+  private fullRawDiff = ""; // raw diff text for full commit
   private pendingSha = "";
+  private unsubSettings: (() => void) | null = null;
 
   private onSelectCommit = ((e: CustomEvent<{ sha: string }>) => {
     if (this.state.phase === "ready") {
@@ -57,6 +61,7 @@ export class GcCommitLog extends LitElement {
     super.connectedCallback();
     this.addEventListener("gc:select-commit", this.onSelectCommit);
     this.addEventListener("gc:set-filter-path", this.onSetFilterPath);
+    this.unsubSettings = onSettingsChange(() => void this.rehighlight());
     if (this.repoId) void this.load(0);
   }
 
@@ -64,6 +69,20 @@ export class GcCommitLog extends LitElement {
     super.disconnectedCallback();
     this.removeEventListener("gc:select-commit", this.onSelectCommit);
     this.removeEventListener("gc:set-filter-path", this.onSetFilterPath);
+    this.unsubSettings?.();
+    this.unsubSettings = null;
+  }
+
+  private async rehighlight() {
+    if (!this.rawDiff) return;
+    const { highlight } = await loadHighlight();
+    let highlighted = await highlight(this.rawDiff, "diff");
+    highlighted = this.highlightWordDiffs(highlighted);
+    this.diffHtml = highlighted;
+    // Also update full cache if viewing all files.
+    if (this.selectedFile === "" && this.fullRawDiff) {
+      this.fullDiffHtml = highlighted;
+    }
   }
 
   private clearFilterPath() {
@@ -221,6 +240,8 @@ export class GcCommitLog extends LitElement {
       if (resp.empty) {
         this.diffHtml = "";
         this.fullDiffHtml = this.diffHtml;
+        this.rawDiff = "";
+        this.fullRawDiff = "";
       } else {
         const { highlight } = await loadHighlight();
         let highlighted = await highlight(resp.unifiedDiff, "diff");
@@ -228,6 +249,8 @@ export class GcCommitLog extends LitElement {
         highlighted = this.highlightWordDiffs(highlighted);
         this.diffHtml = highlighted;
         this.fullDiffHtml = highlighted;
+        this.rawDiff = resp.unifiedDiff;
+        this.fullRawDiff = resp.unifiedDiff;
       }
     } catch (e) {
       if (this.selectedSha !== requestedSha) return;
@@ -245,6 +268,7 @@ export class GcCommitLog extends LitElement {
     // "All files" — restore cached full diff.
     if (path === "") {
       this.diffHtml = this.fullDiffHtml;
+      this.rawDiff = this.fullRawDiff;
       this.diffLoading = false;
       return;
     }
@@ -262,12 +286,14 @@ export class GcCommitLog extends LitElement {
       if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
       if (resp.empty) {
         this.diffHtml = "";
+        this.rawDiff = "";
       } else {
         const { highlight } = await loadHighlight();
         let highlighted = await highlight(resp.unifiedDiff, "diff");
         if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
         highlighted = this.highlightWordDiffs(highlighted);
         this.diffHtml = highlighted;
+        this.rawDiff = resp.unifiedDiff;
       }
     } catch (e) {
       if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
@@ -411,7 +437,7 @@ export class GcCommitLog extends LitElement {
       return ranges;
     };
 
-    const wrapTextNodes = (el: Element, ranges: Array<[number, number]>) => {
+    const wrapTextNodes = (el: Element, ranges: Array<[number, number]>, cssClass: string) => {
       if (ranges.length === 0) return;
       // Walk text nodes, track global offset, wrap ranges in <mark>.
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -434,6 +460,7 @@ export class GcCommitLog extends LitElement {
           const before = n.node.splitText(localStart);
           const marked = before.splitText(localEnd - localStart);
           const mark = document.createElement("mark");
+          mark.className = cssClass;
           before.parentNode!.insertBefore(mark, before);
           mark.appendChild(before);
           void marked; // remainder stays in place
@@ -442,8 +469,8 @@ export class GcCommitLog extends LitElement {
       }
     };
 
-    wrapTextNodes(delEl, findChangedRanges(delWords, delChanged));
-    wrapTextNodes(addEl, findChangedRanges(addWords, addChanged));
+    wrapTextNodes(delEl, findChangedRanges(delWords, delChanged), "word-del");
+    wrapTextNodes(addEl, findChangedRanges(addWords, addChanged), "word-add");
   }
 
   private selectedFileEntry(): ChangedFile | undefined {
@@ -1245,10 +1272,14 @@ export class GcCommitLog extends LitElement {
     .diff-content .shiki {
       background: transparent !important;
     }
-    .diff-content mark {
-      background: rgba(255, 255, 255, 0.15);
+    .diff-content mark.word-del {
+      background: rgba(248, 81, 73, 0.40);
       border-radius: 2px;
-      outline: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 0 1px;
+    }
+    .diff-content mark.word-add {
+      background: rgba(63, 185, 80, 0.40);
+      border-radius: 2px;
       padding: 0 1px;
     }
 
