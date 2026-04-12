@@ -7,6 +7,7 @@ import {
   type Repo,
 } from "../gen/gitchat/v1/repo_pb.js";
 import "./file-view.js";
+import "./compare-view.js";
 
 /** A node in the expandable file tree. */
 interface TreeNode {
@@ -35,12 +36,37 @@ export class GcRepoBrowser extends LitElement {
   // as a source browser.
   @state() private focused = readFocus();
   @state() private drawerOpen = false;
+  @state() private comparing = false;
+  @state() private branches: Array<{ name: string }> = [];
+  @state() private baseRef = "";
+  @state() private headRef = "";
   private pendingFile = "";
 
   private onToggleFocus = () => {
     this.focused = !this.focused;
     writeFocus(this.focused);
   };
+
+  private async toggleCompare() {
+    this.comparing = !this.comparing;
+    if (this.comparing && this.branches.length === 0) {
+      try {
+        const resp = await repoClient.listBranches({ repoId: this.repoId });
+        this.branches = resp.branches;
+        if (this.state.phase === "ready") {
+          this.baseRef = this.state.repo.defaultBranch || this.branches[0]?.name || "";
+          const other = this.branches.find((b) => b.name !== this.baseRef);
+          this.headRef = other ? other.name : this.baseRef;
+        }
+      } catch {
+        // stay in compare mode with empty branches
+      }
+    }
+  }
+
+  private swapRefs() {
+    [this.baseRef, this.headRef] = [this.headRef, this.baseRef];
+  }
 
   private onOpenFile = ((e: CustomEvent<{ path: string }>) => {
     if (this.state.phase === "ready") {
@@ -168,22 +194,40 @@ export class GcRepoBrowser extends LitElement {
 
   private renderReady(s: Extract<BrowserState, { phase: "ready" }>) {
     return html`
-      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""}"
+      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""} ${this.comparing ? "comparing" : ""}"
         @keydown=${(e: KeyboardEvent) => { if (e.key === "Escape" && this.drawerOpen) { this.drawerOpen = false; } }}>
         <button class="drawer-toggle" @click=${() => (this.drawerOpen = !this.drawerOpen)} aria-label="Toggle file tree">☰</button>
         ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
         <aside>
           <div class="repo-hd">
             <span class="label">${s.repo.label}</span>
-            <span class="branch">${s.repo.defaultBranch}@${s.repo.headCommit}</span>
+            ${this.comparing
+              ? html`
+                  <select class="ref-select" .value=${this.baseRef} @change=${(e: Event) => { this.baseRef = (e.target as HTMLSelectElement).value; }} aria-label="Base branch">
+                    ${this.branches.map((b) => html`<option value=${b.name} ?selected=${b.name === this.baseRef}>${b.name}</option>`)}
+                  </select>
+                  <button class="hd-btn swap-btn" @click=${() => this.swapRefs()} aria-label="Swap branches" title="Swap base and head">⇄</button>
+                  <select class="ref-select" .value=${this.headRef} @change=${(e: Event) => { this.headRef = (e.target as HTMLSelectElement).value; }} aria-label="Head branch">
+                    ${this.branches.map((b) => html`<option value=${b.name} ?selected=${b.name === this.headRef}>${b.name}</option>`)}
+                  </select>`
+              : html`
+                  <span class="branch">${s.repo.defaultBranch}@${s.repo.headCommit}</span>`}
             <button
-              class="focus-btn"
-              @click=${this.onToggleFocus}
-              aria-label=${this.focused ? "Show file tree" : "Hide file tree"}
-              aria-pressed=${this.focused ? "true" : "false"}
-            >
-              ${this.focused ? "◀" : "▶"}
-            </button>
+              class="hd-btn"
+              @click=${() => this.toggleCompare()}
+              aria-label="Compare branches"
+              aria-pressed=${this.comparing ? "true" : "false"}
+              title="Compare branches"
+            >⇄</button>
+            ${this.comparing ? nothing : html`
+              <button
+                class="focus-btn"
+                @click=${this.onToggleFocus}
+                aria-label=${this.focused ? "Show file tree" : "Hide file tree"}
+                aria-pressed=${this.focused ? "true" : "false"}
+              >
+                ${this.focused ? "◀" : "▶"}
+              </button>`}
           </div>
 
           <ul class="entries" @keydown=${this.onTreeKeydown}>
@@ -192,11 +236,17 @@ export class GcRepoBrowser extends LitElement {
         </aside>
 
         <section>
-          <gc-file-view
-            .repoId=${s.repo.id}
-            .path=${this.selectedFile}
-            .branch=${""}
-          ></gc-file-view>
+          ${this.comparing
+            ? html`<gc-compare-view
+                .repoId=${s.repo.id}
+                .baseRef=${this.baseRef}
+                .headRef=${this.headRef}
+              ></gc-compare-view>`
+            : html`<gc-file-view
+                .repoId=${s.repo.id}
+                .path=${this.selectedFile}
+                .branch=${""}
+              ></gc-file-view>`}
         </section>
       </div>
     `;
@@ -314,6 +364,20 @@ export class GcRepoBrowser extends LitElement {
       overflow: hidden;
       border-right-width: 0;
     }
+    .layout.comparing {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+    }
+    .layout.comparing aside {
+      border-right: none;
+      border-bottom: none;
+    }
+    .layout.comparing aside .entries {
+      display: none;
+    }
+    .layout.comparing section {
+      min-height: 0;
+    }
     aside {
       border-right: 1px solid var(--surface-4);
       display: flex;
@@ -328,7 +392,8 @@ export class GcRepoBrowser extends LitElement {
       min-width: 0;
       min-height: 0;
     }
-    section > gc-file-view {
+    section > gc-file-view,
+    section > gc-compare-view {
       flex: 1;
       min-height: 0;
     }
@@ -346,6 +411,58 @@ export class GcRepoBrowser extends LitElement {
     .focus-btn:hover {
       opacity: 0.9;
     }
+    .hd-btn {
+      padding: var(--space-1);
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+      opacity: 0.5;
+      line-height: 1;
+    }
+    .hd-btn:hover { opacity: 1; background: var(--surface-2); }
+    .hd-btn:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
+    }
+    .hd-btn[aria-pressed="true"] {
+      opacity: 1;
+      background: var(--surface-3);
+      border-color: var(--accent-user);
+    }
+    .ref-select {
+      min-width: 60px;
+      max-width: 200px;
+      height: 24px;
+      padding: 0 var(--space-2);
+      background: var(--surface-0);
+      color: var(--text);
+      border: 1px solid var(--surface-4);
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23888'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 6px center;
+      padding-right: 20px;
+    }
+    .ref-select:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
+    }
+    .swap-btn {
+      border: none;
+      opacity: 0.35;
+      font-size: 0.7rem;
+      padding: 0 2px;
+    }
+    .swap-btn:hover { opacity: 0.7; background: transparent; }
     .repo-hd {
       padding: 0 0.95rem;
       height: 36px;
