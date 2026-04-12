@@ -901,3 +901,14 @@ milestones.
   invalidates itself when the repo changes. If you ever find yourself
   de-prioritizing the invalidation loop, you are building a different
   product.
+- **Git SHAs: full in proto, short in UI, prefix-match on cross-component
+  navigation.** Proto messages (GetBlame, ListCommits) always carry full
+  40-char SHAs. Components display shortened 7-char versions. When one
+  component navigates to another by SHA (e.g. blame tooltip → commit log),
+  the receiver must resolve short SHAs via `startsWith` against its loaded
+  data. Never assume a SHA passed between components is full-length.
+- **Theme: data-attribute, not class swap.** Dark tokens live in `:root`,
+  light overrides in `[data-theme="light"]`. The `settings.ts` theme module
+  sets the attribute on `<html>` and listens to `prefers-color-scheme` for
+  "system" mode. Every component inherits the theme through CSS custom
+  properties — zero per-component theme logic.
