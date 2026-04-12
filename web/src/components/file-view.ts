@@ -285,7 +285,6 @@ export class GcFileView extends LitElement {
   }
 
   private renderBlameTable(lines: string[], isHighlighted: boolean) {
-    let blockIdx = -1;
     return html`
       <div class="blame-table-wrap"
         @mouseover=${this.onGutterHover}
@@ -303,7 +302,6 @@ export class GcFileView extends LitElement {
               const blame = this.blameLines[i];
               const prev = i > 0 ? this.blameLines[i - 1] : undefined;
               const isNewBlock = blame != null && (!prev || prev.commitSha !== blame.commitSha);
-              if (isNewBlock) blockIdx++;
               return html`
                 <tr class="${isNewBlock ? "blame-start" : ""}">
                   <td class="blame-cell" data-idx=${i} tabindex="0" role="button">
@@ -589,47 +587,6 @@ export class GcFileView extends LitElement {
       white-space: pre-wrap;
       word-break: break-word;
     }
-    /* ── Blame info bar (below file header, inline) ─────────── */
-    .blame-bar {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      padding: var(--space-2) var(--space-4);
-      background: var(--surface-2);
-      border-bottom: 1px solid var(--surface-4);
-      font-size: var(--text-xs);
-      white-space: nowrap;
-      overflow: hidden;
-    }
-    .bb-sha {
-      color: var(--accent-user);
-      font-variant-numeric: tabular-nums;
-      flex-shrink: 0;
-    }
-    .bb-subject {
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .bb-meta {
-      opacity: 0.5;
-      flex-shrink: 0;
-    }
-    .bb-btn {
-      flex-shrink: 0;
-      padding: var(--space-1) var(--space-3);
-      background: var(--action-bg);
-      color: var(--text);
-      border: 1px solid var(--border-accent);
-      border-radius: var(--radius-md);
-      font-family: inherit;
-      font-size: var(--text-xs);
-      cursor: pointer;
-    }
-    .bb-btn:hover {
-      background: var(--action-bg-hover);
-    }
-
     .blame-sha {
       color: var(--accent-user);
       font-variant-numeric: tabular-nums;
