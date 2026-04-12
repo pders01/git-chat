@@ -384,25 +384,24 @@ export class GcCodeCity extends LitElement {
     this._resizeObserver.observe(container);
 
     // Animation loop
-    this.animate();
+    this.renderLoop();
   }
 
   /* ---- city geometry ---- */
 
   private buildCity() {
     if (!this.three || !this.scene || !this.tree) return;
-    const THREE = this.three;
 
     // Clear old block meshes
     for (const mesh of this.blockMeshes.values()) {
       this.scene.remove(mesh);
       mesh.geometry.dispose();
-      (mesh.material as InstanceType<THREE["MeshStandardMaterial"]>).dispose();
+      (mesh.material as InstanceType<typeof this.three["MeshStandardMaterial"]>).dispose();
     }
     this.blockMeshes.clear();
 
     // Also remove old directory ground planes (tagged with userData.isDir)
-    const toRemove: InstanceType<THREE["Object3D"]>[] = [];
+    const toRemove: InstanceType<typeof this.three["Object3D"]>[] = [];
     this.scene.traverse((obj) => {
       if ((obj as any).userData?.isDir) toRemove.push(obj);
     });
@@ -502,8 +501,8 @@ export class GcCodeCity extends LitElement {
 
   /* ---- animation ---- */
 
-  private animate = () => {
-    this.animFrameId = requestAnimationFrame(this.animate);
+  private renderLoop = () => {
+    this.animFrameId = requestAnimationFrame(this.renderLoop);
     this.controls?.update();
     if (this.renderer && this.scene && this.camera) {
       this.renderer.render(this.scene, this.camera);
@@ -575,38 +574,6 @@ export class GcCodeCity extends LitElement {
       void this.fetchAndBuild(value);
     }, 300);
   };
-
-  private animateHeight(
-    mesh: InstanceType<THREE["Mesh"]>,
-    targetHeight: number,
-    targetColor: number,
-  ) {
-    if (!this.three) return;
-    const THREE = this.three;
-
-    const startY = mesh.position.y;
-    const startScale = mesh.scale.y;
-    const targetScale = targetHeight / (mesh.geometry as any).parameters?.height || 1;
-    const startTime = performance.now();
-    const duration = 500;
-
-    const mat = mesh.material as InstanceType<THREE["MeshStandardMaterial"]>;
-    const startColor = mat.color.clone();
-    const endColor = new THREE.Color(targetColor);
-
-    const step = () => {
-      const elapsed = performance.now() - startTime;
-      const t = Math.min(1, elapsed / duration);
-      const ease = t * (2 - t); // ease-out quad
-
-      mesh.scale.y = startScale + (targetScale - startScale) * ease;
-      mesh.position.y = (mesh.geometry as any).parameters.height * mesh.scale.y / 2;
-      mat.color.lerpColors(startColor, endColor, ease);
-
-      if (t < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }
 
   /* ---- render ---- */
 

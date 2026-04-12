@@ -38,9 +38,7 @@ export class GcFileView extends LitElement {
   @state() private showBlame = false;
   @state() private blameLines: BlameLine[] = [];
   @state() private hoveredBlame: BlameLine | null = null;
-  @state() private blameTooltipStyle = "";
   private hoverTimer: ReturnType<typeof setTimeout> | null = null;
-  private hoveredIdx = -1;
 
   @state() private view: ViewState = { phase: "empty" };
   private cachedShikiLines: string[] | null = null;
@@ -249,9 +247,9 @@ export class GcFileView extends LitElement {
     // Toggle: click same commit → dismiss.
     if (this.hoveredBlame?.commitSha === blame.commitSha) {
       this.hoveredBlame = null;
-      this.hoveredIdx = -1;
+
     } else {
-      this.hoveredIdx = idx;
+
       this.hoveredBlame = blame;
     }
   };
@@ -267,10 +265,10 @@ export class GcFileView extends LitElement {
       const blame = this.blameLines[idx];
       if (blame && this.hoveredBlame?.commitSha === blame.commitSha) {
         this.hoveredBlame = null;
-        this.hoveredIdx = -1;
+  
       } else {
         this.hoveredBlame = blame ?? null;
-        this.hoveredIdx = idx;
+  
       }
     } else if (e.key === "Escape") {
       this.hoveredBlame = null;
