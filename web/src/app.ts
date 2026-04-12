@@ -42,6 +42,9 @@ export class GcApp extends LitElement {
     body: string;
   }> = [];
   @state() private searchSelectedIdx = -1;
+  @state() private showPalette = false;
+  @state() private paletteQuery = "";
+  @state() private paletteSelectedIdx = 0;
   @state() private currentBranch = ""; // empty = repo default branch
   @state() private branches: Array<{ name: string }> = [];
 
@@ -138,6 +141,10 @@ export class GcApp extends LitElement {
         (first ?? modal)?.focus();
       }
     }
+    if (changed.has("showPalette") && this.showPalette) {
+      await this.updateComplete;
+      this.renderRoot.querySelector<HTMLInputElement>(".palette-input")?.focus();
+    }
   }
 
   private trapFocus = (e: KeyboardEvent) => {
@@ -173,9 +180,11 @@ export class GcApp extends LitElement {
       this.showShortcuts = !this.showShortcuts;
       return;
     }
-    if (e.key === "Escape" && (this.showShortcuts || this.showSettings)) {
+    if (e.key === "Escape" && (this.showShortcuts || this.showSettings || this.showPalette)) {
       this.showShortcuts = false;
       this.showSettings = false;
+      this.showPalette = false;
+      this.paletteQuery = "";
       return;
     }
 
@@ -185,7 +194,8 @@ export class GcApp extends LitElement {
     switch (e.key) {
       case "k":
         e.preventDefault();
-        this.newChat();
+        this.showPalette = !this.showPalette;
+        if (!this.showPalette) this.paletteQuery = "";
         break;
       case "1":
         e.preventDefault();
@@ -560,6 +570,7 @@ export class GcApp extends LitElement {
       ${this.showShortcuts ? this.renderShortcutsModal() : nothing}
       ${this.showSettings ? this.renderSettingsModal() : nothing}
       ${this.showSearch ? this.renderSearchOverlay() : nothing}
+      ${this.showPalette ? this.renderCommandPalette() : nothing}
       <gc-toast></gc-toast>
     `;
   }
@@ -568,7 +579,7 @@ export class GcApp extends LitElement {
     const isMac = navigator.platform.includes("Mac");
     const mod = isMac ? "⌘" : "Ctrl+";
     const shortcuts = [
-      [mod + "K", "New chat"],
+      [mod + "K", "Command palette"],
       [mod + "1", "Chat tab"],
       [mod + "2", "Browse tab"],
       [mod + "3", "Log tab"],
@@ -977,6 +988,157 @@ export class GcApp extends LitElement {
         );
       });
     }
+  }
+
+  // ── Command palette ──────────────────────────────────────────
+
+  private paletteActions(): Array<{ id: string; label: string; hint: string; action: () => void }> {
+    const mod = navigator.platform.includes("Mac") ? "⌘" : "Ctrl+";
+    return [
+      { id: "new-chat", label: "New Chat", hint: `${mod}K`, action: () => this.newChat() },
+      {
+        id: "goto-chat",
+        label: "Go to Chat",
+        hint: `${mod}1`,
+        action: () => this.switchTab("chat"),
+      },
+      {
+        id: "goto-browse",
+        label: "Go to Browse",
+        hint: `${mod}2`,
+        action: () => this.switchTab("browse"),
+      },
+      { id: "goto-log", label: "Go to Log", hint: `${mod}3`, action: () => this.switchTab("log") },
+      {
+        id: "goto-kb",
+        label: "Go to Knowledge Base",
+        hint: `${mod}4`,
+        action: () => this.switchTab("kb"),
+      },
+      {
+        id: "toggle-focus",
+        label: "Toggle Focus Mode",
+        hint: `${mod}\\`,
+        action: () => this.toggleFocus(),
+      },
+      {
+        id: "open-search",
+        label: "Open Search",
+        hint: `${mod}F`,
+        action: () => {
+          this.showSearch = true;
+        },
+      },
+      {
+        id: "theme-light",
+        label: "Set Theme: Light",
+        hint: "",
+        action: () => settings.setTheme("light"),
+      },
+      {
+        id: "theme-dark",
+        label: "Set Theme: Dark",
+        hint: "",
+        action: () => settings.setTheme("dark"),
+      },
+      {
+        id: "theme-system",
+        label: "Set Theme: System",
+        hint: "",
+        action: () => settings.setTheme("system"),
+      },
+      {
+        id: "open-settings",
+        label: "Open Settings",
+        hint: "",
+        action: () => {
+          this.showSettings = true;
+          void this.loadConfig();
+        },
+      },
+      {
+        id: "shortcuts-help",
+        label: "Show Shortcuts",
+        hint: "?",
+        action: () => {
+          this.showShortcuts = true;
+        },
+      },
+    ];
+  }
+
+  private onPaletteKeydown(filtered: Array<{ action: () => void }>, e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      this.showPalette = false;
+      this.paletteQuery = "";
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      this.paletteSelectedIdx = Math.min(this.paletteSelectedIdx + 1, filtered.length - 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      this.paletteSelectedIdx = Math.max(this.paletteSelectedIdx - 1, 0);
+    } else if (e.key === "Enter" && filtered.length > 0) {
+      e.preventDefault();
+      filtered[this.paletteSelectedIdx].action();
+      this.showPalette = false;
+      this.paletteQuery = "";
+    }
+  }
+
+  private renderCommandPalette() {
+    const q = this.paletteQuery.trim().toLowerCase();
+    const filtered = this.paletteActions().filter((a) => !q || a.label.toLowerCase().includes(q));
+    const idx = Math.min(this.paletteSelectedIdx, Math.max(0, filtered.length - 1));
+    if (idx !== this.paletteSelectedIdx) this.paletteSelectedIdx = idx;
+
+    return html`
+      <div
+        class="search-backdrop"
+        @click=${() => {
+          this.showPalette = false;
+          this.paletteQuery = "";
+        }}
+      ></div>
+      <div class="palette" role="dialog" aria-label="Command palette">
+        <input
+          class="palette-input"
+          type="text"
+          placeholder="Type a command…"
+          .value=${this.paletteQuery}
+          @input=${(e: Event) => {
+            this.paletteQuery = (e.target as HTMLInputElement).value;
+            this.paletteSelectedIdx = 0;
+          }}
+          @keydown=${(e: KeyboardEvent) => this.onPaletteKeydown(filtered, e)}
+        />
+        <ul class="palette-list" role="listbox">
+          ${filtered.map(
+            (a, i) => html`
+              <li
+                class="palette-item ${i === idx ? "selected" : ""}"
+                role="option"
+                aria-selected=${i === idx}
+                @click=${() => {
+                  a.action();
+                  this.showPalette = false;
+                  this.paletteQuery = "";
+                }}
+                @mouseenter=${() => {
+                  this.paletteSelectedIdx = i;
+                }}
+              >
+                <span class="palette-label">${a.label}</span>
+                ${a.hint ? html`<kbd>${a.hint}</kbd>` : nothing}
+              </li>
+            `,
+          )}
+          ${filtered.length === 0
+            ? html`<li class="palette-item">no matching commands</li>`
+            : nothing}
+        </ul>
+        <div class="search-hint">↑↓ navigate · ↵ run · esc close</div>
+      </div>
+    `;
   }
 
   private renderSearchOverlay() {
@@ -1442,6 +1604,61 @@ export class GcApp extends LitElement {
     }
     @media (prefers-reduced-motion: reduce) {
       .search-palette {
+        animation: none;
+      }
+    }
+
+    /* ── Command palette ──────────────────────────────────────── */
+    .palette {
+      position: fixed;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90vw;
+      max-width: 640px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      z-index: 51;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      animation: palette-in 0.12s ease;
+    }
+    .palette-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: var(--space-4);
+      background: transparent;
+      color: var(--text);
+      border: none;
+      border-bottom: 1px solid var(--surface-4);
+      font-family: inherit;
+      font-size: var(--text-base);
+      outline: none;
+    }
+    .palette-list {
+      list-style: none;
+      margin: 0;
+      padding: var(--space-1) 0;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .palette-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-2) var(--space-4);
+      cursor: pointer;
+      font-size: var(--text-sm);
+    }
+    .palette-item.selected {
+      background: var(--surface-3);
+    }
+    .palette-label {
+      flex: 1;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .palette {
         animation: none;
       }
     }
