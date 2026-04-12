@@ -58,6 +58,11 @@ export class GcChatView extends LitElement {
   @state() private error = "";
   @state() private editingSessionId = "";
   @state() private sessionFilter = "";
+  // @-mention autocomplete state.
+  @state() private mentionQuery = "";
+  @state() private mentionResults: string[] = [];
+  @state() private showMentions = false;
+  private allFilePaths: string[] | null = null;
   // Focus mode hides the session sidebar and removes the messages
   // reader-width cap so the whole main area is chat content. Persisted
   // per-browser via localStorage.
@@ -277,6 +282,51 @@ export class GcChatView extends LitElement {
 
   private onInput(e: Event) {
     this.input = (e.target as HTMLTextAreaElement).value;
+    this.checkMention();
+  }
+
+  private async checkMention() {
+    const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
+    if (!ta) return;
+    const pos = ta.selectionStart;
+    const before = this.input.slice(0, pos);
+    const atMatch = before.match(/@([\w\-./]*)$/);
+    if (!atMatch) {
+      this.showMentions = false;
+      return;
+    }
+    this.mentionQuery = atMatch[1].toLowerCase();
+    // Lazy-load top-level file/dir names once.
+    if (!this.allFilePaths) {
+      try {
+        const resp = await repoClient.listTree({ repoId: this.repoId, path: "" });
+        this.allFilePaths = resp.entries.map((e) =>
+          e.type === 2 ? e.name + "/" : e.name // 2 = DIR
+        );
+      } catch {
+        this.allFilePaths = [];
+      }
+    }
+    this.mentionResults = (this.allFilePaths || [])
+      .filter((p) => p.toLowerCase().includes(this.mentionQuery))
+      .slice(0, 8);
+    this.showMentions = this.mentionResults.length > 0;
+  }
+
+  private insertMention(path: string) {
+    const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
+    if (!ta) return;
+    const pos = ta.selectionStart;
+    const before = this.input.slice(0, pos);
+    const after = this.input.slice(pos);
+    const atIdx = before.lastIndexOf("@");
+    this.input = before.slice(0, atIdx) + "@" + path + " " + after;
+    this.showMentions = false;
+    requestAnimationFrame(() => {
+      ta.focus();
+      const newPos = atIdx + path.length + 2;
+      ta.setSelectionRange(newPos, newPos);
+    });
   }
 
   private onKeydown(e: KeyboardEvent) {
@@ -552,6 +602,17 @@ export class GcChatView extends LitElement {
                 rows="1"
                 aria-label="Message input"
               ></textarea>
+              ${this.showMentions
+                ? html`<ul class="mention-list" role="listbox">
+                    ${this.mentionResults.map(
+                      (p) => html`<li role="option">
+                        <button class="mention-item" @click=${() => this.insertMention(p)}>
+                          ${p}
+                        </button>
+                      </li>`,
+                    )}
+                  </ul>`
+                : nothing}
               <div class="composer-row">
                 <span class="composer-hint">
                   ${this.error
@@ -1264,6 +1325,29 @@ export class GcChatView extends LitElement {
     }
     textarea::placeholder {
       opacity: 0.35;
+    }
+    .mention-list {
+      list-style: none;
+      margin: 0;
+      padding: var(--space-1) 0;
+      border-top: 1px solid var(--surface-4);
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    .mention-item {
+      display: block;
+      width: 100%;
+      padding: var(--space-1) var(--space-2);
+      background: transparent;
+      color: var(--accent-user);
+      border: none;
+      font-family: inherit;
+      font-size: var(--text-xs);
+      text-align: left;
+      cursor: pointer;
+    }
+    .mention-item:hover {
+      background: var(--surface-3);
     }
     .composer-row {
       display: flex;
