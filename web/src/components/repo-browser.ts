@@ -378,6 +378,7 @@ export class GcRepoBrowser extends LitElement {
                     .repoId=${s.repo.id}
                     .path=${this.selectedFile}
                     .branch=${this.branch}
+                    .initialBlame=${this.initialBlame}
                   ></gc-file-view>`}
         </section>
       </div>

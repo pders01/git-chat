@@ -35,6 +35,7 @@ export class GcFileView extends LitElement {
   @property({ type: String }) repoId = "";
   @property({ type: String }) path = "";
   @property({ type: String }) branch = "";
+  @property({ type: Boolean }) initialBlame = false;
   @state() private showBlame = false;
   @state() private blameLines: BlameLine[] = [];
   @state() private hoveredBlame: BlameLine | null = null;
@@ -82,6 +83,9 @@ export class GcFileView extends LitElement {
       } else {
         this.view = { phase: "empty" };
       }
+    }
+    if (changed.has("initialBlame") && this.initialBlame && !this.showBlame && this.path) {
+      void this.toggleBlame();
     }
   }
 
@@ -344,6 +348,13 @@ export class GcFileView extends LitElement {
 
   private async toggleBlame() {
     this.showBlame = !this.showBlame;
+    this.dispatchEvent(
+      new CustomEvent("gc:nav", {
+        bubbles: true,
+        composed: true,
+        detail: { blame: this.showBlame },
+      }),
+    );
     if (this.showBlame && this.blameLines.length === 0) {
       try {
         const resp = await repoClient.getBlame({

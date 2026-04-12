@@ -92,6 +92,7 @@ export class GcCommitLog extends LitElement {
 
   private clearFilterPath() {
     this.filterPath = "";
+    this.dispatchNav({ filterPath: undefined });
   }
 
   private _lastRestoredSha = "";
@@ -895,6 +896,7 @@ export class GcCommitLog extends LitElement {
                     class="split-toggle ${this.splitView ? "active" : ""}"
                     @click=${() => {
                       this.splitView = !this.splitView;
+                      this.dispatchNav({ splitView: this.splitView });
                     }}
                     aria-label="Toggle split diff view"
                     aria-pressed=${this.splitView ? "true" : "false"}
