@@ -172,6 +172,15 @@ export class GcChatView extends LitElement {
     }
   }
 
+  private startRename(sessionId: string) {
+    this.editingSessionId = sessionId;
+    requestAnimationFrame(() => {
+      const input = this.renderRoot.querySelector<HTMLInputElement>(`.rename-input[data-id="${sessionId}"]`);
+      input?.focus();
+      input?.select();
+    });
+  }
+
   private async selectSession(sessionId: string) {
     if (this.state.phase !== "ready") return;
     this.drawerOpen = false;
@@ -556,14 +565,15 @@ export class GcChatView extends LitElement {
                           @click=${() => this.selectSession(sess.id)}
                           @dblclick=${(e: Event) => {
                             e.preventDefault();
-                            this.editingSessionId = sess.id;
-                            requestAnimationFrame(() => {
-                              const input = this.renderRoot.querySelector<HTMLInputElement>(`.rename-input[data-id="${sess.id}"]`);
-                              input?.focus();
-                              input?.select();
-                            });
+                            this.startRename(sess.id);
                           }}
-                          title="Double-click to rename"
+                          @keydown=${(e: KeyboardEvent) => {
+                            if (e.key === "F2") {
+                              e.preventDefault();
+                              this.startRename(sess.id);
+                            }
+                          }}
+                          title="Double-click or F2 to rename"
                           aria-current=${sess.id === s.selected ? "true" : "false"}
                         >
                           ${this.editingSessionId === sess.id
@@ -941,6 +951,11 @@ export class GcChatView extends LitElement {
     .sess-delete:hover {
       opacity: 1 !important;
       color: var(--danger);
+    }
+    .sess-delete:focus-visible {
+      opacity: 0.7;
+      outline: 2px solid var(--accent-user);
+      outline-offset: -2px;
     }
     .rename-input {
       width: 100%;
