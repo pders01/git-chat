@@ -86,6 +86,35 @@ export class GcApp extends LitElement {
     );
   };
 
+  // ── Modal focus management ───────────────────────────────────
+  override async updated(changed: Map<string, unknown>) {
+    if (changed.has("showSettings") || changed.has("showShortcuts")) {
+      if (this.showSettings || this.showShortcuts) {
+        await this.updateComplete;
+        const modal = this.renderRoot.querySelector(".modal") as HTMLElement | null;
+        const first = modal?.querySelector("button, input, [tabindex]") as HTMLElement | null;
+        (first ?? modal)?.focus();
+      }
+    }
+  }
+
+  private trapFocus = (e: KeyboardEvent) => {
+    if (e.key !== "Tab") return;
+    const modal = (e.currentTarget as HTMLElement);
+    const focusable = modal.querySelectorAll<HTMLElement>("button, input, select, [tabindex]");
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = (this.renderRoot as ShadowRoot).activeElement ?? document.activeElement;
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
   // ── Global keyboard shortcuts ────────────────────────────────
   private onGlobalKeydown = (e: KeyboardEvent) => {
     if (this.state.phase !== "authenticated") return;
@@ -101,8 +130,9 @@ export class GcApp extends LitElement {
       this.showShortcuts = !this.showShortcuts;
       return;
     }
-    if (e.key === "Escape" && this.showShortcuts) {
+    if (e.key === "Escape" && (this.showShortcuts || this.showSettings)) {
       this.showShortcuts = false;
+      this.showSettings = false;
       return;
     }
 
@@ -418,7 +448,7 @@ export class GcApp extends LitElement {
     ];
     return html`
       <div class="modal-backdrop" @click=${() => (this.showShortcuts = false)}>
-        <div class="modal" role="dialog" aria-label="Keyboard shortcuts" @click=${(e: Event) => e.stopPropagation()}>
+        <div class="modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" @click=${(e: Event) => e.stopPropagation()} @keydown=${this.trapFocus}>
           <h2 class="modal-title">Keyboard shortcuts</h2>
           <dl class="shortcut-list">
             ${shortcuts.map(
@@ -443,7 +473,7 @@ export class GcApp extends LitElement {
     const theme = settings.getTheme();
     return html`
       <div class="modal-backdrop" @click=${() => (this.showSettings = false)}>
-        <div class="modal" role="dialog" aria-label="Settings" @click=${(e: Event) => e.stopPropagation()}>
+        <div class="modal" role="dialog" aria-modal="true" aria-label="Settings" @click=${(e: Event) => e.stopPropagation()} @keydown=${this.trapFocus}>
           <h2 class="modal-title">Settings</h2>
 
           <div class="setting-row">
