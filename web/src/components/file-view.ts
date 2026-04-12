@@ -37,6 +37,7 @@ export class GcFileView extends LitElement {
   @state() private showBlame = false;
   @state() private blameLines: BlameLine[] = [];
   @state() private hoveredBlame: BlameLine | null = null;
+  @state() private blameTooltipStyle = "";
   private hoverTimer: ReturnType<typeof setTimeout> | null = null;
 
   @state() private view: ViewState = { phase: "empty" };
@@ -109,7 +110,7 @@ export class GcFileView extends LitElement {
       case "plain":
         return html`
           ${this.renderHeader(this.view.file)}
-          ${this.showBlame ? this.renderBlameBar() : nothing}
+          ${this.showBlame ? this.renderBlameTooltip() : nothing}
           <div class="code-with-blame">
             ${this.showBlame ? this.renderBlameGutter() : nothing}
             <pre class="plain">${this.view.text}</pre>
@@ -119,7 +120,7 @@ export class GcFileView extends LitElement {
       case "highlighted":
         return html`
           ${this.renderHeader(this.view.file)}
-          ${this.showBlame ? this.renderBlameBar() : nothing}
+          ${this.showBlame ? this.renderBlameTooltip() : nothing}
           <div class="code-with-blame">
             ${this.showBlame ? this.renderBlameGutter() : nothing}
             <div class="shiki-wrap">${unsafeHTML(this.view.html)}</div>
@@ -129,23 +130,16 @@ export class GcFileView extends LitElement {
     }
   }
 
-  private renderBlameBar() {
+  private renderBlameTooltip() {
     const b = this.hoveredBlame;
     if (!b) return nothing;
     const age = new Date(Number(b.date) * 1000).toISOString().slice(0, 10);
     const subject = (b.commitMessage || "").split("\n")[0] || "(no message)";
     return html`
-      <div class="blame-bar">
-        <span class="bb-sha">${b.commitSha}</span>
-        <span class="bb-subject">${subject}</span>
-        <span class="bb-meta">${b.authorName} · ${age}</span>
-        <button class="bb-btn" @click=${() => {
-          this.hoveredBlame = null;
-          this.dispatchEvent(new CustomEvent("gc:ask-about", {
-            bubbles: true, composed: true,
-            detail: { prompt: `Explain commit ${b.commitSha} ("${subject}") and its changes to \`${this.path}\`.` },
-          }));
-        }}>explain in chat</button>
+      <div class="blame-tip" style=${this.blameTooltipStyle}>
+        <span class="bt-sha">${b.commitSha}</span>
+        <span class="bt-subject">${subject}</span>
+        <span class="bt-meta">${b.authorName} · ${age}</span>
       </div>
     `;
   }
@@ -191,6 +185,15 @@ export class GcFileView extends LitElement {
     if (this.hoverTimer) clearTimeout(this.hoverTimer);
     this.hoverTimer = setTimeout(() => {
       this.hoveredBlame = this.blameLines[idx]!;
+      // Position to the right of the gutter, clamped to viewport.
+      const gutterRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const tipW = 420, tipH = 60;
+      let left = gutterRect.right + 8;
+      let top = e.clientY - 20;
+      if (left + tipW > window.innerWidth) left = gutterRect.left - tipW - 8;
+      if (top + tipH > window.innerHeight) top = window.innerHeight - tipH - 8;
+      if (top < 8) top = 8;
+      this.blameTooltipStyle = `top:${top}px;left:${left}px`;
     }, 200);
   };
 
