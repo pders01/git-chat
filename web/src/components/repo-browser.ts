@@ -5,14 +5,23 @@ import { readFocus, writeFocus } from "../lib/focus.js";
 import {
   EntryType,
   type Repo,
-  type TreeEntry,
 } from "../gen/gitchat/v1/repo_pb.js";
 import "./file-view.js";
+
+/** A node in the expandable file tree. */
+interface TreeNode {
+  name: string;
+  fullPath: string;
+  type: EntryType;
+  children: TreeNode[] | null; // null = not loaded yet
+  open: boolean;
+  loading: boolean;
+}
 
 type BrowserState =
   | { phase: "loading" }
   | { phase: "no-repos" }
-  | { phase: "ready"; repo: Repo; entries: TreeEntry[]; path: string }
+  | { phase: "ready"; repo: Repo; roots: TreeNode[] }
   | { phase: "error"; message: string };
 
 @customElement("gc-repo-browser")
@@ -60,7 +69,6 @@ export class GcRepoBrowser extends LitElement {
       return;
     }
     try {
-      // Fetch repo metadata so we have label + branch info.
       const { repos } = await repoClient.listRepos({});
       const repo = repos.find((r) => r.id === this.repoId);
       if (!repo) {
@@ -68,9 +76,12 @@ export class GcRepoBrowser extends LitElement {
         return;
       }
       this.selectedFile = "";
-      await this.loadPath(repo, "");
+      const roots = await this.fetchChildren(repo.id, "");
+      this.state = { phase: "ready", repo, roots };
       // Apply pending file from search navigation.
       if (this.pendingFile) {
+        // Expand parent dirs to reveal the file.
+        await this.revealPath(this.pendingFile);
         this.selectedFile = this.pendingFile;
         this.pendingFile = "";
       }
@@ -79,40 +90,60 @@ export class GcRepoBrowser extends LitElement {
     }
   }
 
-  private async loadPath(repo: Repo, path: string) {
-    try {
-      const { entries } = await repoClient.listTree({
-        repoId: repo.id,
-        ref: "",
-        path,
-      });
-      this.state = { phase: "ready", repo, entries, path };
-    } catch (e) {
-      this.state = { phase: "error", message: messageOf(e) };
-    }
+  private async fetchChildren(repoId: string, path: string): Promise<TreeNode[]> {
+    const { entries } = await repoClient.listTree({ repoId, ref: "", path });
+    return entries.map((e) => ({
+      name: e.name,
+      fullPath: path ? `${path}/${e.name}` : e.name,
+      type: e.type,
+      children: e.type === EntryType.DIR ? null : undefined as never,
+      open: false,
+      loading: false,
+    })).filter((n) => n.type === EntryType.DIR || n.type === EntryType.FILE);
   }
 
-  private async navigate(name: string, type: EntryType) {
+  private async toggleDir(node: TreeNode) {
     if (this.state.phase !== "ready") return;
-    const { repo, path } = this.state;
-    const nextPath = path ? `${path}/${name}` : name;
-    if (type === EntryType.DIR) {
-      this.selectedFile = "";
-      await this.loadPath(repo, nextPath);
-    } else if (type === EntryType.FILE) {
-      this.selectedFile = nextPath;
+    if (node.open) {
+      node.open = false;
       this.requestUpdate();
+      return;
     }
+    // Lazy-load children on first expand.
+    if (node.children === null) {
+      node.loading = true;
+      this.requestUpdate();
+      try {
+        node.children = await this.fetchChildren(this.state.repo.id, node.fullPath);
+      } catch {
+        node.children = [];
+      }
+      node.loading = false;
+    }
+    node.open = true;
+    this.requestUpdate();
   }
 
-  private async up() {
+  private selectFile(node: TreeNode) {
+    this.selectedFile = node.fullPath;
+    this.requestUpdate();
+  }
+
+  /** Expand all ancestor directories for a given file path. */
+  private async revealPath(filePath: string) {
     if (this.state.phase !== "ready") return;
-    const { repo, path } = this.state;
-    if (!path) return;
-    const idx = path.lastIndexOf("/");
-    const nextPath = idx < 0 ? "" : path.slice(0, idx);
-    this.selectedFile = "";
-    await this.loadPath(repo, nextPath);
+    const parts = filePath.split("/");
+    let nodes = this.state.roots;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const dir = nodes.find((n) => n.name === parts[i] && n.type === EntryType.DIR);
+      if (!dir) return;
+      if (dir.children === null) {
+        dir.children = await this.fetchChildren(this.state.repo.id, dir.fullPath);
+      }
+      dir.open = true;
+      nodes = dir.children;
+    }
+    this.requestUpdate();
   }
 
   override render() {
@@ -129,7 +160,6 @@ export class GcRepoBrowser extends LitElement {
   }
 
   private renderReady(s: Extract<BrowserState, { phase: "ready" }>) {
-    const crumbs = s.path ? s.path.split("/") : [];
     return html`
       <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""}">
         <button class="drawer-toggle" @click=${() => (this.drawerOpen = !this.drawerOpen)} aria-label="Toggle file tree">☰</button>
@@ -140,49 +170,8 @@ export class GcRepoBrowser extends LitElement {
             <span class="branch">${s.repo.defaultBranch}@${s.repo.headCommit}</span>
           </div>
 
-          <nav class="crumbs">
-            <button class="crumb" @click=${() => this.jumpTo(s.repo, "")}>
-              /
-            </button>
-            ${crumbs.map(
-              (part, i) => html`
-                <span class="sep">/</span>
-                <button
-                  class="crumb"
-                  @click=${() =>
-                    this.jumpTo(s.repo, crumbs.slice(0, i + 1).join("/"))}
-                >
-                  ${part}
-                </button>
-              `,
-            )}
-          </nav>
-
           <ul class="entries">
-            ${s.path
-              ? html`
-                  <li>
-                    <button class="entry up" @click=${() => this.up()}>
-                      <span class="icon">↑</span> ..
-                    </button>
-                  </li>
-                `
-              : nothing}
-            ${s.entries.map(
-              (entry) => html`
-                <li>
-                  <button
-                    class="entry ${this.entryClass(entry)}"
-                    @click=${() => this.navigate(entry.name, entry.type)}
-                    ?disabled=${entry.type !== EntryType.DIR &&
-                    entry.type !== EntryType.FILE}
-                  >
-                    <span class="icon">${this.entryIcon(entry.type)}</span>
-                    ${entry.name}
-                  </button>
-                </li>
-              `,
-            )}
+            ${this.renderNodes(s.roots, 0)}
           </ul>
         </aside>
 
@@ -209,32 +198,41 @@ export class GcRepoBrowser extends LitElement {
     `;
   }
 
-  private async jumpTo(repo: Repo, path: string) {
-    this.selectedFile = "";
-    await this.loadPath(repo, path);
-  }
-
-  private entryClass(e: TreeEntry): string {
-    return e.type === EntryType.DIR
-      ? "dir"
-      : e.type === EntryType.FILE
-        ? "file"
-        : "other";
-  }
-
-  private entryIcon(t: EntryType): string {
-    switch (t) {
-      case EntryType.DIR:
-        return "▸";
-      case EntryType.FILE:
-        return "·";
-      case EntryType.SYMLINK:
-        return "→";
-      case EntryType.SUBMODULE:
-        return "+";
-      default:
-        return "?";
-    }
+  private renderNodes(nodes: TreeNode[], depth: number): unknown {
+    return nodes.map((node) => {
+      const indent = `padding-left: ${0.95 + depth * 0.85}rem`;
+      if (node.type === EntryType.DIR) {
+        return html`
+          <li>
+            <button
+              class="entry dir"
+              style=${indent}
+              @click=${() => this.toggleDir(node)}
+            >
+              <span class="icon">${node.open ? "▾" : "▸"}</span>
+              ${node.name}
+              ${node.loading ? html`<span class="loading-dot">…</span>` : nothing}
+            </button>
+            ${node.open && node.children
+              ? html`<ul class="entries nested">${this.renderNodes(node.children, depth + 1)}</ul>`
+              : nothing}
+          </li>
+        `;
+      }
+      const isSelected = node.fullPath === this.selectedFile;
+      return html`
+        <li>
+          <button
+            class="entry file ${isSelected ? "selected" : ""}"
+            style=${indent}
+            @click=${() => this.selectFile(node)}
+          >
+            <span class="icon">·</span>
+            ${node.name}
+          </button>
+        </li>
+      `;
+    });
   }
 
   static override styles = css`
@@ -332,32 +330,6 @@ export class GcRepoBrowser extends LitElement {
       opacity: 0.55;
       font-size: 0.72rem;
     }
-    .crumbs {
-      padding: var(--space-2) var(--space-3);
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.1rem;
-      border-bottom: 1px solid var(--border-default);
-      font-size: 0.72rem;
-    }
-    .sep {
-      opacity: 0.35;
-      margin: 0 0.1rem;
-    }
-    .crumb {
-      background: transparent;
-      border: none;
-      color: var(--text);
-      font-family: inherit;
-      font-size: inherit;
-      padding: 0.1rem var(--space-1);
-      cursor: pointer;
-      opacity: 0.75;
-    }
-    .crumb:hover {
-      opacity: 1;
-    }
     .entries {
       list-style: none;
       margin: 0;
@@ -398,8 +370,15 @@ export class GcRepoBrowser extends LitElement {
     .entry.dir {
       color: var(--accent-user);
     }
-    .entry.up {
-      opacity: 0.6;
+    .entry.selected {
+      background: var(--surface-3);
+    }
+    .entries.nested {
+      padding: 0;
+    }
+    .loading-dot {
+      opacity: 0.4;
+      margin-left: var(--space-1);
     }
     .hint,
     .err {
