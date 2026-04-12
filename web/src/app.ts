@@ -34,7 +34,12 @@ export class GcApp extends LitElement {
   @state() private showSettings = false;
   @state() private showSearch = false;
   @state() private searchQuery = "";
-  @state() private searchResults: Array<{ source: string; id: string; title: string; body: string }> = [];
+  @state() private searchResults: Array<{
+    source: string;
+    id: string;
+    title: string;
+    body: string;
+  }> = [];
   @state() private searchSelectedIdx = -1;
   @state() private currentBranch = ""; // empty = repo default branch
   @state() private branches: Array<{ name: string }> = [];
@@ -105,9 +110,7 @@ export class GcApp extends LitElement {
     this.switchTab("browse");
     requestAnimationFrame(() => {
       const browser = this.renderRoot.querySelector("gc-repo-browser");
-      browser?.dispatchEvent(
-        new CustomEvent("gc:open-file", { detail: { path: e.detail.path } }),
-      );
+      browser?.dispatchEvent(new CustomEvent("gc:open-file", { detail: { path: e.detail.path } }));
     });
   };
 
@@ -138,7 +141,7 @@ export class GcApp extends LitElement {
 
   private trapFocus = (e: KeyboardEvent) => {
     if (e.key !== "Tab") return;
-    const modal = (e.currentTarget as HTMLElement);
+    const modal = e.currentTarget as HTMLElement;
     const focusable = modal.querySelectorAll<HTMLElement>("button, input, select, [tabindex]");
     if (focusable.length === 0) return;
     const first = focusable[0];
@@ -266,9 +269,7 @@ export class GcApp extends LitElement {
       // Restore repo + tab from hash if available.
       const { repoId, tab } = this.readHash();
       const validRepo =
-        repoId && repos.some((r) => r.id === repoId)
-          ? repoId
-          : repos[0]?.id ?? "";
+        repoId && repos.some((r) => r.id === repoId) ? repoId : (repos[0]?.id ?? "");
       this.state = {
         phase: "authenticated",
         principal,
@@ -413,10 +414,7 @@ export class GcApp extends LitElement {
                     class="repo-select"
                     .value=${selectedRepo}
                     aria-label="Select repository"
-                    @change=${(e: Event) =>
-                      this.switchRepo(
-                        (e.target as HTMLSelectElement).value,
-                      )}
+                    @change=${(e: Event) => this.switchRepo((e.target as HTMLSelectElement).value)}
                   >
                     ${repos.map(
                       (r) =>
@@ -501,7 +499,17 @@ export class GcApp extends LitElement {
             <span class="principal">${principal}</span>
             <span class="dot">·</span>
             <span class="mode">${modeLabel}</span>
-            <button class="settings-btn" @click=${() => { this.showSettings = !this.showSettings; if (this.showSettings) { this.loadConfig(); } }} aria-label="Settings" title="Settings">
+            <button
+              class="settings-btn"
+              @click=${() => {
+                this.showSettings = !this.showSettings;
+                if (this.showSettings) {
+                  this.loadConfig();
+                }
+              }}
+              aria-label="Settings"
+              title="Settings"
+            >
               ⚙
             </button>
             <button class="logout" @click=${() => this.logout()} aria-label="Log out">
@@ -510,10 +518,29 @@ export class GcApp extends LitElement {
           </div>
         </header>
         <main class="shell-main" id="main-content">
-          <gc-chat-view .repoId=${selectedRepo} .branch=${this.currentBranch} class="tab-panel" ?hidden=${tab !== "chat"}></gc-chat-view>
-          <gc-repo-browser .repoId=${selectedRepo} .branch=${this.currentBranch} class="tab-panel" ?hidden=${tab !== "browse"}></gc-repo-browser>
-          <gc-commit-log .repoId=${selectedRepo} .branch=${this.currentBranch} class="tab-panel" ?hidden=${tab !== "log"}></gc-commit-log>
-          <gc-kb-view .repoId=${selectedRepo} class="tab-panel" ?hidden=${tab !== "kb"}></gc-kb-view>
+          <gc-chat-view
+            .repoId=${selectedRepo}
+            .branch=${this.currentBranch}
+            class="tab-panel"
+            ?hidden=${tab !== "chat"}
+          ></gc-chat-view>
+          <gc-repo-browser
+            .repoId=${selectedRepo}
+            .branch=${this.currentBranch}
+            class="tab-panel"
+            ?hidden=${tab !== "browse"}
+          ></gc-repo-browser>
+          <gc-commit-log
+            .repoId=${selectedRepo}
+            .branch=${this.currentBranch}
+            class="tab-panel"
+            ?hidden=${tab !== "log"}
+          ></gc-commit-log>
+          <gc-kb-view
+            .repoId=${selectedRepo}
+            class="tab-panel"
+            ?hidden=${tab !== "kb"}
+          ></gc-kb-view>
         </main>
       </div>
       ${this.showShortcuts ? this.renderShortcutsModal() : nothing}
@@ -542,7 +569,14 @@ export class GcApp extends LitElement {
     ];
     return html`
       <div class="modal-backdrop" @click=${() => (this.showShortcuts = false)}>
-        <div class="modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" @click=${(e: Event) => e.stopPropagation()} @keydown=${this.trapFocus}>
+        <div
+          class="modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Keyboard shortcuts"
+          @click=${(e: Event) => e.stopPropagation()}
+          @keydown=${this.trapFocus}
+        >
           <h2 class="modal-title">Keyboard shortcuts</h2>
           <dl class="shortcut-list">
             ${shortcuts.map(
@@ -575,9 +609,7 @@ export class GcApp extends LitElement {
 
   private updateConfigEntry(key: string, value: string) {
     // Update local state immediately
-    this.configEntries = this.configEntries.map((e: any) =>
-      e.key === key ? { ...e, value } : e,
-    );
+    this.configEntries = this.configEntries.map((e: any) => (e.key === key ? { ...e, value } : e));
     // Debounce the RPC call
     const existing = this.configDebounceTimers.get(key);
     if (existing) clearTimeout(existing);
@@ -627,7 +659,9 @@ export class GcApp extends LitElement {
     };
 
     if (this.configLoading) {
-      return html`<div class="config-section"><span class="config-loading">loading server config…</span></div>`;
+      return html`<div class="config-section">
+        <span class="config-loading">loading server config…</span>
+      </div>`;
     }
     if (this.configEntries.length === 0) {
       return nothing;
@@ -678,13 +712,17 @@ export class GcApp extends LitElement {
                         return html`
                           <div class="config-entry">
                             <div class="config-entry-header">
-                              <span class="config-key ${modified ? "config-modified" : ""}">${this.humanizeKey(entry.key)}</span>
+                              <span class="config-key ${modified ? "config-modified" : ""}"
+                                >${this.humanizeKey(entry.key)}</span
+                              >
                               ${modified
                                 ? html`<button
                                     class="config-reset-btn"
                                     @click=${() => this.resetConfigEntry(entry)}
                                     title="Reset to default: ${entry.defaultValue}"
-                                  >reset</button>`
+                                  >
+                                    reset
+                                  </button>`
                                 : nothing}
                             </div>
                             <input
@@ -694,7 +732,10 @@ export class GcApp extends LitElement {
                               ?readonly=${isSecret}
                               @input=${(e: Event) => {
                                 if (isSecret) return;
-                                this.updateConfigEntry(entry.key, (e.target as HTMLInputElement).value);
+                                this.updateConfigEntry(
+                                  entry.key,
+                                  (e.target as HTMLInputElement).value,
+                                );
                               }}
                             />
                             ${entry.description
@@ -720,7 +761,14 @@ export class GcApp extends LitElement {
     const theme = settings.getTheme();
     return html`
       <div class="modal-backdrop" @click=${() => (this.showSettings = false)}>
-        <div class="modal" role="dialog" aria-modal="true" aria-label="Settings" @click=${(e: Event) => e.stopPropagation()} @keydown=${this.trapFocus}>
+        <div
+          class="modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Settings"
+          @click=${(e: Event) => e.stopPropagation()}
+          @keydown=${this.trapFocus}
+        >
           <h2 class="modal-title">Settings</h2>
 
           <div class="setting-row">
@@ -730,8 +778,13 @@ export class GcApp extends LitElement {
                 (t) => html`
                   <button
                     class="theme-btn ${theme === t ? "active" : ""}"
-                    @click=${() => { settings.setTheme(t); this.requestUpdate(); }}
-                  >${t}</button>
+                    @click=${() => {
+                      settings.setTheme(t);
+                      this.requestUpdate();
+                    }}
+                  >
+                    ${t}
+                  </button>
                 `,
               )}
             </div>
@@ -795,17 +848,20 @@ export class GcApp extends LitElement {
           ${this.renderServerConfig()}
 
           <div class="setting-actions">
-            <button class="action-btn" @click=${async () => {
-              for (const k of settings.allKeys()) settings.reset(k);
-              settings.setTheme("system");
-              // Reset modified server config entries to defaults
-              for (const entry of this.configEntries) {
-                if ((entry as any).value !== (entry as any).defaultValue) {
-                  await this.resetConfigEntry(entry);
+            <button
+              class="action-btn"
+              @click=${async () => {
+                for (const k of settings.allKeys()) settings.reset(k);
+                settings.setTheme("system");
+                // Reset modified server config entries to defaults
+                for (const entry of this.configEntries) {
+                  if ((entry as any).value !== (entry as any).defaultValue) {
+                    await this.resetConfigEntry(entry);
+                  }
                 }
-              }
-              this.requestUpdate();
-            }}>
+                this.requestUpdate();
+              }}
+            >
               reset defaults
             </button>
           </div>
@@ -857,10 +913,7 @@ export class GcApp extends LitElement {
     }
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      this.searchSelectedIdx = Math.min(
-        this.searchSelectedIdx + 1,
-        this.searchResults.length - 1,
-      );
+      this.searchSelectedIdx = Math.min(this.searchSelectedIdx + 1, this.searchResults.length - 1);
       return;
     }
     if (e.key === "ArrowUp") {
@@ -923,45 +976,49 @@ export class GcApp extends LitElement {
     return html`
       <div class="search-backdrop" @click=${() => (this.showSearch = false)}></div>
       <div class="search-palette" role="dialog" aria-label="Search">
-          <input
-            class="search-input"
-            type="search"
-            placeholder="Search files, chats, knowledge cards…"
-            .value=${this.searchQuery}
-            @input=${(e: Event) => this.onSearchInput(e)}
-            @keydown=${(e: KeyboardEvent) => this.onSearchKeydown(e)}
-            aria-label="Global search"
-            aria-controls="search-results-list"
-            aria-activedescendant=${this.searchSelectedIdx >= 0 ? `search-hit-${this.searchSelectedIdx}` : ""}
-            role="combobox"
-            aria-expanded=${this.searchResults.length > 0 ? "true" : "false"}
-            autocomplete="off"
-          />
-          ${this.searchResults.length > 0
-            ? html`<ul class="search-results" id="search-results-list" role="listbox">
-                ${this.searchResults.map(
-                  (r, i) => html`
-                    <li
-                      class="search-hit ${i === this.searchSelectedIdx ? "selected" : ""}"
-                      id="search-hit-${i}"
-                      role="option"
-                      aria-selected=${i === this.searchSelectedIdx ? "true" : "false"}
-                      @click=${() => this.activateSearchResult(r)}
-                      @mouseenter=${() => { this.searchSelectedIdx = i; }}
-                    >
-                      <span class="hit-source">${sourceLabels[r.source] ?? r.source}</span>
-                      <span class="hit-title">${r.title}</span>
-                      ${r.body
-                        ? html`<span class="hit-body">${r.body.slice(0, 120)}</span>`
-                        : nothing}
-                    </li>
-                  `,
-                )}
-              </ul>`
-            : this.searchQuery.trim()
-              ? html`<p class="search-empty">no results</p>`
-              : nothing}
-          <div class="search-hint">↑↓ navigate · ↵ open · esc close</div>
+        <input
+          class="search-input"
+          type="search"
+          placeholder="Search files, chats, knowledge cards…"
+          .value=${this.searchQuery}
+          @input=${(e: Event) => this.onSearchInput(e)}
+          @keydown=${(e: KeyboardEvent) => this.onSearchKeydown(e)}
+          aria-label="Global search"
+          aria-controls="search-results-list"
+          aria-activedescendant=${this.searchSelectedIdx >= 0
+            ? `search-hit-${this.searchSelectedIdx}`
+            : ""}
+          role="combobox"
+          aria-expanded=${this.searchResults.length > 0 ? "true" : "false"}
+          autocomplete="off"
+        />
+        ${this.searchResults.length > 0
+          ? html`<ul class="search-results" id="search-results-list" role="listbox">
+              ${this.searchResults.map(
+                (r, i) => html`
+                  <li
+                    class="search-hit ${i === this.searchSelectedIdx ? "selected" : ""}"
+                    id="search-hit-${i}"
+                    role="option"
+                    aria-selected=${i === this.searchSelectedIdx ? "true" : "false"}
+                    @click=${() => this.activateSearchResult(r)}
+                    @mouseenter=${() => {
+                      this.searchSelectedIdx = i;
+                    }}
+                  >
+                    <span class="hit-source">${sourceLabels[r.source] ?? r.source}</span>
+                    <span class="hit-title">${r.title}</span>
+                    ${r.body
+                      ? html`<span class="hit-body">${r.body.slice(0, 120)}</span>`
+                      : nothing}
+                  </li>
+                `,
+              )}
+            </ul>`
+          : this.searchQuery.trim()
+            ? html`<p class="search-empty">no results</p>`
+            : nothing}
+        <div class="search-hint">↑↓ navigate · ↵ open · esc close</div>
       </div>
     `;
   }
@@ -973,9 +1030,7 @@ export class GcApp extends LitElement {
       case "local-claiming":
         return html`<p class="hint">claiming local session…</p>`;
       case "unauthenticated":
-        return html`
-          <gc-pairing-view @paired=${this.onPaired}></gc-pairing-view>
-        `;
+        return html` <gc-pairing-view @paired=${this.onPaired}></gc-pairing-view> `;
       case "error":
         return html`<div class="err">${this.state.message}</div>`;
     }
@@ -1139,7 +1194,9 @@ export class GcApp extends LitElement {
       font-size: var(--text-sm);
       cursor: pointer;
       opacity: 0.45;
-      transition: opacity 0.12s ease, border-color 0.12s ease;
+      transition:
+        opacity 0.12s ease,
+        border-color 0.12s ease;
     }
     .tab:hover {
       opacity: 0.8;
@@ -1307,7 +1364,10 @@ export class GcApp extends LitElement {
       animation: palette-in 0.12s ease;
     }
     @keyframes palette-in {
-      from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-8px);
+      }
     }
     .search-input {
       width: 100%;
@@ -1369,7 +1429,9 @@ export class GcApp extends LitElement {
       font-size: var(--text-sm);
     }
     @media (prefers-reduced-motion: reduce) {
-      .search-palette { animation: none; }
+      .search-palette {
+        animation: none;
+      }
     }
 
     /* ── Settings modal ───────────────────────────────────────── */
@@ -1568,7 +1630,8 @@ export class GcApp extends LitElement {
       .brand {
         gap: var(--space-2);
       }
-      .repo-label, .repo-select {
+      .repo-label,
+      .repo-select {
         display: none;
       }
     }

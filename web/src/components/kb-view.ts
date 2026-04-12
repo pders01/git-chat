@@ -213,14 +213,23 @@ export class GcKbView extends LitElement {
                     ${this.filteredCards.map(
                       (c) => html`
                         <li
-                          class="card-item ${c.id === this.selectedCardId ? "selected" : ""} ${c.invalidated ? "stale" : ""}"
+                          class="card-item ${c.id === this.selectedCardId
+                            ? "selected"
+                            : ""} ${c.invalidated ? "stale" : ""}"
                           role="option"
                           tabindex="0"
                           aria-selected=${c.id === this.selectedCardId ? "true" : "false"}
                           @click=${() => this.selectCard(c.id)}
-                          @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this.selectCard(c.id); } }}
+                          @keydown=${(e: KeyboardEvent) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              this.selectCard(c.id);
+                            }
+                          }}
                         >
-                          ${c.invalidated ? html`<span class="stale-icon" title="invalidated">!</span>` : html`<span class="valid-icon"></span>`}
+                          ${c.invalidated
+                            ? html`<span class="stale-icon" title="invalidated">!</span>`
+                            : html`<span class="valid-icon"></span>`}
                           <span class="card-question">${c.question}</span>
                           <span class="card-hits">${c.hitCount}</span>
                         </li>
@@ -253,8 +262,19 @@ export class GcKbView extends LitElement {
           <span>${d.hitCount} hits</span>
           <span class="meta-sep">&middot;</span>
           <span>model: ${d.model}</span>
-          ${d.invalidated ? html`<span class="meta-sep">&middot;</span><span class="stale-badge">stale</span>` : nothing}
-          ${d.createdCommit ? html`<span class="meta-sep">&middot;</span><button class="commit-link" title="View in log" @click=${() => this.viewInLog(d.createdCommit)}>${d.createdCommit.slice(0, 7)}</button>` : nothing}
+          ${d.invalidated
+            ? html`<span class="meta-sep">&middot;</span><span class="stale-badge">stale</span>`
+            : nothing}
+          ${d.createdCommit
+            ? html`<span class="meta-sep">&middot;</span
+                ><button
+                  class="commit-link"
+                  title="View in log"
+                  @click=${() => this.viewInLog(d.createdCommit)}
+                >
+                  ${d.createdCommit.slice(0, 7)}
+                </button>`
+            : nothing}
         </div>
         <div class="detail-answer">${unsafeHTML(this.detailHtml)}</div>
         ${d.provenance.length > 0
@@ -447,7 +467,9 @@ export class GcKbView extends LitElement {
       text-decoration: underline;
       text-underline-offset: 2px;
     }
-    .commit-link:hover { opacity: 0.8; }
+    .commit-link:hover {
+      opacity: 0.8;
+    }
     .detail-answer {
       line-height: 1.65;
       overflow-wrap: break-word;
@@ -573,7 +595,9 @@ export class GcKbView extends LitElement {
       border: 1px solid var(--border-accent);
       border-radius: var(--radius-md);
       cursor: pointer;
-      transition: background 0.12s ease, border-color 0.12s ease;
+      transition:
+        background 0.12s ease,
+        border-color 0.12s ease;
     }
     .action-btn:hover {
       background: var(--action-bg-hover);

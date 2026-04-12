@@ -64,7 +64,8 @@ export class GcFileView extends LitElement {
   }
 
   private async rehighlight() {
-    const text = this.rawText, lang = this.rawLang;
+    const text = this.rawText,
+      lang = this.rawLang;
     if (!text || !lang || this.view.phase !== "highlighted") return;
     const highlight = await loadHighlight();
     const highlighted = await highlight(text, lang);
@@ -75,11 +76,7 @@ export class GcFileView extends LitElement {
   }
 
   override updated(changed: Map<string, unknown>) {
-    if (
-      changed.has("path") ||
-      changed.has("repoId") ||
-      changed.has("branch")
-    ) {
+    if (changed.has("path") || changed.has("repoId") || changed.has("branch")) {
       if (this.path && this.repoId) {
         void this.load();
       } else {
@@ -131,9 +128,9 @@ export class GcFileView extends LitElement {
     switch (this.view.phase) {
       case "empty":
         return html`<div class="empty-state">
-            <div class="empty-title">select a file</div>
-            <p class="empty-sub">click a file in the tree to view its contents</p>
-          </div>`;
+          <div class="empty-title">select a file</div>
+          <p class="empty-sub">click a file in the tree to view its contents</p>
+        </div>`;
       case "loading":
         return html`<p class="empty">loading…</p>`;
       case "error":
@@ -187,8 +184,12 @@ export class GcFileView extends LitElement {
         <div class="bi-subject">${subject}</div>
         ${body ? html`<pre class="bi-body">${body}</pre>` : nothing}
         <div class="bi-actions">
-          <button class="bi-btn" @click=${() => this.viewCommitInLog(b.commitSha)}>view in log</button>
-          <button class="bi-btn" @click=${() => this.askAboutCommit(b.commitSha, subject)}>ask in chat</button>
+          <button class="bi-btn" @click=${() => this.viewCommitInLog(b.commitSha)}>
+            view in log
+          </button>
+          <button class="bi-btn" @click=${() => this.askAboutCommit(b.commitSha, subject)}>
+            ask in chat
+          </button>
         </div>
       </div>
     `;
@@ -203,9 +204,15 @@ export class GcFileView extends LitElement {
             tabindex="0"
             role="button"
             @click=${() => copyText(this, this.path, "Path copied")}
-            @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copyText(this, this.path, "Path copied"); } }}
+            @keydown=${(e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                copyText(this, this.path, "Path copied");
+              }
+            }}
             title="Press Enter to copy path"
-          >${this.path}</span>
+            >${this.path}</span
+          >
           <span class="meta">
             ${file.language || "plain"} · ${file.size} B · ${file.blobSha.slice(0, 7)}
           </span>
@@ -247,9 +254,7 @@ export class GcFileView extends LitElement {
     // Toggle: click same commit → dismiss.
     if (this.hoveredBlame?.commitSha === blame.commitSha) {
       this.hoveredBlame = null;
-
     } else {
-
       this.hoveredBlame = blame;
     }
   };
@@ -265,10 +270,8 @@ export class GcFileView extends LitElement {
       const blame = this.blameLines[idx];
       if (blame && this.hoveredBlame?.commitSha === blame.commitSha) {
         this.hoveredBlame = null;
-  
       } else {
         this.hoveredBlame = blame ?? null;
-  
       }
     } else if (e.key === "Escape") {
       this.hoveredBlame = null;
@@ -308,15 +311,10 @@ export class GcFileView extends LitElement {
     return html`
       <div class="blame-layout">
         <!-- Left: commit info pane -->
-        <aside class="blame-info-pane">
-          ${this.renderBlameInfoPane()}
-        </aside>
+        <aside class="blame-info-pane">${this.renderBlameInfoPane()}</aside>
 
         <!-- Right: single table with blame SHA + line numbers + code -->
-        <div class="blame-table-wrap"
-          @click=${this.onGutterClick}
-          @keydown=${this.onBlameKeydown}
-        >
+        <div class="blame-table-wrap" @click=${this.onGutterClick} @keydown=${this.onBlameKeydown}>
           <table class="blame-table">
             <colgroup>
               <col class="blame-col" />
@@ -329,16 +327,24 @@ export class GcFileView extends LitElement {
                 const prev = i > 0 ? this.blameLines[i - 1] : undefined;
                 const isNewBlock = blame != null && (!prev || prev.commitSha !== blame.commitSha);
                 const isSelected = blame && this.hoveredBlame?.commitSha === blame.commitSha;
-                return html`
-                  <tr class="${isNewBlock ? "blame-start" : ""} ${isSelected ? "blame-selected" : ""}">
-                    <td class="blame-cell" data-idx=${i} tabindex=${isNewBlock ? "0" : "-1"} role="button">
-                      ${isNewBlock && blame
-                        ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span>`
-                        : nothing}
-                    </td>
-                    <td class="lno-cell">${i + 1}</td>
-                    <td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">${isHighlighted ? unsafeHTML(line) : line}</td>
-                  </tr>`;
+                return html` <tr
+                  class="${isNewBlock ? "blame-start" : ""} ${isSelected ? "blame-selected" : ""}"
+                >
+                  <td
+                    class="blame-cell"
+                    data-idx=${i}
+                    tabindex=${isNewBlock ? "0" : "-1"}
+                    role="button"
+                  >
+                    ${isNewBlock && blame
+                      ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span>`
+                      : nothing}
+                  </td>
+                  <td class="lno-cell">${i + 1}</td>
+                  <td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">
+                    ${isHighlighted ? unsafeHTML(line) : line}
+                  </td>
+                </tr>`;
               })}
             </tbody>
           </table>
@@ -346,7 +352,6 @@ export class GcFileView extends LitElement {
       </div>
     `;
   }
-
 
   private async toggleBlame() {
     this.showBlame = !this.showBlame;
@@ -569,7 +574,9 @@ export class GcFileView extends LitElement {
       font-size: var(--text-xs);
       cursor: pointer;
     }
-    .bi-btn:hover { background: var(--action-bg-hover); }
+    .bi-btn:hover {
+      background: var(--action-bg-hover);
+    }
     .blame-table-wrap {
       overflow: auto;
       min-width: 0;

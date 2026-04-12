@@ -54,12 +54,7 @@ export class GcToast extends LitElement {
       <div class="stack" role="alert" aria-live="polite">
         ${this.items.map(
           (t) => html`
-            <div
-              class="toast ${t.kind}"
-              @click=${() => this.dismiss(t.id)}
-            >
-              ${t.message}
-            </div>
+            <div class="toast ${t.kind}" @click=${() => this.dismiss(t.id)}>${t.message}</div>
           `,
         )}
       </div>
@@ -119,7 +114,11 @@ export class GcToast extends LitElement {
 }
 
 // Helper for dispatching toast from anywhere.
-export function toast(el: HTMLElement, message: string, kind: "info" | "error" | "success" = "info") {
+export function toast(
+  el: HTMLElement,
+  message: string,
+  kind: "info" | "error" | "success" = "info",
+) {
   el.dispatchEvent(
     new CustomEvent("gc:toast", {
       bubbles: true,

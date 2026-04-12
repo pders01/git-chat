@@ -13,11 +13,16 @@ function loadHighlight() {
 
 function statusLabel(status: string): string {
   switch (status) {
-    case "added": return "A";
-    case "deleted": return "D";
-    case "renamed": return "R";
-    case "copied": return "C";
-    default: return "M";
+    case "added":
+      return "A";
+    case "deleted":
+      return "D";
+    case "renamed":
+      return "R";
+    case "copied":
+      return "C";
+    default:
+      return "M";
   }
 }
 
@@ -145,18 +150,28 @@ export class GcChangesView extends LitElement {
         <span>${label}</span>
         <span class="group-count">${files.length}</span>
       </div>
-      ${files.map((f) => html`
-        <li>
-          <button
-            class="file-entry ${this.selectedFile === f.path ? "selected" : ""}"
-            @click=${(e: MouseEvent) => { if (e.metaKey || e.ctrlKey) { this.openInBrowse(f.path); } else { this.selectFile(f.path); } }}
-            title="${f.path} (⌘+click to open in browse)"
-          >
-            <span class="file-status ${f.status}">${prefix === "?" ? "?" : statusLabel(f.status)}</span>
-            <span class="file-path">${fileName(f.path)}</span>
-          </button>
-        </li>
-      `)}
+      ${files.map(
+        (f) => html`
+          <li>
+            <button
+              class="file-entry ${this.selectedFile === f.path ? "selected" : ""}"
+              @click=${(e: MouseEvent) => {
+                if (e.metaKey || e.ctrlKey) {
+                  this.openInBrowse(f.path);
+                } else {
+                  this.selectFile(f.path);
+                }
+              }}
+              title="${f.path} (⌘+click to open in browse)"
+            >
+              <span class="file-status ${f.status}"
+                >${prefix === "?" ? "?" : statusLabel(f.status)}</span
+              >
+              <span class="file-path">${fileName(f.path)}</span>
+            </button>
+          </li>
+        `,
+      )}
     `;
   }
 
@@ -165,7 +180,8 @@ export class GcChangesView extends LitElement {
       return html`<div class="hint">loading status…</div>`;
     }
     if (this.statusError) {
-      return html`<div class="hint err">${this.statusError}
+      return html`<div class="hint err">
+        ${this.statusError}
         <button class="retry-btn" @click=${() => this.loadStatus()}>retry</button>
       </div>`;
     }
@@ -189,7 +205,9 @@ export class GcChangesView extends LitElement {
               ? html`<span class="diff-filepath">${this.selectedFile}</span>`
               : html`<span class="diff-label">diff</span>`}
             <span class="diff-spacer"></span>
-            <button class="refresh-btn" @click=${() => this.loadStatus()} title="Refresh status">↻</button>
+            <button class="refresh-btn" @click=${() => this.loadStatus()} title="Refresh status">
+              ↻
+            </button>
           </div>
           <div class="diff-body">
             ${this.diffLoading
@@ -198,7 +216,9 @@ export class GcChangesView extends LitElement {
                 ? html`<p class="diff-err">${this.diffError}</p>`
                 : this.diffHtml
                   ? html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
-                  : html`<div class="diff-empty">${this.selectedFile ? "no changes" : "select a file to view its diff"}</div>`}
+                  : html`<div class="diff-empty">
+                      ${this.selectedFile ? "no changes" : "select a file to view its diff"}
+                    </div>`}
           </div>
         </section>
       </div>
@@ -206,7 +226,9 @@ export class GcChangesView extends LitElement {
   }
 
   static override styles = css`
-    :host([hidden]) { display: none !important; }
+    :host([hidden]) {
+      display: none !important;
+    }
     :host {
       display: flex;
       flex: 1;
@@ -222,7 +244,10 @@ export class GcChangesView extends LitElement {
       opacity: 0.5;
       font-size: var(--text-sm);
     }
-    .hint.err { color: var(--danger); opacity: 1; }
+    .hint.err {
+      color: var(--danger);
+      opacity: 1;
+    }
     .hint.clean {
       display: flex;
       align-items: center;
@@ -277,8 +302,12 @@ export class GcChangesView extends LitElement {
       letter-spacing: 0.05em;
       border-top: 1px solid var(--surface-4);
     }
-    .group-header:first-child { border-top: none; }
-    .group-count { opacity: 0.7; }
+    .group-header:first-child {
+      border-top: none;
+    }
+    .group-count {
+      opacity: 0.7;
+    }
     .file-entry {
       display: flex;
       align-items: center;
@@ -295,7 +324,9 @@ export class GcChangesView extends LitElement {
       cursor: pointer;
       transition: background 0.08s ease;
     }
-    .file-entry:hover { background: var(--surface-2); }
+    .file-entry:hover {
+      background: var(--surface-2);
+    }
     .file-entry.selected {
       background: var(--surface-2);
       border-left-color: var(--accent-assistant);
@@ -311,10 +342,18 @@ export class GcChangesView extends LitElement {
       font-weight: 600;
       font-size: 0.65rem;
     }
-    .file-status.modified { color: var(--accent-user); }
-    .file-status.added { color: var(--accent-assistant); }
-    .file-status.deleted { color: var(--danger); }
-    .file-status.renamed { color: var(--warning, #e0a040); }
+    .file-status.modified {
+      color: var(--accent-user);
+    }
+    .file-status.added {
+      color: var(--accent-assistant);
+    }
+    .file-status.deleted {
+      color: var(--danger);
+    }
+    .file-status.renamed {
+      color: var(--warning, #e0a040);
+    }
     .file-path {
       flex: 1;
       overflow: hidden;
@@ -353,7 +392,9 @@ export class GcChangesView extends LitElement {
       white-space: nowrap;
       font-size: var(--text-xs);
     }
-    .diff-spacer { flex: 1; }
+    .diff-spacer {
+      flex: 1;
+    }
     .refresh-btn {
       padding: var(--space-1);
       background: transparent;
@@ -365,7 +406,10 @@ export class GcChangesView extends LitElement {
       opacity: 0.5;
       line-height: 1;
     }
-    .refresh-btn:hover { opacity: 1; background: var(--surface-2); }
+    .refresh-btn:hover {
+      opacity: 1;
+      background: var(--surface-2);
+    }
     .refresh-btn:focus-visible {
       outline: 2px solid var(--accent-user);
       outline-offset: 1px;
@@ -406,7 +450,9 @@ export class GcChangesView extends LitElement {
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .file-entry { transition: none; }
+      .file-entry {
+        transition: none;
+      }
     }
     @media (max-width: 768px) {
       .changes-layout {

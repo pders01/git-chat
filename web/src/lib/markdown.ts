@@ -150,14 +150,9 @@ const PURIFY_CONFIG: PurifyConfig = {
 // If `resolveDiff` is provided, `[[diff …]]` markers in the source are
 // resolved in parallel before marked sees the text; each marker becomes
 // a fenced ```diff block that Shiki highlights like any other language.
-export async function renderMarkdown(
-  source: string,
-  resolveDiff?: DiffResolver,
-): Promise<string> {
+export async function renderMarkdown(source: string, resolveDiff?: DiffResolver): Promise<string> {
   if (!source) return "";
-  const prepared = resolveDiff
-    ? await expandDiffMarkers(source, resolveDiff)
-    : source;
+  const prepared = resolveDiff ? await expandDiffMarkers(source, resolveDiff) : source;
   const raw = await marked.parse(prepared);
   // DOMPurify returns `TrustedHTML | string` based on its overload
   // resolution when trustedTypes are in play. A plain string is what
@@ -170,10 +165,7 @@ export async function renderMarkdown(
 // replaced by a fenced `diff` code block. Markers that fail to parse
 // or resolve are left as-is so the user at least sees the raw LLM
 // output rather than a silently-disappeared marker.
-async function expandDiffMarkers(
-  source: string,
-  resolveDiff: DiffResolver,
-): Promise<string> {
+async function expandDiffMarkers(source: string, resolveDiff: DiffResolver): Promise<string> {
   type Hit = { match: string; start: number; end: number; ref: DiffRef | null };
   const hits: Hit[] = [];
   for (const m of source.matchAll(markerPattern)) {

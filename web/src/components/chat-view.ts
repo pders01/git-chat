@@ -3,11 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { chatClient, repoClient } from "../lib/transport.js";
 import { readFocus, writeFocus } from "../lib/focus.js";
-import {
-  type ChatSession,
-  type ChatMessage,
-  MessageRole,
-} from "../gen/gitchat/v1/chat_pb.js";
+import { type ChatSession, type ChatMessage, MessageRole } from "../gen/gitchat/v1/chat_pb.js";
 import { EntryType } from "../gen/gitchat/v1/repo_pb.js";
 
 // The markdown renderer pulls in `marked` + Shiki (via highlight.ts),
@@ -160,8 +156,7 @@ export class GcChatView extends LitElement {
       !(e.target instanceof HTMLInputElement)
     ) {
       e.preventDefault();
-      const ta =
-        this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
+      const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
       ta?.focus();
       return;
     }
@@ -179,13 +174,9 @@ export class GcChatView extends LitElement {
       (e.target as HTMLElement)?.closest?.(".sessions")
     ) {
       e.preventDefault();
-      const buttons = [
-        ...this.renderRoot.querySelectorAll<HTMLButtonElement>(".sess"),
-      ];
+      const buttons = [...this.renderRoot.querySelectorAll<HTMLButtonElement>(".sess")];
       if (buttons.length === 0) return;
-      const current = buttons.findIndex(
-        (b) => b === (this.renderRoot as ShadowRoot).activeElement,
-      );
+      const current = buttons.findIndex((b) => b === (this.renderRoot as ShadowRoot).activeElement);
       const next =
         e.key === "ArrowDown"
           ? (current + 1) % buttons.length
@@ -218,16 +209,20 @@ export class GcChatView extends LitElement {
       sug.push({ label: "overview", prompt: "What is this project about?" });
       if (commits.commits.length > 0) {
         const latest = commits.commits[0];
-        sug.push({ label: "latest", prompt: `What changed in commit ${latest.shortSha} ("${latest.message}")?` });
+        sug.push({
+          label: "latest",
+          prompt: `What changed in commit ${latest.shortSha} ("${latest.message}")?`,
+        });
       }
       if (commits.commits.length > 2) {
-        sug.push({ label: "recent", prompt: "What areas of the codebase have been worked on recently?" });
+        sug.push({
+          label: "recent",
+          prompt: "What areas of the codebase have been worked on recently?",
+        });
       }
       this.suggestions = sug.slice(0, 3);
     } catch {
-      this.suggestions = [
-        { label: "overview", prompt: "What is this project about?" },
-      ];
+      this.suggestions = [{ label: "overview", prompt: "What is this project about?" }];
     }
 
     // 2. LLM summary — cached by HEAD SHA, only re-fetch on new commits.
@@ -252,7 +247,9 @@ export class GcChatView extends LitElement {
   private startRename(sessionId: string) {
     this.editingSessionId = sessionId;
     requestAnimationFrame(() => {
-      const input = this.renderRoot.querySelector<HTMLInputElement>(`.rename-input[data-id="${sessionId}"]`);
+      const input = this.renderRoot.querySelector<HTMLInputElement>(
+        `.rename-input[data-id="${sessionId}"]`,
+      );
       input?.focus();
       input?.select();
     });
@@ -292,9 +289,7 @@ export class GcChatView extends LitElement {
   // resolves markdown HTML for every assistant turn in parallel. Each
   // completion triggers a lit update by assigning a new turns array.
   private async renderHistoricalMarkdown() {
-    const targets = this.turns.filter(
-      (t) => t.role === MessageRole.ASSISTANT && !t.html,
-    );
+    const targets = this.turns.filter((t) => t.role === MessageRole.ASSISTANT && !t.html);
     if (targets.length === 0) return;
     const { renderMarkdown } = await loadMarkdown();
     const diffResolver = this.diffResolver();
@@ -430,9 +425,7 @@ export class GcChatView extends LitElement {
         const prefix = dirPath ? dirPath + "/" : "";
         this.dirCache.set(
           dirPath,
-          resp.entries.map((e) =>
-            prefix + e.name + (e.type === EntryType.DIR ? "/" : ""),
-          ),
+          resp.entries.map((e) => prefix + e.name + (e.type === EntryType.DIR ? "/" : "")),
         );
       } catch {
         this.dirCache.set(dirPath, []);
@@ -474,7 +467,8 @@ export class GcChatView extends LitElement {
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        this.mentionIdx = this.mentionIdx <= 0 ? this.mentionResults.length - 1 : this.mentionIdx - 1;
+        this.mentionIdx =
+          this.mentionIdx <= 0 ? this.mentionResults.length - 1 : this.mentionIdx - 1;
         return;
       }
       if ((e.key === "Enter" || e.key === "Tab") && this.mentionIdx >= 0) {
@@ -542,9 +536,7 @@ export class GcChatView extends LitElement {
           // Render markdown immediately (no more tokens coming).
           const diffResolver = this.diffResolver();
           void loadMarkdown()
-            .then(({ renderMarkdown }) =>
-              renderMarkdown(assistantTurn.content, diffResolver),
-            )
+            .then(({ renderMarkdown }) => renderMarkdown(assistantTurn.content, diffResolver))
             .then((htmlStr) => {
               assistantTurn.html = htmlStr;
               this.turns = [...this.turns];
@@ -576,9 +568,7 @@ export class GcChatView extends LitElement {
           // via the resolver closure.
           const diffResolver = this.diffResolver();
           void loadMarkdown()
-            .then(({ renderMarkdown }) =>
-              renderMarkdown(assistantTurn.content, diffResolver),
-            )
+            .then(({ renderMarkdown }) => renderMarkdown(assistantTurn.content, diffResolver))
             .then((htmlStr) => {
               assistantTurn.html = htmlStr;
               this.turns = [...this.turns];
@@ -642,14 +632,25 @@ export class GcChatView extends LitElement {
     // Narrow once up here so all the template references are type-safe.
     const s = this.state;
     return html`
-      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""}" role="main"
-        @keydown=${(e: KeyboardEvent) => { if (e.key === "Escape" && this.drawerOpen) { this.drawerOpen = false; } }}>
+      <div
+        class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""}"
+        role="main"
+        @keydown=${(e: KeyboardEvent) => {
+          if (e.key === "Escape" && this.drawerOpen) {
+            this.drawerOpen = false;
+          }
+        }}
+      >
         <button
           class="drawer-toggle"
           @click=${() => (this.drawerOpen = !this.drawerOpen)}
           aria-label="Toggle sidebar"
-        >☰</button>
-        ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
+        >
+          ☰
+        </button>
+        ${this.drawerOpen
+          ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>`
+          : nothing}
         <aside class="sidebar" aria-label="Chat sessions">
           <button class="new" @click=${() => this.newChat()} aria-label="New chat (⌘K)">
             <span class="plus" aria-hidden="true">+</span> new chat
@@ -659,7 +660,9 @@ export class GcChatView extends LitElement {
             type="search"
             placeholder="filter sessions…"
             .value=${this.sessionFilter}
-            @input=${(e: Event) => { this.sessionFilter = (e.target as HTMLInputElement).value; }}
+            @input=${(e: Event) => {
+              this.sessionFilter = (e.target as HTMLInputElement).value;
+            }}
             aria-label="Filter sessions"
           />
           <div class="sidebar-label" id="sessions-label">sessions</div>
@@ -667,73 +670,93 @@ export class GcChatView extends LitElement {
             ${s.sessions.length === 0
               ? html`<li class="sidebar-empty">no sessions yet</li>`
               : s.sessions
-                  .filter((sess) => !this.sessionFilter || sess.title.toLowerCase().includes(this.sessionFilter.toLowerCase()))
+                  .filter(
+                    (sess) =>
+                      !this.sessionFilter ||
+                      sess.title.toLowerCase().includes(this.sessionFilter.toLowerCase()),
+                  )
                   .map(
-                  (sess) => html`
-                    <li>
-                      <div class="sess-row">
-                        <button
-                          class="sess ${sess.id === s.selected ? "selected" : ""}"
-                          @click=${() => this.selectSession(sess.id)}
-                          @dblclick=${(e: Event) => {
-                            e.preventDefault();
-                            this.startRename(sess.id);
-                          }}
-                          @keydown=${(e: KeyboardEvent) => {
-                            if (e.key === "F2") {
+                    (sess) => html`
+                      <li>
+                        <div class="sess-row">
+                          <button
+                            class="sess ${sess.id === s.selected ? "selected" : ""}"
+                            @click=${() => this.selectSession(sess.id)}
+                            @dblclick=${(e: Event) => {
                               e.preventDefault();
                               this.startRename(sess.id);
-                            }
-                          }}
-                          title="Double-click or F2 to rename"
-                          aria-current=${sess.id === s.selected ? "true" : "false"}
-                        >
-                          ${this.editingSessionId === sess.id
-                            ? html`<input
-                                class="rename-input"
-                                data-id=${sess.id}
-                                .value=${sess.title}
-                                @keydown=${(e: KeyboardEvent) => {
-                                  if (e.key === "Enter") {
-                                    void this.renameSession(sess.id, (e.target as HTMLInputElement).value);
-                                  }
-                                  if (e.key === "Escape") this.editingSessionId = "";
-                                }}
-                                @blur=${(e: Event) => void this.renameSession(sess.id, (e.target as HTMLInputElement).value)}
-                                @click=${(e: Event) => e.stopPropagation()}
-                              />`
-                            : html`<span class="sess-title">${sess.title}</span>`}
-                          <span class="sess-meta" aria-label="${sess.messageCount} messages">${sess.messageCount}</span>
-                        </button>
-                        <button
-                          class="sess-pin ${sess.pinned ? "pinned" : ""}"
-                          @click=${(e: Event) => {
-                            e.stopPropagation();
-                            void this.pinSession(sess.id, !sess.pinned);
-                          }}
-                          aria-label=${sess.pinned ? "Unpin session" : "Pin session"}
-                          title=${sess.pinned ? "Unpin" : "Pin"}
-                        >${sess.pinned ? "\u2605" : "\u2606"}</button>
-                        <button
-                          class="sess-delete"
-                          @click=${(e: Event) => {
-                            e.stopPropagation();
-                            void this.deleteSession(sess.id);
-                          }}
-                          aria-label="Delete session"
-                          title="Delete"
-                        >×</button>
-                      </div>
-                    </li>
-                  `,
-                )}
+                            }}
+                            @keydown=${(e: KeyboardEvent) => {
+                              if (e.key === "F2") {
+                                e.preventDefault();
+                                this.startRename(sess.id);
+                              }
+                            }}
+                            title="Double-click or F2 to rename"
+                            aria-current=${sess.id === s.selected ? "true" : "false"}
+                          >
+                            ${this.editingSessionId === sess.id
+                              ? html`<input
+                                  class="rename-input"
+                                  data-id=${sess.id}
+                                  .value=${sess.title}
+                                  @keydown=${(e: KeyboardEvent) => {
+                                    if (e.key === "Enter") {
+                                      void this.renameSession(
+                                        sess.id,
+                                        (e.target as HTMLInputElement).value,
+                                      );
+                                    }
+                                    if (e.key === "Escape") this.editingSessionId = "";
+                                  }}
+                                  @blur=${(e: Event) =>
+                                    void this.renameSession(
+                                      sess.id,
+                                      (e.target as HTMLInputElement).value,
+                                    )}
+                                  @click=${(e: Event) => e.stopPropagation()}
+                                />`
+                              : html`<span class="sess-title">${sess.title}</span>`}
+                            <span class="sess-meta" aria-label="${sess.messageCount} messages"
+                              >${sess.messageCount}</span
+                            >
+                          </button>
+                          <button
+                            class="sess-pin ${sess.pinned ? "pinned" : ""}"
+                            @click=${(e: Event) => {
+                              e.stopPropagation();
+                              void this.pinSession(sess.id, !sess.pinned);
+                            }}
+                            aria-label=${sess.pinned ? "Unpin session" : "Pin session"}
+                            title=${sess.pinned ? "Unpin" : "Pin"}
+                          >
+                            ${sess.pinned ? "\u2605" : "\u2606"}
+                          </button>
+                          <button
+                            class="sess-delete"
+                            @click=${(e: Event) => {
+                              e.stopPropagation();
+                              void this.deleteSession(sess.id);
+                            }}
+                            aria-label="Delete session"
+                            title="Delete"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </li>
+                    `,
+                  )}
           </ul>
         </aside>
 
         <section class="pane">
           <div class="pane-hd">
             ${this.sessionTokensIn || this.sessionTokensOut
-              ? html`<span class="session-tokens">${fmtNum(this.sessionTokensIn)} in · ${fmtNum(this.sessionTokensOut)} out · ${estimateCost("", this.sessionTokensIn, this.sessionTokensOut)}</span>`
+              ? html`<span class="session-tokens"
+                  >${fmtNum(this.sessionTokensIn)} in · ${fmtNum(this.sessionTokensOut)} out ·
+                  ${estimateCost("", this.sessionTokensIn, this.sessionTokensOut)}</span
+                >`
               : nothing}
             ${s.selected
               ? html`<button
@@ -741,7 +764,9 @@ export class GcChatView extends LitElement {
                   @click=${() => this.exportSession()}
                   title="Export as markdown"
                   aria-label="Export session"
-                >↓ export</button>`
+                >
+                  ↓ export
+                </button>`
               : nothing}
             <button
               class="focus-btn"
@@ -750,9 +775,7 @@ export class GcChatView extends LitElement {
               aria-pressed=${this.focused ? "true" : "false"}
             >
               ${this.focused ? "◀" : "▶"}
-              <span class="focus-label">
-                ${this.focused ? "exit focus" : "focus"}
-              </span>
+              <span class="focus-label"> ${this.focused ? "exit focus" : "focus"} </span>
             </button>
           </div>
           <div class="messages" role="log" aria-live="polite" aria-label="Chat messages">
@@ -788,8 +811,14 @@ export class GcChatView extends LitElement {
               ${this.showMentions
                 ? html`<ul class="mention-list" role="listbox">
                     ${this.mentionResults.map(
-                      (p, i) => html`<li role="option" aria-selected=${i === this.mentionIdx ? "true" : "false"}>
-                        <button class="mention-item ${i === this.mentionIdx ? "active" : ""}" @click=${() => this.insertMention(p)}>
+                      (p, i) => html`<li
+                        role="option"
+                        aria-selected=${i === this.mentionIdx ? "true" : "false"}
+                      >
+                        <button
+                          class="mention-item ${i === this.mentionIdx ? "active" : ""}"
+                          @click=${() => this.insertMention(p)}
+                        >
                           ${p}
                         </button>
                       </li>`,
@@ -816,9 +845,7 @@ export class GcChatView extends LitElement {
             </div>
           </form>
         </section>
-        <div class="sr-only" role="status" aria-live="assertive">
-          ${this.announcement}
-        </div>
+        <div class="sr-only" role="status" aria-live="assertive">${this.announcement}</div>
       </div>
     `;
   }
@@ -831,16 +858,20 @@ export class GcChatView extends LitElement {
           ask about the repo — use <code>@path/to/file</code> to include file contents
         </p>
 
-        ${this.suggestions.length > 0 ? html`
-          <div class="empty-examples">
-            ${this.suggestions.map((s) => html`
-              <button class="example" @click=${() => this.prefillExample(s.prompt)}>
-                <span class="example-head">${s.label}</span>
-                <span class="example-body">${s.prompt.split("\n")[0].slice(0, 80)}</span>
-              </button>
-            `)}
-          </div>
-        ` : nothing}
+        ${this.suggestions.length > 0
+          ? html`
+              <div class="empty-examples">
+                ${this.suggestions.map(
+                  (s) => html`
+                    <button class="example" @click=${() => this.prefillExample(s.prompt)}>
+                      <span class="example-head">${s.label}</span>
+                      <span class="example-body">${s.prompt.split("\n")[0].slice(0, 80)}</span>
+                    </button>
+                  `,
+                )}
+              </div>
+            `
+          : nothing}
 
         <div class="recent-activity">
           <div class="recent-title">recent activity</div>
@@ -882,9 +913,9 @@ export class GcChatView extends LitElement {
     const body =
       t.role === MessageRole.ASSISTANT && !t.streaming && t.html
         ? html`<div class="body md">${unsafeHTML(t.html)}</div>`
-        : html`<div class="body">${t.content}${t.streaming
-              ? html`<span class="cursor">▍</span>`
-              : nothing}</div>`;
+        : html`<div class="body">
+            ${t.content}${t.streaming ? html`<span class="cursor">▍</span>` : nothing}
+          </div>`;
     // Assistant turns are rendered as flowing prose with a tiny label
     // above. User turns get a muted left-border block — enough visual
     // weight to separate them from assistant prose without hijacking
@@ -901,7 +932,11 @@ export class GcChatView extends LitElement {
     const tokenInfo = t.streaming
       ? html`<div class="token-info">streaming...</div>`
       : t.tokensIn || t.tokensOut
-        ? html`<div class="token-info">${t.model ? t.model.toLowerCase() : ""}${t.model ? " · " : ""}${fmtNum(t.tokensIn ?? 0)} in · ${fmtNum(t.tokensOut ?? 0)} out · ${estimateCost(t.model ?? "", t.tokensIn ?? 0, t.tokensOut ?? 0)}</div>`
+        ? html`<div class="token-info">
+            ${t.model ? t.model.toLowerCase() : ""}${t.model ? " · " : ""}${fmtNum(t.tokensIn ?? 0)}
+            in · ${fmtNum(t.tokensOut ?? 0)} out ·
+            ${estimateCost(t.model ?? "", t.tokensIn ?? 0, t.tokensOut ?? 0)}
+          </div>`
         : nothing;
     return html`
       <article class="turn ${roleClass}">
@@ -910,8 +945,7 @@ export class GcChatView extends LitElement {
             ? html`<span class="turn-model">${t.model.toLowerCase()}</span>`
             : nothing}
         </div>
-        ${body}
-        ${tokenInfo}
+        ${body} ${tokenInfo}
       </article>
     `;
   }
@@ -924,7 +958,9 @@ export class GcChatView extends LitElement {
        min-height:0, and .messages is flex:1 + overflow-y:auto. Every
        link in the chain has min-height:0 — that's what makes the
        messages region clamp and scroll instead of growing forever. */
-    :host([hidden]) { display: none !important; }
+    :host([hidden]) {
+      display: none !important;
+    }
     :host {
       display: flex;
       flex: 1;
@@ -987,7 +1023,9 @@ export class GcChatView extends LitElement {
       display: flex;
       align-items: center;
       gap: var(--space-2);
-      transition: background 0.12s ease, border-color 0.12s ease;
+      transition:
+        background 0.12s ease,
+        border-color 0.12s ease;
     }
     .new:hover {
       background: var(--surface-3);
@@ -1162,7 +1200,10 @@ export class GcChatView extends LitElement {
       font-size: var(--text-xs);
       cursor: pointer;
       opacity: 0.4;
-      transition: opacity 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+      transition:
+        opacity 0.12s ease,
+        background 0.12s ease,
+        border-color 0.12s ease;
     }
     .focus-btn:hover {
       opacity: 0.9;
@@ -1229,7 +1270,9 @@ export class GcChatView extends LitElement {
       flex-direction: column;
       gap: var(--space-1);
       text-align: left;
-      transition: background 0.12s ease, border-color 0.12s ease;
+      transition:
+        background 0.12s ease,
+        border-color 0.12s ease;
     }
     .example:hover {
       background: var(--surface-2);
@@ -1368,10 +1411,18 @@ export class GcChatView extends LitElement {
       line-height: 1.3;
       letter-spacing: -0.01em;
     }
-    .body.md h1 { font-size: 1.05rem; }
-    .body.md h2 { font-size: 0.98rem; }
-    .body.md h3 { font-size: 0.9rem; }
-    .body.md h4 { font-size: var(--text-base); }
+    .body.md h1 {
+      font-size: 1.05rem;
+    }
+    .body.md h2 {
+      font-size: 0.98rem;
+    }
+    .body.md h3 {
+      font-size: 0.9rem;
+    }
+    .body.md h4 {
+      font-size: var(--text-base);
+    }
     .body.md code {
       font-family: inherit;
       padding: 0.08em 0.4em;
@@ -1763,7 +1814,7 @@ export class GcChatView extends LitElement {
         border: 1px solid var(--border-default);
         font-size: 1.1rem;
         cursor: pointer;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       }
       .sidebar {
         position: fixed;
@@ -1783,7 +1834,7 @@ export class GcChatView extends LitElement {
         display: none;
         position: fixed;
         inset: 0;
-        background: rgba(0,0,0,0.5);
+        background: rgba(0, 0, 0, 0.5);
         z-index: 35;
       }
       .drawer-open .drawer-backdrop {

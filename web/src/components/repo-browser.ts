@@ -2,10 +2,7 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repoClient } from "../lib/transport.js";
 import { readFocus, writeFocus } from "../lib/focus.js";
-import {
-  EntryType,
-  type Repo,
-} from "../gen/gitchat/v1/repo_pb.js";
+import { EntryType, type Repo } from "../gen/gitchat/v1/repo_pb.js";
 import "./file-view.js";
 import "./compare-view.js";
 import "./changes-view.js";
@@ -79,12 +76,18 @@ export class GcRepoBrowser extends LitElement {
 
   private toggleChanges() {
     this.showChanges = !this.showChanges;
-    if (this.showChanges) { this.comparing = false; this.showCity = false; }
+    if (this.showChanges) {
+      this.comparing = false;
+      this.showCity = false;
+    }
   }
 
   private toggleCity() {
     this.showCity = !this.showCity;
-    if (this.showCity) { this.comparing = false; this.showChanges = false; }
+    if (this.showCity) {
+      this.comparing = false;
+      this.showChanges = false;
+    }
   }
 
   private swapRefs() {
@@ -148,14 +151,16 @@ export class GcRepoBrowser extends LitElement {
 
   private async fetchChildren(repoId: string, path: string): Promise<TreeNode[]> {
     const { entries } = await repoClient.listTree({ repoId, ref: this.branch, path });
-    return entries.map((e) => ({
-      name: e.name,
-      fullPath: path ? `${path}/${e.name}` : e.name,
-      type: e.type,
-      children: e.type === EntryType.DIR ? null : undefined as never,
-      open: false,
-      loading: false,
-    })).filter((n) => n.type === EntryType.DIR || n.type === EntryType.FILE);
+    return entries
+      .map((e) => ({
+        name: e.name,
+        fullPath: path ? `${path}/${e.name}` : e.name,
+        type: e.type,
+        children: e.type === EntryType.DIR ? null : (undefined as never),
+        open: false,
+        loading: false,
+      }))
+      .filter((n) => n.type === EntryType.DIR || n.type === EntryType.FILE);
   }
 
   private async toggleDir(node: TreeNode) {
@@ -217,53 +222,107 @@ export class GcRepoBrowser extends LitElement {
 
   private renderReady(s: Extract<BrowserState, { phase: "ready" }>) {
     return html`
-      <div class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""} ${this.comparing || this.showChanges || this.showCity ? "comparing" : ""}"
-        @keydown=${(e: KeyboardEvent) => { if (e.key === "Escape" && this.drawerOpen) { this.drawerOpen = false; } }}>
-        <button class="drawer-toggle" @click=${() => (this.drawerOpen = !this.drawerOpen)} aria-label="Toggle file tree">☰</button>
-        ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
+      <div
+        class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen
+          ? "drawer-open"
+          : ""} ${this.comparing || this.showChanges || this.showCity ? "comparing" : ""}"
+        @keydown=${(e: KeyboardEvent) => {
+          if (e.key === "Escape" && this.drawerOpen) {
+            this.drawerOpen = false;
+          }
+        }}
+      >
+        <button
+          class="drawer-toggle"
+          @click=${() => (this.drawerOpen = !this.drawerOpen)}
+          aria-label="Toggle file tree"
+        >
+          ☰
+        </button>
+        ${this.drawerOpen
+          ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>`
+          : nothing}
         <aside>
           <div class="repo-hd">
             ${this.comparing
-              ? html`
-                  <select class="ref-select" .value=${this.baseRef} @change=${(e: Event) => { this.baseRef = (e.target as HTMLSelectElement).value; }} aria-label="Base branch">
-                    ${this.branches.map((b) => html`<option value=${b.name} ?selected=${b.name === this.baseRef}>${b.name}</option>`)}
+              ? html` <select
+                    class="ref-select"
+                    .value=${this.baseRef}
+                    @change=${(e: Event) => {
+                      this.baseRef = (e.target as HTMLSelectElement).value;
+                    }}
+                    aria-label="Base branch"
+                  >
+                    ${this.branches.map(
+                      (b) =>
+                        html`<option value=${b.name} ?selected=${b.name === this.baseRef}>
+                          ${b.name}
+                        </option>`,
+                    )}
                   </select>
-                  <button class="hd-btn swap-btn" @click=${() => this.swapRefs()} aria-label="Swap branches" title="Swap base and head">⇄</button>
-                  <select class="ref-select" .value=${this.headRef} @change=${(e: Event) => { this.headRef = (e.target as HTMLSelectElement).value; }} aria-label="Head branch">
-                    ${this.branches.map((b) => html`<option value=${b.name} ?selected=${b.name === this.headRef}>${b.name}</option>`)}
+                  <button
+                    class="hd-btn swap-btn"
+                    @click=${() => this.swapRefs()}
+                    aria-label="Swap branches"
+                    title="Swap base and head"
+                  >
+                    ⇄
+                  </button>
+                  <select
+                    class="ref-select"
+                    .value=${this.headRef}
+                    @change=${(e: Event) => {
+                      this.headRef = (e.target as HTMLSelectElement).value;
+                    }}
+                    aria-label="Head branch"
+                  >
+                    ${this.branches.map(
+                      (b) =>
+                        html`<option value=${b.name} ?selected=${b.name === this.headRef}>
+                          ${b.name}
+                        </option>`,
+                    )}
                   </select>`
-              : html`
-                  <span class="branch">${this.branch || s.repo.defaultBranch}@${s.repo.headCommit}</span>`}
+              : html` <span class="branch"
+                  >${this.branch || s.repo.defaultBranch}@${s.repo.headCommit}</span
+                >`}
             <button
               class="hd-btn"
               @click=${() => this.toggleCity()}
               aria-label="Code city"
               aria-pressed=${this.showCity ? "true" : "false"}
               title="Activity visualization"
-            >&#x25C9;</button>
+            >
+              &#x25C9;
+            </button>
             <button
               class="hd-btn"
               @click=${() => this.toggleChanges()}
               aria-label="Working tree changes"
               aria-pressed=${this.showChanges ? "true" : "false"}
               title="Working tree changes"
-            >Δ</button>
+            >
+              Δ
+            </button>
             <button
               class="hd-btn"
               @click=${() => this.toggleCompare()}
               aria-label="Compare branches"
               aria-pressed=${this.comparing ? "true" : "false"}
               title="Compare branches"
-            >⇄</button>
-            ${this.comparing || this.showChanges ? nothing : html`
-              <button
-                class="focus-btn"
-                @click=${this.onToggleFocus}
-                aria-label=${this.focused ? "Show file tree" : "Hide file tree"}
-                aria-pressed=${this.focused ? "true" : "false"}
-              >
-                ${this.focused ? "◀" : "▶"}
-              </button>`}
+            >
+              ⇄
+            </button>
+            ${this.comparing || this.showChanges
+              ? nothing
+              : html` <button
+                  class="focus-btn"
+                  @click=${this.onToggleFocus}
+                  aria-label=${this.focused ? "Show file tree" : "Hide file tree"}
+                  aria-pressed=${this.focused ? "true" : "false"}
+                >
+                  ${this.focused ? "◀" : "▶"}
+                </button>`}
           </div>
 
           <ul class="entries" @keydown=${this.onTreeKeydown}>
@@ -311,7 +370,10 @@ export class GcRepoBrowser extends LitElement {
         // If next visible entry is a child (inside nested ul), dir is open → move into it.
         // Otherwise dir is closed → expand it.
         const next = all[idx + 1];
-        const isChild = btn.closest("li")?.querySelector("ul.nested")?.contains(next ?? null);
+        const isChild = btn
+          .closest("li")
+          ?.querySelector("ul.nested")
+          ?.contains(next ?? null);
         if (next && isChild) {
           next.focus();
         } else {
@@ -321,13 +383,16 @@ export class GcRepoBrowser extends LitElement {
     } else if (e.key === "ArrowLeft") {
       e.preventDefault();
       // Dir that's open → collapse. Otherwise → move to parent dir.
-      const isOpenDir = btn.classList.contains("dir") && btn.closest("li")?.querySelector("ul.nested");
+      const isOpenDir =
+        btn.classList.contains("dir") && btn.closest("li")?.querySelector("ul.nested");
       if (isOpenDir) {
         btn.click();
       } else {
         const parentUl = btn.closest("ul.nested");
         if (parentUl) {
-          const parent = parentUl.parentElement?.querySelector(":scope > .entry") as HTMLElement | null;
+          const parent = parentUl.parentElement?.querySelector(
+            ":scope > .entry",
+          ) as HTMLElement | null;
           parent?.focus();
         }
       }
@@ -340,17 +405,14 @@ export class GcRepoBrowser extends LitElement {
       if (node.type === EntryType.DIR) {
         return html`
           <li>
-            <button
-              class="entry dir"
-              style=${indent}
-              @click=${() => this.toggleDir(node)}
-            >
+            <button class="entry dir" style=${indent} @click=${() => this.toggleDir(node)}>
               <span class="icon">${node.open ? "▾" : "▸"}</span>
-              ${node.name}
-              ${node.loading ? html`<span class="loading-dot">…</span>` : nothing}
+              ${node.name} ${node.loading ? html`<span class="loading-dot">…</span>` : nothing}
             </button>
             ${node.open && node.children
-              ? html`<ul class="entries nested">${this.renderNodes(node.children, depth + 1)}</ul>`
+              ? html`<ul class="entries nested">
+                  ${this.renderNodes(node.children, depth + 1)}
+                </ul>`
               : nothing}
           </li>
         `;
@@ -372,7 +434,9 @@ export class GcRepoBrowser extends LitElement {
   }
 
   static override styles = css`
-    :host([hidden]) { display: none !important; }
+    :host([hidden]) {
+      display: none !important;
+    }
     :host {
       /* Full-viewport mode: same scroll-chain discipline as chat-view —
          every ancestor in the flex/grid chain has min-height: 0 so the
@@ -469,7 +533,10 @@ export class GcRepoBrowser extends LitElement {
       opacity: 0.5;
       line-height: 1;
     }
-    .hd-btn:hover { opacity: 1; background: var(--surface-2); }
+    .hd-btn:hover {
+      opacity: 1;
+      background: var(--surface-2);
+    }
     .hd-btn:focus-visible {
       outline: 2px solid var(--accent-user);
       outline-offset: 1px;
@@ -508,7 +575,10 @@ export class GcRepoBrowser extends LitElement {
       font-size: 0.7rem;
       padding: 0 2px;
     }
-    .swap-btn:hover { opacity: 0.7; background: transparent; }
+    .swap-btn:hover {
+      opacity: 0.7;
+      background: transparent;
+    }
     .repo-hd {
       padding: 0 0.95rem;
       height: 36px;
@@ -596,42 +666,56 @@ export class GcRepoBrowser extends LitElement {
     section {
       overflow: hidden;
     }
-    .drawer-toggle { display: none; }
-    .drawer-backdrop { display: none; }
+    .drawer-toggle {
+      display: none;
+    }
+    .drawer-backdrop {
+      display: none;
+    }
     @media (max-width: 768px) {
-      .layout { grid-template-columns: 1fr; }
+      .layout {
+        grid-template-columns: 1fr;
+      }
       .drawer-toggle {
         display: block;
         position: fixed;
         bottom: var(--space-5);
         left: var(--space-4);
         z-index: 30;
-        width: 44px; height: 44px;
+        width: 44px;
+        height: 44px;
         border-radius: 50%;
         background: var(--surface-2);
         color: var(--text);
         border: 1px solid var(--border-default);
         font-size: 1.1rem;
         cursor: pointer;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       }
       aside {
         position: fixed;
-        top: 44px; left: 0; bottom: 0;
+        top: 44px;
+        left: 0;
+        bottom: 0;
         width: 280px;
         z-index: 40;
         transform: translateX(-100%);
         transition: transform 0.2s ease;
         border-right: 1px solid var(--surface-4);
       }
-      .drawer-open aside { transform: translateX(0); }
+      .drawer-open aside {
+        transform: translateX(0);
+      }
       .drawer-backdrop {
         display: none;
-        position: fixed; inset: 0;
-        background: rgba(0,0,0,0.5);
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
         z-index: 35;
       }
-      .drawer-open .drawer-backdrop { display: block; }
+      .drawer-open .drawer-backdrop {
+        display: block;
+      }
     }
   `;
 }

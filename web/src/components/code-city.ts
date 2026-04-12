@@ -224,7 +224,8 @@ export class GcCodeCity extends LitElement {
   private scene: InstanceType<THREE["Scene"]> | null = null;
   private camera: InstanceType<THREE["PerspectiveCamera"]> | null = null;
   private renderer: InstanceType<THREE["WebGLRenderer"]> | null = null;
-  private controls: import("three/examples/jsm/controls/OrbitControls.js").OrbitControls | null = null;
+  private controls: import("three/examples/jsm/controls/OrbitControls.js").OrbitControls | null =
+    null;
   private raycaster: InstanceType<THREE["Raycaster"]> | null = null;
   private mouse: InstanceType<THREE["Vector2"]> | null = null;
   private animFrameId = 0;
@@ -396,12 +397,12 @@ export class GcCodeCity extends LitElement {
     for (const mesh of this.blockMeshes.values()) {
       this.scene.remove(mesh);
       mesh.geometry.dispose();
-      (mesh.material as InstanceType<typeof this.three["MeshStandardMaterial"]>).dispose();
+      (mesh.material as InstanceType<(typeof this.three)["MeshStandardMaterial"]>).dispose();
     }
     this.blockMeshes.clear();
 
     // Also remove old directory ground planes (tagged with userData.isDir)
-    const toRemove: InstanceType<typeof this.three["Object3D"]>[] = [];
+    const toRemove: InstanceType<(typeof this.three)["Object3D"]>[] = [];
     this.scene.traverse((obj) => {
       if ((obj as any).userData?.isDir) toRemove.push(obj);
     });
@@ -413,9 +414,12 @@ export class GcCodeCity extends LitElement {
 
     // Compute max commits for color normalization
     const allFiles: FileNode[] = [];
-    const collectFiles = (dir: DirNode) => { allFiles.push(...dir.files); dir.children.forEach(collectFiles); };
+    const collectFiles = (dir: DirNode) => {
+      allFiles.push(...dir.files);
+      dir.children.forEach(collectFiles);
+    };
     collectFiles(this.tree);
-    this._maxCommits = Math.max(1, ...allFiles.map(f => f.commitCount));
+    this._maxCommits = Math.max(1, ...allFiles.map((f) => f.commitCount));
 
     // Total city size proportional to sqrt of total size
     const citySize = Math.max(10, Math.sqrt(this.tree.totalSize) * 0.05);
@@ -527,7 +531,9 @@ export class GcCodeCity extends LitElement {
       const hit = intersects[0].object;
       const f = hit.userData?.file;
       const path = hit.userData?.path ?? "";
-      this.tooltipText = f ? `${path} (${f.commitCount} commits, +${f.additions}/-${f.deletions})` : path;
+      this.tooltipText = f
+        ? `${path} (${f.commitCount} commits, +${f.additions}/-${f.deletions})`
+        : path;
       this.tooltipX = event.clientX - rect.left;
       this.tooltipY = event.clientY - rect.top;
       canvas.style.cursor = "pointer";
@@ -582,9 +588,20 @@ export class GcCodeCity extends LitElement {
     if (this.error && !this.scene) return html`<div class="hint err">${this.error}</div>`;
     return html`
       <div class="city-container">
-        <canvas class="city-canvas" role="img" aria-label="Code city visualization — file activity as 3D buildings"></canvas>
+        <canvas
+          class="city-canvas"
+          role="img"
+          aria-label="Code city visualization — file activity as 3D buildings"
+        ></canvas>
         ${this.loading ? html`<div class="city-loading">updating...</div>` : nothing}
-        ${this.tooltipText ? html`<div class="city-tooltip" style="left:${this.tooltipX + 12}px;top:${this.tooltipY - 8}px">${this.tooltipText}</div>` : nothing}
+        ${this.tooltipText
+          ? html`<div
+              class="city-tooltip"
+              style="left:${this.tooltipX + 12}px;top:${this.tooltipY - 8}px"
+            >
+              ${this.tooltipText}
+            </div>`
+          : nothing}
         <div class="city-controls">
           <span class="time-label">${formatDate(this.currentSince)}</span>
           <input

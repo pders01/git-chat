@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "tsc --noEmit",
-    "lint": "oxlint src/",
+    "lint": "oxlint -c oxlintrc.json src/",
     "fmt": "oxfmt --write src/",
     "fmt:check": "oxfmt --check src/"
   },

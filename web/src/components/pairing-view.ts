@@ -76,10 +76,11 @@ export class GcPairingView extends LitElement {
     const cmd = `ssh -p ${this.sshPort} ${this.sshHost} pair ${s.code}`;
     return html`
       <p class="label">run this in a terminal:</p>
-      <pre class="cmd" @click=${() => navigator.clipboard.writeText(cmd)} title="click to copy">${cmd}</pre>
+      <pre class="cmd" @click=${() => navigator.clipboard.writeText(cmd)} title="click to copy">
+${cmd}</pre
+      >
       <p class="hint">
-        waiting for pairing · code expires
-        ${new Date(s.expiresAt * 1000).toLocaleTimeString()}
+        waiting for pairing · code expires ${new Date(s.expiresAt * 1000).toLocaleTimeString()}
       </p>
     `;
   }

@@ -92,7 +92,10 @@ export class GcCommitLog extends LitElement {
   }
 
   override updated(changed: Map<string, unknown>) {
-    if ((changed.has("repoId") || changed.has("branch") || changed.has("filterPath")) && this.repoId) {
+    if (
+      (changed.has("repoId") || changed.has("branch") || changed.has("filterPath")) &&
+      this.repoId
+    ) {
       void this.load(0);
     }
   }
@@ -295,9 +298,10 @@ export class GcCommitLog extends LitElement {
     const code = tmp.querySelector("code");
     if (!code) return [{ left: unifiedHtml, right: "" }];
     const lineEls = code.querySelectorAll(".line");
-    const lines = lineEls.length > 0
-      ? Array.from(lineEls).map(el => el.innerHTML)
-      : code.innerHTML.split("\n");
+    const lines =
+      lineEls.length > 0
+        ? Array.from(lineEls).map((el) => el.innerHTML)
+        : code.innerHTML.split("\n");
 
     const pairs: Array<{ left: string; right: string }> = [];
     const delBuf: string[] = [];
@@ -387,24 +391,28 @@ export class GcCommitLog extends LitElement {
 
     // LCS to find which words are common between the two lines.
     const lcsSet = (a: string[], b: string[]): { inA: Set<number>; inB: Set<number> } => {
-      const m = a.length, n = b.length;
-      const dp: number[][] = Array.from({ length: m + 1 }, () => Array.from({ length: n + 1 }, () => 0));
+      const m = a.length,
+        n = b.length;
+      const dp: number[][] = Array.from({ length: m + 1 }, () =>
+        Array.from({ length: n + 1 }, () => 0),
+      );
       for (let i = 1; i <= m; i++) {
         for (let j = 1; j <= n; j++) {
-          dp[i][j] = a[i - 1] === b[j - 1]
-            ? dp[i - 1][j - 1] + 1
-            : Math.max(dp[i - 1][j], dp[i][j - 1]);
+          dp[i][j] =
+            a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
         }
       }
       // Backtrack to find matched indices.
       const inA = new Set<number>();
       const inB = new Set<number>();
-      let i = m, j = n;
+      let i = m,
+        j = n;
       while (i > 0 && j > 0) {
         if (a[i - 1] === b[j - 1]) {
           inA.add(i - 1);
           inB.add(j - 1);
-          i--; j--;
+          i--;
+          j--;
         } else if (dp[i - 1][j] >= dp[i][j - 1]) {
           i--;
         } else {
@@ -488,12 +496,14 @@ export class GcCommitLog extends LitElement {
             <col class="split-col" />
           </colgroup>
           <tbody>
-            ${pairs.map(({ left, right }) => html`
-              <tr>
-                <td class="split-cell del-cell">${left ? unsafeHTML(left) : nothing}</td>
-                <td class="split-cell add-cell">${right ? unsafeHTML(right) : nothing}</td>
-              </tr>
-            `)}
+            ${pairs.map(
+              ({ left, right }) => html`
+                <tr>
+                  <td class="split-cell del-cell">${left ? unsafeHTML(left) : nothing}</td>
+                  <td class="split-cell add-cell">${right ? unsafeHTML(right) : nothing}</td>
+                </tr>
+              `,
+            )}
           </tbody>
         </table>
       </div>
@@ -502,8 +512,8 @@ export class GcCommitLog extends LitElement {
 
   private selectedCommit(): CommitEntry | undefined {
     if (this.state.phase !== "ready" || !this.selectedSha) return undefined;
-    return this.state.commits.find((c) =>
-      c.sha === this.selectedSha || c.sha.startsWith(this.selectedSha),
+    return this.state.commits.find(
+      (c) => c.sha === this.selectedSha || c.sha.startsWith(this.selectedSha),
     );
   }
 
@@ -517,7 +527,11 @@ export class GcCommitLog extends LitElement {
     const shaToRow = new Map<string, number>();
     const lanes: string[] = []; // lane[i] = SHA currently "active" in that lane
 
-    interface NodeInfo { row: number; lane: number; parents: string[]; }
+    interface NodeInfo {
+      row: number;
+      lane: number;
+      parents: string[];
+    }
     const nodes: NodeInfo[] = [];
 
     for (let i = 0; i < commits.length; i++) {
@@ -528,11 +542,14 @@ export class GcCommitLog extends LitElement {
       let lane = lanes.indexOf(c.sha);
       if (lane === -1) {
         lane = lanes.indexOf("");
-        if (lane === -1) { lane = lanes.length; lanes.push(""); }
+        if (lane === -1) {
+          lane = lanes.length;
+          lanes.push("");
+        }
       }
 
       // Assign first parent to this lane (continues the line)
-      const parentShas = (c as any).parentShas as string[] ?? [];
+      const parentShas = ((c as any).parentShas as string[]) ?? [];
       if (parentShas.length > 0) {
         lanes[lane] = parentShas[0];
       } else {
@@ -552,7 +569,7 @@ export class GcCommitLog extends LitElement {
       nodes.push({ row: i, lane, parents: parentShas });
     }
 
-    const maxLane = Math.max(0, ...nodes.map(n => n.lane));
+    const maxLane = Math.max(0, ...nodes.map((n) => n.lane));
     const svgW = (maxLane + 1) * LANE_W + 8;
     const svgH = commits.length * ROW_H;
 
@@ -565,12 +582,16 @@ export class GcCommitLog extends LitElement {
       const y = node.row * ROW_H + ROW_H / 2;
 
       const isSelected = commits[node.row].sha === this.selectedSha;
-      svgDots.push(svg`<circle cx=${x} cy=${y} r=${DOT_R} fill=${isSelected ? "var(--accent-user)" : "var(--accent-assistant)"} />`);
+      svgDots.push(
+        svg`<circle cx=${x} cy=${y} r=${DOT_R} fill=${isSelected ? "var(--accent-user)" : "var(--accent-assistant)"} />`,
+      );
 
       for (const pSha of node.parents) {
         const pRow = shaToRow.get(pSha);
         if (pRow === undefined) {
-          svgLines.push(svg`<line x1=${x} y1=${y} x2=${x} y2=${svgH} stroke="var(--surface-4)" stroke-width="1.5" />`);
+          svgLines.push(
+            svg`<line x1=${x} y1=${y} x2=${x} y2=${svgH} stroke="var(--surface-4)" stroke-width="1.5" />`,
+          );
           continue;
         }
         const pNode = nodes[pRow];
@@ -578,25 +599,25 @@ export class GcCommitLog extends LitElement {
         const py = pRow * ROW_H + ROW_H / 2;
 
         if (px === x) {
-          svgLines.push(svg`<line x1=${x} y1=${y} x2=${px} y2=${py} stroke="var(--surface-4)" stroke-width="1.5" />`);
+          svgLines.push(
+            svg`<line x1=${x} y1=${y} x2=${px} y2=${py} stroke="var(--surface-4)" stroke-width="1.5" />`,
+          );
         } else {
           const midY = (y + py) / 2;
-          svgLines.push(svg`<path d=${"M" + x + "," + y + " C" + x + "," + midY + " " + px + "," + midY + " " + px + "," + py} fill="none" stroke="var(--accent-user)" stroke-width="1.5" opacity="0.4" />`);
+          svgLines.push(
+            svg`<path d=${"M" + x + "," + y + " C" + x + "," + midY + " " + px + "," + midY + " " + px + "," + py} fill="none" stroke="var(--accent-user)" stroke-width="1.5" opacity="0.4" />`,
+          );
         }
       }
     }
 
     return html`
       <div class="graph-scroll">
-      <div class="graph-view" @keydown=${this.onListKeydown} style="height:${svgH}px">
-        <svg class="graph-svg" width="${svgW}" height="${svgH}">
-          ${svgLines}
-          ${svgDots}
-        </svg>
-        ${commits.map((c, i) => {
-          const y = i * ROW_H;
-          return html`
-            <button
+        <div class="graph-view" @keydown=${this.onListKeydown} style="height:${svgH}px">
+          <svg class="graph-svg" width="${svgW}" height="${svgH}">${svgLines} ${svgDots}</svg>
+          ${commits.map((c, i) => {
+            const y = i * ROW_H;
+            return html` <button
               class="graph-row ${c.sha === this.selectedSha ? "selected" : ""}"
               style="height:${ROW_H}px; top:${y}px; padding-left:${svgW + 4}px"
               @click=${() => this.selectCommit(c.sha)}
@@ -605,8 +626,8 @@ export class GcCommitLog extends LitElement {
               <span class="graph-msg">${c.shortSha} ${c.message}</span>
               <span class="graph-age">${formatAge(Number(c.authorTime))}</span>
             </button>`;
-        })}
-      </div>
+          })}
+        </div>
       </div>
     `;
   }
@@ -624,16 +645,32 @@ export class GcCommitLog extends LitElement {
     const { commits: rawCommits, hasMore, offset } = this.state;
     const lowerFilter = this.commitFilter.toLowerCase();
     const commits = lowerFilter
-      ? rawCommits.filter(c =>
-          c.message.toLowerCase().includes(lowerFilter) ||
-          c.authorName.toLowerCase().includes(lowerFilter))
+      ? rawCommits.filter(
+          (c) =>
+            c.message.toLowerCase().includes(lowerFilter) ||
+            c.authorName.toLowerCase().includes(lowerFilter),
+        )
       : rawCommits;
     const sel = this.selectedCommit();
     return html`
-      <div class="layout ${this.drawerOpen ? "drawer-open" : ""}"
-        @keydown=${(e: KeyboardEvent) => { if (e.key === "Escape" && this.drawerOpen) { this.drawerOpen = false; } }}>
-        <button class="drawer-toggle" @click=${() => (this.drawerOpen = !this.drawerOpen)} aria-label="Toggle commit list">☰</button>
-        ${this.drawerOpen ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>` : nothing}
+      <div
+        class="layout ${this.drawerOpen ? "drawer-open" : ""}"
+        @keydown=${(e: KeyboardEvent) => {
+          if (e.key === "Escape" && this.drawerOpen) {
+            this.drawerOpen = false;
+          }
+        }}
+      >
+        <button
+          class="drawer-toggle"
+          @click=${() => (this.drawerOpen = !this.drawerOpen)}
+          aria-label="Toggle commit list"
+        >
+          ☰
+        </button>
+        ${this.drawerOpen
+          ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>`
+          : nothing}
         <!-- Left: commit list sidebar -->
         <aside class="commit-list" aria-label="Commit history">
           <div class="list-header">
@@ -642,60 +679,71 @@ export class GcCommitLog extends LitElement {
               type="search"
               placeholder="filter commits…"
               .value=${this.commitFilter}
-              @input=${(e: Event) => { this.commitFilter = (e.target as HTMLInputElement).value; }}
+              @input=${(e: Event) => {
+                this.commitFilter = (e.target as HTMLInputElement).value;
+              }}
               aria-label="Filter commits by message or author"
             />
             <button
               class="graph-toggle ${this.graphMode ? "active" : ""}"
-              @click=${() => { this.graphMode = !this.graphMode; }}
+              @click=${() => {
+                this.graphMode = !this.graphMode;
+              }}
               aria-label="Toggle graph view"
               aria-pressed=${this.graphMode ? "true" : "false"}
               title="Toggle graph view"
-            >⑂</button>
+            >
+              ⑂
+            </button>
           </div>
-          ${this.filterPath ? html`
-            <div class="path-filter-bar">
-              <span class="path-filter-label">history for</span>
-              <span class="path-filter-path">${this.filterPath}</span>
-              <button class="path-filter-clear" @click=${() => this.clearFilterPath()} aria-label="Clear file filter">x</button>
-            </div>
-          ` : nothing}
+          ${this.filterPath
+            ? html`
+                <div class="path-filter-bar">
+                  <span class="path-filter-label">history for</span>
+                  <span class="path-filter-path">${this.filterPath}</span>
+                  <button
+                    class="path-filter-clear"
+                    @click=${() => this.clearFilterPath()}
+                    aria-label="Clear file filter"
+                  >
+                    x
+                  </button>
+                </div>
+              `
+            : nothing}
           ${this.graphMode
             ? this.renderGraph(commits)
             : html`<ul class="commits" role="list" @keydown=${this.onListKeydown}>
-            ${commits.map(
-              (c) => html`
-                <li>
-                  <button
-                    class="commit-row ${c.sha === this.selectedSha ? "selected" : ""}"
-                    aria-pressed=${c.sha === this.selectedSha ? "true" : "false"}
-                    @click=${() => this.selectCommit(c.sha)}
-                    title="${c.message} — ${c.authorName}"
-                  >
-                    <div class="commit-line1">
-                      <span class="sha">${c.shortSha}</span>
-                      <span class="commit-msg">${c.message}</span>
-                    </div>
-                    <div class="commit-line2">
-                      <span class="commit-author">${c.authorName}</span>
-                      <span class="commit-age">${formatAge(Number(c.authorTime), true)}</span>
-                      ${c.filesChanged
-                        ? html`<span class="commit-stats">
-                            <span class="adds">+${c.additions}</span>
-                            <span class="dels">-${c.deletions}</span>
-                          </span>`
-                        : nothing}
-                    </div>
-                  </button>
-                </li>
-              `,
-            )}
-          </ul>`}
+                ${commits.map(
+                  (c) => html`
+                    <li>
+                      <button
+                        class="commit-row ${c.sha === this.selectedSha ? "selected" : ""}"
+                        aria-pressed=${c.sha === this.selectedSha ? "true" : "false"}
+                        @click=${() => this.selectCommit(c.sha)}
+                        title="${c.message} — ${c.authorName}"
+                      >
+                        <div class="commit-line1">
+                          <span class="sha">${c.shortSha}</span>
+                          <span class="commit-msg">${c.message}</span>
+                        </div>
+                        <div class="commit-line2">
+                          <span class="commit-author">${c.authorName}</span>
+                          <span class="commit-age">${formatAge(Number(c.authorTime), true)}</span>
+                          ${c.filesChanged
+                            ? html`<span class="commit-stats">
+                                <span class="adds">+${c.additions}</span>
+                                <span class="dels">-${c.deletions}</span>
+                              </span>`
+                            : nothing}
+                        </div>
+                      </button>
+                    </li>
+                  `,
+                )}
+              </ul>`}
           ${hasMore
-            ? html`<button
-                class="load-more"
-                @click=${() => this.load(offset + 50)}
-              >
+            ? html`<button class="load-more" @click=${() => this.load(offset + 50)}>
                 load more
               </button>`
             : nothing}
@@ -710,10 +758,19 @@ export class GcCommitLog extends LitElement {
                     class="detail-sha copyable"
                     tabindex="0"
                     role="button"
-                    @click=${(e: Event) => { e.stopPropagation(); copyText(this, sel.sha, "SHA copied"); }}
-                    @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copyText(this, sel.sha, "SHA copied"); } }}
+                    @click=${(e: Event) => {
+                      e.stopPropagation();
+                      copyText(this, sel.sha, "SHA copied");
+                    }}
+                    @keydown=${(e: KeyboardEvent) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        copyText(this, sel.sha, "SHA copied");
+                      }
+                    }}
                     title="Press Enter to copy full SHA"
-                  >${sel.shortSha}</span>
+                    >${sel.shortSha}</span
+                  >
                 </div>
                 <div class="info-subject">${sel.message}</div>
                 ${sel.body ? html`<pre class="info-body">${sel.body}</pre>` : nothing}
@@ -725,44 +782,55 @@ export class GcCommitLog extends LitElement {
                   class="action-btn"
                   @click=${() => this.askAboutCommit(sel)}
                   aria-label="Explain commit ${sel.shortSha} in chat"
-                >explain in chat</button>
+                >
+                  explain in chat
+                </button>
                 ${this.files.length
-                  ? html`
-                    <div class="file-list-header">
-                      <span>files</span>
-                      <span class="info-files">${this.files.length}</span>
-                    </div>
-                    <ul class="file-list" role="list">
-                      <li>
-                        <button
-                          class="file-entry ${this.selectedFile === "" ? "selected" : ""}"
-                          @click=${() => this.selectFile("")}
-                        >
-                          <span class="file-status all">∗</span>
-                          <span class="file-path">all files</span>
-                          <span class="file-stats">
-                            <span class="adds">+${sel.additions}</span>
-                            <span class="dels">-${sel.deletions}</span>
-                          </span>
-                        </button>
-                      </li>
-                      ${this.files.map((f) => html`
+                  ? html` <div class="file-list-header">
+                        <span>files</span>
+                        <span class="info-files">${this.files.length}</span>
+                      </div>
+                      <ul class="file-list" role="list">
                         <li>
                           <button
-                            class="file-entry ${this.selectedFile === f.path ? "selected" : ""}"
-                            @click=${(e: MouseEvent) => { if (e.metaKey || e.ctrlKey) { this.openInBrowse(f.path); } else { this.selectFile(f.path); } }}
-                            title="${f.path} (⌘+click to open in browse)"
+                            class="file-entry ${this.selectedFile === "" ? "selected" : ""}"
+                            @click=${() => this.selectFile("")}
                           >
-                            <span class="file-status ${f.status}">${statusLabel(f.status)}</span>
-                            <span class="file-path">${fileName(f.path)}</span>
+                            <span class="file-status all">∗</span>
+                            <span class="file-path">all files</span>
                             <span class="file-stats">
-                              <span class="adds">+${f.additions}</span>
-                              <span class="dels">-${f.deletions}</span>
+                              <span class="adds">+${sel.additions}</span>
+                              <span class="dels">-${sel.deletions}</span>
                             </span>
                           </button>
                         </li>
-                      `)}
-                    </ul>`
+                        ${this.files.map(
+                          (f) => html`
+                            <li>
+                              <button
+                                class="file-entry ${this.selectedFile === f.path ? "selected" : ""}"
+                                @click=${(e: MouseEvent) => {
+                                  if (e.metaKey || e.ctrlKey) {
+                                    this.openInBrowse(f.path);
+                                  } else {
+                                    this.selectFile(f.path);
+                                  }
+                                }}
+                                title="${f.path} (⌘+click to open in browse)"
+                              >
+                                <span class="file-status ${f.status}"
+                                  >${statusLabel(f.status)}</span
+                                >
+                                <span class="file-path">${fileName(f.path)}</span>
+                                <span class="file-stats">
+                                  <span class="adds">+${f.additions}</span>
+                                  <span class="dels">-${f.deletions}</span>
+                                </span>
+                              </button>
+                            </li>
+                          `,
+                        )}
+                      </ul>`
                   : nothing}
               `
             : html`<div class="info-empty">select a commit</div>`}
@@ -771,11 +839,11 @@ export class GcCommitLog extends LitElement {
         <!-- Right: diff pane -->
         <section class="diff-pane">
           ${sel
-            ? html`
-                <div class="diff-header">
+            ? html` <div class="diff-header">
                   ${this.selectedFile
-                    ? html`
-                        <span class="file-status ${this.selectedFileEntry()?.status ?? ""}">${statusLabel(this.selectedFileEntry()?.status ?? "")}</span>
+                    ? html` <span class="file-status ${this.selectedFileEntry()?.status ?? ""}"
+                          >${statusLabel(this.selectedFileEntry()?.status ?? "")}</span
+                        >
                         <span class="diff-filepath">${this.selectedFile}</span>
                         <span class="diff-spacer"></span>
                         ${this.selectedFileEntry()
@@ -784,30 +852,37 @@ export class GcCommitLog extends LitElement {
                               <span class="dels">-${this.selectedFileEntry()!.deletions}</span>
                             </span>`
                           : nothing}`
-                    : html`
-                        <span class="detail-sha">${sel.shortSha}</span>
+                    : html` <span class="detail-sha">${sel.shortSha}</span>
                         <span class="diff-label">diff</span>
                         <span class="diff-spacer"></span>
                         ${sel.filesChanged
                           ? html`<span class="detail-stats">
-                              <span class="info-files">${sel.filesChanged} file${sel.filesChanged > 1 ? "s" : ""}</span>
+                              <span class="info-files"
+                                >${sel.filesChanged} file${sel.filesChanged > 1 ? "s" : ""}</span
+                              >
                               <span class="adds">+${sel.additions}</span>
                               <span class="dels">-${sel.deletions}</span>
                             </span>`
                           : nothing}`}
                   <button
                     class="split-toggle ${this.splitView ? "active" : ""}"
-                    @click=${() => { this.splitView = !this.splitView; }}
+                    @click=${() => {
+                      this.splitView = !this.splitView;
+                    }}
                     aria-label="Toggle split diff view"
                     aria-pressed=${this.splitView ? "true" : "false"}
                     title="Toggle split/unified diff"
-                  >${this.splitView ? "unified" : "split"}</button>
+                  >
+                    ${this.splitView ? "unified" : "split"}
+                  </button>
                 </div>
                 <div class="diff-body">
                   ${this.diffLoading
                     ? html`<div class="diff-loading">loading diff…</div>`
                     : this.diffError
-                      ? html`<p style="color:var(--danger);padding:var(--space-4)">${this.diffError}</p>`
+                      ? html`<p style="color:var(--danger);padding:var(--space-4)">
+                          ${this.diffError}
+                        </p>`
                       : this.diffHtml
                         ? this.splitView
                           ? this.renderSplitDiff()
@@ -823,7 +898,9 @@ export class GcCommitLog extends LitElement {
   }
 
   static override styles = css`
-    :host([hidden]) { display: none !important; }
+    :host([hidden]) {
+      display: none !important;
+    }
     :host {
       display: flex;
       flex: 1;
@@ -995,7 +1072,9 @@ export class GcCommitLog extends LitElement {
       cursor: pointer;
       opacity: 0.4;
     }
-    .graph-toggle:hover { opacity: 0.8; }
+    .graph-toggle:hover {
+      opacity: 0.8;
+    }
     .graph-toggle.active {
       opacity: 1;
       background: var(--surface-3);
@@ -1036,7 +1115,9 @@ export class GcCommitLog extends LitElement {
       cursor: pointer;
       gap: var(--space-2);
     }
-    .graph-row:hover { background: var(--surface-2); }
+    .graph-row:hover {
+      background: var(--surface-2);
+    }
     .graph-row.selected {
       background: var(--surface-2);
       border-left-color: var(--accent-assistant);
@@ -1079,7 +1160,9 @@ export class GcCommitLog extends LitElement {
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
-    .diff-spacer { flex: 1; }
+    .diff-spacer {
+      flex: 1;
+    }
     .diff-body {
       flex: 1;
       overflow: auto;
@@ -1187,11 +1270,22 @@ export class GcCommitLog extends LitElement {
       font-weight: 600;
       font-size: 0.65rem;
     }
-    .file-status.modified { color: var(--accent-user); }
-    .file-status.added { color: var(--accent-assistant); }
-    .file-status.deleted { color: var(--danger); }
-    .file-status.renamed { color: var(--warning, #e0a040); }
-    .file-status.all { color: var(--text); opacity: 0.5; }
+    .file-status.modified {
+      color: var(--accent-user);
+    }
+    .file-status.added {
+      color: var(--accent-assistant);
+    }
+    .file-status.deleted {
+      color: var(--danger);
+    }
+    .file-status.renamed {
+      color: var(--warning, #e0a040);
+    }
+    .file-status.all {
+      color: var(--text);
+      opacity: 0.5;
+    }
     .file-path {
       flex: 1;
       overflow: hidden;
@@ -1274,12 +1368,12 @@ export class GcCommitLog extends LitElement {
       background: transparent !important;
     }
     .diff-content mark.word-del {
-      background: rgba(248, 81, 73, 0.40);
+      background: rgba(248, 81, 73, 0.4);
       border-radius: 2px;
       padding: 0 1px;
     }
     .diff-content mark.word-add {
-      background: rgba(63, 185, 80, 0.40);
+      background: rgba(63, 185, 80, 0.4);
       border-radius: 2px;
       padding: 0 1px;
     }
@@ -1340,7 +1434,9 @@ export class GcCommitLog extends LitElement {
       opacity: 0.5;
       line-height: 1.2;
     }
-    .path-filter-clear:hover { opacity: 1; }
+    .path-filter-clear:hover {
+      opacity: 1;
+    }
 
     /* ── Split diff toggle ─────────────────────────────────────── */
     .split-toggle {
@@ -1355,7 +1451,9 @@ export class GcCommitLog extends LitElement {
       opacity: 0.4;
       flex-shrink: 0;
     }
-    .split-toggle:hover { opacity: 0.8; }
+    .split-toggle:hover {
+      opacity: 0.8;
+    }
     .split-toggle.active {
       opacity: 1;
       background: var(--surface-3);
@@ -1431,8 +1529,12 @@ export class GcCommitLog extends LitElement {
         grid-row: 2;
       }
     }
-    .drawer-toggle { display: none; }
-    .drawer-backdrop { display: none; }
+    .drawer-toggle {
+      display: none;
+    }
+    .drawer-backdrop {
+      display: none;
+    }
     @media (max-width: 768px) {
       .layout {
         grid-template-columns: 1fr;
@@ -1449,42 +1551,54 @@ export class GcCommitLog extends LitElement {
         bottom: var(--space-5);
         left: var(--space-4);
         z-index: 30;
-        width: 44px; height: 44px;
+        width: 44px;
+        height: 44px;
         border-radius: 50%;
         background: var(--surface-2);
         color: var(--text);
         border: 1px solid var(--border-default);
         font-size: 1.1rem;
         cursor: pointer;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       }
       .commit-list {
         position: fixed;
-        top: 0; left: 0; bottom: 0;
+        top: 0;
+        left: 0;
+        bottom: 0;
         width: 280px;
         z-index: 40;
         transform: translateX(-100%);
         transition: transform 0.2s ease;
         border-right: 1px solid var(--surface-4);
       }
-      .drawer-open .commit-list { transform: translateX(0); }
+      .drawer-open .commit-list {
+        transform: translateX(0);
+      }
       .drawer-backdrop {
         display: none;
-        position: fixed; inset: 0;
-        background: rgba(0,0,0,0.5);
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
         z-index: 35;
       }
-      .drawer-open .drawer-backdrop { display: block; }
+      .drawer-open .drawer-backdrop {
+        display: block;
+      }
     }
   `;
 }
 
 function statusLabel(status: string): string {
   switch (status) {
-    case "added": return "A";
-    case "deleted": return "D";
-    case "renamed": return "R";
-    default: return "M";
+    case "added":
+      return "A";
+    case "deleted":
+      return "D";
+    case "renamed":
+      return "R";
+    default:
+      return "M";
   }
 }
 

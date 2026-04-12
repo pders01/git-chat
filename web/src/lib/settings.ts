@@ -8,10 +8,7 @@
 
 const PREFIX = "gc.settings.";
 
-export type SettingKey =
-  | "sidebar-width"
-  | "content-max-width"
-  | "font-size";
+export type SettingKey = "sidebar-width" | "content-max-width" | "font-size";
 
 export type ThemeChoice = "system" | "light" | "dark";
 
@@ -51,14 +48,18 @@ export function getTheme(): ThemeChoice {
   try {
     const v = localStorage.getItem(THEME_KEY);
     if (v === "light" || v === "dark" || v === "system") return v;
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
   return "system";
 }
 
 export function setTheme(choice: ThemeChoice) {
   try {
     localStorage.setItem(THEME_KEY, choice);
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
   applyTheme(resolveTheme(choice));
   notify();
 }

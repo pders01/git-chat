@@ -13,10 +13,14 @@ function loadHighlight() {
 
 function statusLabel(status: string): string {
   switch (status) {
-    case "added": return "A";
-    case "deleted": return "D";
-    case "renamed": return "R";
-    default: return "M";
+    case "added":
+      return "A";
+    case "deleted":
+      return "D";
+    case "renamed":
+      return "R";
+    default:
+      return "M";
   }
 }
 
@@ -194,8 +198,7 @@ export class GcCompareView extends LitElement {
             ? html`<div class="hint">comparing…</div>`
             : this.files.length === 0 && !this.diffError
               ? html`<div class="hint">no differences</div>`
-              : html`
-                  <div class="file-list-header">
+              : html` <div class="file-list-header">
                     <span>files</span>
                     <span class="file-count">${this.files.length}</span>
                   </div>
@@ -213,22 +216,30 @@ export class GcCompareView extends LitElement {
                         </span>
                       </button>
                     </li>
-                    ${this.files.map((f) => html`
-                      <li>
-                        <button
-                          class="file-entry ${this.selectedFile === f.path ? "selected" : ""}"
-                          @click=${(e: MouseEvent) => { if (e.metaKey || e.ctrlKey) { this.openInBrowse(f.path); } else { this.selectFile(f.path); } }}
-                          title="${f.path} (⌘+click to open in browse)"
-                        >
-                          <span class="file-status ${f.status}">${statusLabel(f.status)}</span>
-                          <span class="file-path">${fileName(f.path)}</span>
-                          <span class="file-stats">
-                            <span class="adds">+${f.additions}</span>
-                            <span class="dels">-${f.deletions}</span>
-                          </span>
-                        </button>
-                      </li>
-                    `)}
+                    ${this.files.map(
+                      (f) => html`
+                        <li>
+                          <button
+                            class="file-entry ${this.selectedFile === f.path ? "selected" : ""}"
+                            @click=${(e: MouseEvent) => {
+                              if (e.metaKey || e.ctrlKey) {
+                                this.openInBrowse(f.path);
+                              } else {
+                                this.selectFile(f.path);
+                              }
+                            }}
+                            title="${f.path} (⌘+click to open in browse)"
+                          >
+                            <span class="file-status ${f.status}">${statusLabel(f.status)}</span>
+                            <span class="file-path">${fileName(f.path)}</span>
+                            <span class="file-stats">
+                              <span class="adds">+${f.additions}</span>
+                              <span class="dels">-${f.deletions}</span>
+                            </span>
+                          </button>
+                        </li>
+                      `,
+                    )}
                   </ul>`}
         </aside>
 
@@ -236,8 +247,9 @@ export class GcCompareView extends LitElement {
         <section class="diff-pane">
           <div class="diff-header">
             ${this.selectedFile
-              ? html`
-                  <span class="file-status ${this.selectedFileEntry()?.status ?? ""}">${statusLabel(this.selectedFileEntry()?.status ?? "")}</span>
+              ? html` <span class="file-status ${this.selectedFileEntry()?.status ?? ""}"
+                    >${statusLabel(this.selectedFileEntry()?.status ?? "")}</span
+                  >
                   <span class="diff-filepath">${this.selectedFile}</span>
                   <span class="diff-spacer"></span>
                   ${this.selectedFileEntry()
@@ -246,12 +258,13 @@ export class GcCompareView extends LitElement {
                         <span class="dels">-${this.selectedFileEntry()!.deletions}</span>
                       </span>`
                     : nothing}`
-              : html`
-                  <span class="diff-label">diff</span>
+              : html` <span class="diff-label">diff</span>
                   <span class="diff-spacer"></span>
                   ${this.files.length
                     ? html`<span class="diff-stats">
-                        <span class="file-count">${this.files.length} file${this.files.length > 1 ? "s" : ""}</span>
+                        <span class="file-count"
+                          >${this.files.length} file${this.files.length > 1 ? "s" : ""}</span
+                        >
                         <span class="adds">+${this.totalAdditions}</span>
                         <span class="dels">-${this.totalDeletions}</span>
                       </span>`
@@ -264,7 +277,9 @@ export class GcCompareView extends LitElement {
                 ? html`<p class="diff-err">${this.diffError}</p>`
                 : this.diffHtml
                   ? html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
-                  : html`<div class="diff-empty">${this.baseRef === this.headRef ? "same branch selected" : "no differences"}</div>`}
+                  : html`<div class="diff-empty">
+                      ${this.baseRef === this.headRef ? "same branch selected" : "no differences"}
+                    </div>`}
           </div>
         </section>
       </div>
@@ -272,7 +287,9 @@ export class GcCompareView extends LitElement {
   }
 
   static override styles = css`
-    :host([hidden]) { display: none !important; }
+    :host([hidden]) {
+      display: none !important;
+    }
     :host {
       display: flex;
       flex: 1;
@@ -343,7 +360,9 @@ export class GcCompareView extends LitElement {
       cursor: pointer;
       transition: background 0.08s ease;
     }
-    .file-entry:hover { background: var(--surface-2); }
+    .file-entry:hover {
+      background: var(--surface-2);
+    }
     .file-entry.selected {
       background: var(--surface-2);
       border-left-color: var(--accent-assistant);
@@ -359,11 +378,22 @@ export class GcCompareView extends LitElement {
       font-weight: 600;
       font-size: 0.65rem;
     }
-    .file-status.modified { color: var(--accent-user); }
-    .file-status.added { color: var(--accent-assistant); }
-    .file-status.deleted { color: var(--danger); }
-    .file-status.renamed { color: var(--warning, #e0a040); }
-    .file-status.all { color: var(--text); opacity: 0.5; }
+    .file-status.modified {
+      color: var(--accent-user);
+    }
+    .file-status.added {
+      color: var(--accent-assistant);
+    }
+    .file-status.deleted {
+      color: var(--danger);
+    }
+    .file-status.renamed {
+      color: var(--warning, #e0a040);
+    }
+    .file-status.all {
+      color: var(--text);
+      opacity: 0.5;
+    }
     .file-path {
       flex: 1;
       overflow: hidden;
@@ -377,9 +407,16 @@ export class GcCompareView extends LitElement {
       font-size: 0.6rem;
       opacity: 0.7;
     }
-    .file-count { opacity: 0.5; }
-    .adds { color: var(--accent-assistant); }
-    .dels { color: var(--danger); margin-left: var(--space-1); }
+    .file-count {
+      opacity: 0.5;
+    }
+    .adds {
+      color: var(--accent-assistant);
+    }
+    .dels {
+      color: var(--danger);
+      margin-left: var(--space-1);
+    }
 
     /* ── Right: diff pane ────────────────────────────────────── */
     .diff-pane {
@@ -413,7 +450,9 @@ export class GcCompareView extends LitElement {
       white-space: nowrap;
       font-size: var(--text-xs);
     }
-    .diff-spacer { flex: 1; }
+    .diff-spacer {
+      flex: 1;
+    }
     .diff-stats {
       display: flex;
       gap: var(--space-1);
@@ -456,7 +495,9 @@ export class GcCompareView extends LitElement {
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .file-entry { transition: none; }
+      .file-entry {
+        transition: none;
+      }
     }
     @media (max-width: 768px) {
       .compare-layout {

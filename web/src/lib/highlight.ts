@@ -52,9 +52,7 @@ function activeTheme(): string {
   if (choice === "light") return THEME_LIGHT;
   if (choice === "dark") return THEME_DARK;
   // "system" — check the resolved data-theme attribute.
-  return document.documentElement.getAttribute("data-theme") === "light"
-    ? THEME_LIGHT
-    : THEME_DARK;
+  return document.documentElement.getAttribute("data-theme") === "light" ? THEME_LIGHT : THEME_DARK;
 }
 
 // The set of grammar names we ship. Anything outside this set renders as
