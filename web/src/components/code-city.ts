@@ -1333,17 +1333,26 @@ export class GcCodeCity extends LitElement {
     }
     .legend-select {
       flex: 1;
-      background: var(--surface-2);
-      border: 1px solid var(--surface-4);
+      min-width: 80px;
+      height: 24px;
+      padding: 0 var(--space-2);
+      background: var(--surface-0);
       color: var(--text);
-      padding: 4px 8px;
-      border-radius: var(--radius-sm);
+      border: 1px solid var(--surface-4);
+      border-radius: var(--radius-md);
+      font-family: inherit;
       font-size: var(--text-xs);
       cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23888'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 6px center;
+      padding-right: 20px;
     }
-    .legend-select:focus {
-      outline: none;
-      border-color: var(--accent-user);
+    .legend-select:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
     }
     .legend-desc {
       font-size: var(--text-xs);
