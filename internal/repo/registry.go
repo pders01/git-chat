@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -109,6 +110,10 @@ type ScanResult struct {
 // and registers them. Returns results with successful adds, skipped
 // duplicates, and any errors encountered.
 func (r *Registry) ScanDirectory(dir string, maxRepos int) (*ScanResult, error) {
+	if maxRepos < 0 {
+		return nil, fmt.Errorf("maxRepos cannot be negative: %d", maxRepos)
+	}
+
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolve %q: %w", dir, err)
@@ -144,7 +149,7 @@ func (r *Registry) ScanDirectory(dir string, maxRepos int) (*ScanResult, error) 
 			continue
 		}
 		if e == nil {
-			// Duplicate ID
+			// Duplicate ID - repo with same basename already registered
 			result.Skipped = append(result.Skipped, subPath)
 			continue
 		}
@@ -155,6 +160,11 @@ func (r *Registry) ScanDirectory(dir string, maxRepos int) (*ScanResult, error) 
 			break
 		}
 	}
+
+	// Sort for deterministic ordering in UI
+	sort.Slice(result.Added, func(i, j int) bool {
+		return result.Added[i].ID < result.Added[j].ID
+	})
 
 	return result, nil
 }
