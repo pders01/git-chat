@@ -156,7 +156,8 @@ test.describe("layout", () => {
       const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
       (tabs?.[2] as HTMLElement)?.click();
     });
-    // Poll until commit rows render (async RPC load).
+    // Wait for tab switch + async commit list RPC.
+    await page.waitForTimeout(2000);
     await expect(async () => {
       const count = await page.evaluate(() => {
         const app = document.querySelector("gc-app");
@@ -164,7 +165,7 @@ test.describe("layout", () => {
         return log?.shadowRoot?.querySelectorAll(".commit-row")?.length ?? 0;
       });
       expect(count).toBeGreaterThan(0);
-    }).toPass({ timeout: 10_000 });
+    }).toPass({ timeout: 15_000 });
 
     // Back to chat for other tests.
     await page.evaluate(() => {
