@@ -335,3 +335,108 @@ func TestGetFileNotFound(t *testing.T) {
 		t.Fatalf("expected CodeNotFound, got %v", connect.CodeOf(err))
 	}
 }
+
+// mustInitRepoMultiCommit creates a repo with 3 commits, where the
+// second touches only src/main.go and the third touches only README.md.
+func mustInitRepoMultiCommit(t *testing.T) (string, *repo.Entry) {
+	t.Helper()
+	dir := mustInitRepo(t) // 1 commit: README.md + src/main.go
+
+	r, _ := git.PlainOpen(dir)
+	w, _ := r.Worktree()
+
+	// Second commit: edit src/main.go only.
+	writeFile(t, filepath.Join(dir, "src", "main.go"), "package main\n\nfunc main() { println(1) }\n")
+	w.Add("src/main.go")
+	w.Commit("edit main.go", &git.CommitOptions{
+		Author: &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()},
+	})
+
+	// Third commit: edit README.md only.
+	writeFile(t, filepath.Join(dir, "README.md"), "# updated\n")
+	w.Add("README.md")
+	w.Commit("edit README", &git.CommitOptions{
+		Author: &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()},
+	})
+
+	registry := repo.NewRegistry()
+	entry, err := registry.Add(dir)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	return dir, entry
+}
+
+func TestListCommits(t *testing.T) {
+	_, entry := mustInitRepoMultiCommit(t)
+	reg := repo.NewRegistry()
+	reg.Add(entry.Path)
+	client := newTestServer(t, reg, true)
+	ctx := context.Background()
+
+	resp, err := client.ListCommits(ctx, connect.NewRequest(&gitchatv1.ListCommitsRequest{
+		RepoId: entry.ID,
+		Limit:  10,
+	}))
+	if err != nil {
+		t.Fatalf("list commits: %v", err)
+	}
+	if len(resp.Msg.Commits) != 3 {
+		t.Fatalf("expected 3 commits, got %d", len(resp.Msg.Commits))
+	}
+	// Newest first.
+	if resp.Msg.Commits[0].Message != "edit README" {
+		t.Fatalf("first commit should be newest, got %q", resp.Msg.Commits[0].Message)
+	}
+}
+
+func TestListCommitsPathFilter(t *testing.T) {
+	_, entry := mustInitRepoMultiCommit(t)
+	reg := repo.NewRegistry()
+	reg.Add(entry.Path)
+	client := newTestServer(t, reg, true)
+	ctx := context.Background()
+
+	// Filter to src/main.go — should return 2 commits (initial + edit).
+	resp, err := client.ListCommits(ctx, connect.NewRequest(&gitchatv1.ListCommitsRequest{
+		RepoId: entry.ID,
+		Limit:  10,
+		Path:   "src/main.go",
+	}))
+	if err != nil {
+		t.Fatalf("list commits with path filter: %v", err)
+	}
+	if len(resp.Msg.Commits) != 2 {
+		t.Fatalf("expected 2 commits for src/main.go, got %d", len(resp.Msg.Commits))
+	}
+	for _, c := range resp.Msg.Commits {
+		if c.Message == "edit README" {
+			t.Fatalf("README-only commit should not appear in src/main.go filter")
+		}
+	}
+}
+
+func TestGetBlame(t *testing.T) {
+	_, entry := mustInitRepoMultiCommit(t)
+	reg := repo.NewRegistry()
+	reg.Add(entry.Path)
+	client := newTestServer(t, reg, true)
+	ctx := context.Background()
+
+	resp, err := client.GetBlame(ctx, connect.NewRequest(&gitchatv1.GetBlameRequest{
+		RepoId: entry.ID,
+		Path:   "README.md",
+	}))
+	if err != nil {
+		t.Fatalf("get blame: %v", err)
+	}
+	if len(resp.Msg.Lines) == 0 {
+		t.Fatal("expected blame lines, got 0")
+	}
+	// All lines should be from "edit README" commit (it replaced the whole file).
+	for _, line := range resp.Msg.Lines {
+		if line.CommitMessage != "edit README" {
+			t.Fatalf("expected blame to show 'edit README', got %q", line.CommitMessage)
+		}
+	}
+}
