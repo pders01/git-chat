@@ -165,13 +165,14 @@ export class GcChatView extends LitElement {
 
   private onKeydownLocal = (e: KeyboardEvent) => {
     // "/" focuses the composer when not already in an input.
-    if (
-      e.key === "/" &&
-      !e.metaKey &&
-      !e.ctrlKey &&
-      !(e.target instanceof HTMLTextAreaElement) &&
-      !(e.target instanceof HTMLInputElement)
-    ) {
+    // Use composedPath() to properly handle shadow DOM retargeting.
+    const origin = e.composedPath()[0];
+    const inInput =
+      origin instanceof HTMLTextAreaElement ||
+      origin instanceof HTMLInputElement ||
+      e.target instanceof HTMLTextAreaElement ||
+      e.target instanceof HTMLInputElement;
+    if (e.key === "/" && !e.metaKey && !e.ctrlKey && !inInput) {
       e.preventDefault();
       const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
       ta?.focus();
