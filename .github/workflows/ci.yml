@@ -78,6 +78,9 @@ jobs:
           restore-keys: |
             bun-${{ runner.os }}-
 
+      - name: Build binary
+        run: make all
+
       - name: Install Playwright
         run: |
           cd web
