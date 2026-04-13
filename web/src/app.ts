@@ -1052,7 +1052,7 @@ export class GcApp extends LitElement {
     ];
 
     // Add repo switch actions if multiple repos available
-    if (this.state.phase === "authenticated" && this.state.repos.length > 1) {
+    if (this.state.phase === "authenticated" && this.state.repos?.length > 1) {
       for (const repo of this.state.repos) {
         const isCurrent = repo.id === this.state.selectedRepo;
         base.push({
