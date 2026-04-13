@@ -8,6 +8,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "skipLibCheck": true,
+    "types": ["bun-types"],
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "isolatedModules": true,
