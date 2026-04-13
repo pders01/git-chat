@@ -2,14 +2,14 @@ import { test, expect, type Page } from "@playwright/test";
 import { startServer, authenticate } from "./helpers";
 
 // Shared state: one server, one auth, all tests reuse the same page.
-let server: ReturnType<typeof startServer>;
+let server: Awaited<ReturnType<typeof startServer>>;
 let page: Page;
 
 test.describe("layout", () => {
   test.describe.configure({ mode: "serial" });
 
   test.beforeAll(async ({ browser }) => {
-    server = startServer();
+    server = await startServer();
     const ctx = await browser.newContext();
     page = await ctx.newPage();
     await authenticate(page, server.url, server.logPath);

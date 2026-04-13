@@ -3,11 +3,34 @@ import { execSync, spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
 import * as fs from "fs";
+import * as net from "net";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 // Repo root is two levels up from web/e2e/
 const repoRoot = resolve(__dirname, "../..");
+
+// Global port counter to ensure unique ports across parallel tests
+let portCounter = 10000 + Math.floor(Math.random() * 1000);
+
+// Get a unique, available port
+async function getUniquePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const tryPort = () => {
+      portCounter++;
+      const server = net.createServer();
+      server.once("error", () => {
+        // Port in use, try next
+        tryPort();
+      });
+      server.once("listening", () => {
+        server.close(() => resolve(portCounter));
+      });
+      server.listen(portCounter, "127.0.0.1");
+    };
+    tryPort();
+  });
+}
 
 // buildBinary builds the Go server binary if it doesn't exist or is
 // stale. Returns the path to the binary.
@@ -22,18 +45,19 @@ export function ensureBinary(): string {
 // startServer starts a git-chat local instance on a free port and
 // returns the claim URL + a cleanup function. Uses a temp DB that's
 // deleted on cleanup.
-export function startServer(): {
+export async function startServer(): Promise<{
   url: string;
   logPath: string;
   cleanup: () => void;
-} {
+}> {
   const bin = ensureBinary();
-  const dbPath = `/tmp/gc-e2e-${Date.now()}.db`;
-  const logPath = `/tmp/gc-e2e-${Date.now()}.log`;
+  const dbPath = `/tmp/gc-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}.db`;
+  const logPath = `/tmp/gc-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}.log`;
+  const port = await getUniquePort();
 
   const child = spawn(bin, [
     "local",
-    "--http", "127.0.0.1:0",
+    "--http", `127.0.0.1:${port}`,
     "--no-browser",
     "--db", dbPath,
     repoRoot,
