@@ -13,7 +13,8 @@ import { ChatService } from "../gen/gitchat/v1/chat_pb.js";
 const transport = createConnectTransport({
   baseUrl: "/",
   useBinaryFormat: false,
-  fetch: (input, init) => fetch(input, { ...init, credentials: "include" }),
+  fetch: ((input: RequestInfo | URL, init?: RequestInit) =>
+    fetch(input, { ...init, credentials: "include" })) as typeof fetch,
 });
 
 export const authClient = createClient(AuthService, transport);
