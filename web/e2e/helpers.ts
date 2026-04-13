@@ -1,18 +1,22 @@
 import { expect, type Page } from "@playwright/test";
 import { execSync, spawn } from "child_process";
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
 import * as fs from "fs";
-import * as path from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+// Repo root is two levels up from web/e2e/
+const repoRoot = resolve(__dirname, "../..");
 
 // buildBinary builds the Go server binary if it doesn't exist or is
 // stale. Returns the path to the binary.
 export function ensureBinary(): string {
-  const bin = "../dist/git-chat";
-  const binPath = path.resolve(__dirname, bin);
   execSync(
     `go build -trimpath -ldflags "-s -w -X main.version=e2e" -o dist/git-chat ./cmd/git-chat`,
-    { stdio: "pipe", cwd: path.resolve(__dirname, "..") },
+    { stdio: "pipe", cwd: repoRoot },
   );
-  return binPath;
+  return resolve(repoRoot, "dist/git-chat");
 }
 
 // startServer starts a git-chat local instance on a free port and
@@ -26,14 +30,13 @@ export function startServer(): {
   const bin = ensureBinary();
   const dbPath = `/tmp/gc-e2e-${Date.now()}.db`;
   const logPath = `/tmp/gc-e2e-${Date.now()}.log`;
-  const repoPath = path.resolve(__dirname, "..");
 
   const child = spawn(bin, [
     "local",
     "--http", "127.0.0.1:0",
     "--no-browser",
     "--db", dbPath,
-    repoPath,
+    repoRoot,
   ], {
     stdio: ["ignore", "ignore", fs.openSync(logPath, "w")],
     detached: true,
@@ -89,11 +92,11 @@ export async function authenticate(page: Page, url: string, logPath?: string) {
   });
 
   await page.goto(url, { waitUntil: "networkidle" });
-  
+
   // Debug: log initial state
   const initialUrl = await page.evaluate(() => window.location.href);
   console.log("Initial URL:", initialUrl);
-  
+
   // Wait for the hash redirect which only happens after successful auth
   // (boot → localClaim → whoami → enterAuthenticated → pushHash).
   // Note: history.pushState() doesn't trigger navigation events, so we poll.
@@ -119,7 +122,7 @@ export async function authenticate(page: Page, url: string, logPath?: string) {
     }
     throw e;
   }
-  
+
   // Wait for authenticated state to be fully rendered
   await expect.poll(
     async () => {
