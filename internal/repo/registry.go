@@ -135,17 +135,15 @@ func (r *Registry) ScanDirectory(dir string, maxRepos int) (*ScanResult, error) 
 			continue
 		}
 
-		// Check if it's a git repo by looking for .git
+		// Try to open as git repo (eliminates TOCTOU race between Stat and PlainOpen)
 		subPath := filepath.Join(abs, entry.Name())
-		gitPath := filepath.Join(subPath, ".git")
-		if _, err := os.Stat(gitPath); err != nil {
-			continue // not a git repo, skip silently
-		}
-
-		// Try to register it
 		e, err := r.addInternal(subPath, true)
 		if err != nil {
-			result.Errors = append(result.Errors, fmt.Errorf("%s: %w", subPath, err))
+			// Only record errors for paths that look like they might be repos
+			// (contain .git directory or file). Silently skip non-git directories.
+			if isProbablyGitRepo(subPath) {
+				result.Errors = append(result.Errors, fmt.Errorf("%s: %w", subPath, err))
+			}
 			continue
 		}
 		if e == nil {
@@ -206,6 +204,14 @@ func (e *Entry) HeadCommit() string {
 		return h[:7]
 	}
 	return h
+}
+
+// isProbablyGitRepo checks if path might be a git repo (has .git file or dir).
+// Used to decide whether to log errors during directory scanning.
+func isProbablyGitRepo(path string) bool {
+	gitPath := filepath.Join(path, ".git")
+	_, err := os.Stat(gitPath)
+	return err == nil
 }
 
 var slugReplacer = regexp.MustCompile(`[^a-z0-9-]+`)
