@@ -398,8 +398,6 @@ func commitDiffStats(c *object.Commit) *diffStats {
 func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.FileChurn, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.mu.Lock()
-	defer e.mu.Unlock()
 	commit, _, err := e.resolveCommit(ref)
 	if err != nil {
 		return nil, err
