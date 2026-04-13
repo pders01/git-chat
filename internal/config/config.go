@@ -62,11 +62,17 @@ func (r *Registry) Register(key, defaultVal, desc, group string) {
 // Get resolves a config value: DB override → env var → default.
 // Returns the compiled default if the key is unknown.
 func (r *Registry) Get(key string) string {
+	return r.GetCtx(context.Background(), key)
+}
+
+// GetCtx is like Get but propagates the caller's context, allowing
+// cancellation to abort a slow DB lookup instead of blocking up to 5s.
+func (r *Registry) GetCtx(ctx context.Context, key string) string {
 	// Check DB override first (with timeout to prevent hanging on slow DB).
 	if r.db != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		if v, ok, err := r.db.GetConfigOverride(ctx, key); err == nil && ok {
+		if v, ok, err := r.db.GetConfigOverride(dbCtx, key); err == nil && ok {
 			return v
 		}
 	}

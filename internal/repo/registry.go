@@ -159,10 +159,14 @@ func (r *Registry) ScanDirectory(dir string, maxRepos int) (*ScanResult, error) 
 		}
 	}
 
-	// Sort for deterministic ordering in UI
+	// Sort both the return value and the internal order for deterministic
+	// ordering everywhere (List() uses r.order, callers may use result.Added).
 	sort.Slice(result.Added, func(i, j int) bool {
 		return result.Added[i].ID < result.Added[j].ID
 	})
+	r.mu.Lock()
+	sort.Strings(r.order)
+	r.mu.Unlock()
 
 	return result, nil
 }
