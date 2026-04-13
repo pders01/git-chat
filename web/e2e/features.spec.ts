@@ -163,14 +163,15 @@ test.describe("features", () => {
       const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
       (tabs?.[2] as HTMLElement)?.click();
     });
-    await page.waitForTimeout(1000);
-
-    const commitCount = await page.evaluate(() => {
-      const app = document.querySelector("gc-app");
-      const log = app?.shadowRoot?.querySelector("gc-commit-log");
-      return log?.shadowRoot?.querySelectorAll(".commit-row")?.length ?? 0;
-    });
-    expect(commitCount).toBeGreaterThan(0);
+    // Poll until commit rows render (async RPC load).
+    await expect(async () => {
+      const count = await page.evaluate(() => {
+        const app = document.querySelector("gc-app");
+        const log = app?.shadowRoot?.querySelector("gc-commit-log");
+        return log?.shadowRoot?.querySelectorAll(".commit-row")?.length ?? 0;
+      });
+      expect(count).toBeGreaterThan(0);
+    }).toPass({ timeout: 10_000 });
 
     // Click first commit.
     await page.evaluate(() => {
