@@ -143,7 +143,8 @@ export class GcApp extends LitElement {
     this.navigateTo({ tab: "chat" });
     // After navigation, insert the mention into the chat view
     requestAnimationFrame(() => {
-      const chatView = this.renderRoot.querySelector<import("./components/chat-view").GcChatView>("gc-chat-view");
+      const chatView =
+        this.renderRoot.querySelector<import("./components/chat-view").GcChatView>("gc-chat-view");
       if (chatView) {
         chatView.insertFileMention(e.detail.path);
       }

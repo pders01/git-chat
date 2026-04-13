@@ -460,7 +460,10 @@ export class GcCodeCity extends LitElement {
         churn: Math.max(1, ...files.map((f) => f.commitCount)),
         activity: Math.max(1, ...files.map((f) => f.additions + f.deletions)),
         velocity: Math.max(1, ...files.map((f) => Math.abs(f.additions - f.deletions))),
-        recency: Math.max(1, Math.floor(Date.now() / 1000) - Math.min(...files.map((f) => f.lastModified || Infinity))),
+        recency: Math.max(
+          1,
+          Math.floor(Date.now() / 1000) - Math.min(...files.map((f) => f.lastModified || Infinity)),
+        ),
         size: Math.max(1, ...files.map((f) => f.size)),
       };
 
@@ -732,7 +735,8 @@ export class GcCodeCity extends LitElement {
   private renderTooltipContent(f: FileNode): string {
     const activity = f.additions + f.deletions;
     const netChange = f.additions - f.deletions;
-    const netLabel = netChange >= 0 ? `+${formatNumber(netChange)}` : `-${formatNumber(-netChange)}`;
+    const netLabel =
+      netChange >= 0 ? `+${formatNumber(netChange)}` : `-${formatNumber(-netChange)}`;
 
     return [
       f.path,
@@ -821,13 +825,10 @@ export class GcCodeCity extends LitElement {
     const netChange = s.totalAdditions - s.totalDeletions;
     const totalActivity = s.totalAdditions + s.totalDeletions;
     // Code velocity: what % of activity is net new code vs churn
-    const velocityPct = totalActivity > 0 
-      ? ((s.totalAdditions / totalActivity) * 100).toFixed(0)
-      : "0";
+    const velocityPct =
+      totalActivity > 0 ? ((s.totalAdditions / totalActivity) * 100).toFixed(0) : "0";
     // Churn rate: lines changed per commit
-    const churnRate = s.totalCommits > 0 
-      ? Math.round(totalActivity / s.totalCommits)
-      : 0;
+    const churnRate = s.totalCommits > 0 ? Math.round(totalActivity / s.totalCommits) : 0;
 
     return html`
       <div class="stats-panel" ?hidden=${!this.showStats}>
@@ -835,7 +836,7 @@ export class GcCodeCity extends LitElement {
           <span class="stats-title">Repository Stats</span>
           <button class="stats-close" @click=${() => (this.showStats = false)}>×</button>
         </div>
-        
+
         <div class="stats-grid">
           <div class="stat-item">
             <span class="stat-value">${formatNumber(s.totalFiles)}</span>
@@ -863,41 +864,51 @@ export class GcCodeCity extends LitElement {
           <span class="churn-badge">~${formatNumber(churnRate)} lines/commit</span>
         </div>
 
-        ${s.hotFiles.length > 0 ? html`
-          <div class="stats-section">
-            <span class="section-title">Hot Files</span>
-            ${s.hotFiles.map(f => html`
-              <div class="file-row" @click=${() => this.dispatchOpenFile(f.path)}>
-                <span class="file-name">${f.name}</span>
-                <span class="file-metric">${f.commitCount}c</span>
+        ${s.hotFiles.length > 0
+          ? html`
+              <div class="stats-section">
+                <span class="section-title">Hot Files</span>
+                ${s.hotFiles.map(
+                  (f) => html`
+                    <div class="file-row" @click=${() => this.dispatchOpenFile(f.path)}>
+                      <span class="file-name">${f.name}</span>
+                      <span class="file-metric">${f.commitCount}c</span>
+                    </div>
+                  `,
+                )}
               </div>
-            `)}
-          </div>
-        ` : nothing}
-
-        ${s.newFiles.length > 0 ? html`
-          <div class="stats-section">
-            <span class="section-title">New This Week</span>
-            ${s.newFiles.map(f => html`
-              <div class="file-row" @click=${() => this.dispatchOpenFile(f.path)}>
-                <span class="file-name">${f.name}</span>
-                <span class="file-metric">${formatRelativeTime(f.lastModified)}</span>
+            `
+          : nothing}
+        ${s.newFiles.length > 0
+          ? html`
+              <div class="stats-section">
+                <span class="section-title">New This Week</span>
+                ${s.newFiles.map(
+                  (f) => html`
+                    <div class="file-row" @click=${() => this.dispatchOpenFile(f.path)}>
+                      <span class="file-name">${f.name}</span>
+                      <span class="file-metric">${formatRelativeTime(f.lastModified)}</span>
+                    </div>
+                  `,
+                )}
               </div>
-            `)}
-          </div>
-        ` : nothing}
-
-        ${s.largeFiles.length > 0 ? html`
-          <div class="stats-section">
-            <span class="section-title">Largest</span>
-            ${s.largeFiles.slice(0, 3).map(f => html`
-              <div class="file-row" @click=${() => this.dispatchOpenFile(f.path)}>
-                <span class="file-name">${f.name}</span>
-                <span class="file-metric">${formatBytes(f.size)}</span>
+            `
+          : nothing}
+        ${s.largeFiles.length > 0
+          ? html`
+              <div class="stats-section">
+                <span class="section-title">Largest</span>
+                ${s.largeFiles.slice(0, 3).map(
+                  (f) => html`
+                    <div class="file-row" @click=${() => this.dispatchOpenFile(f.path)}>
+                      <span class="file-name">${f.name}</span>
+                      <span class="file-metric">${formatBytes(f.size)}</span>
+                    </div>
+                  `,
+                )}
               </div>
-            `)}
-          </div>
-        ` : nothing}
+            `
+          : nothing}
       </div>
     `;
   }
@@ -925,7 +936,7 @@ export class GcCodeCity extends LitElement {
           <span class="detail-path">${f.path}</span>
           <button class="detail-close" @click=${() => (this.selectedFile = null)}>×</button>
         </div>
-        
+
         <div class="detail-stats">
           <div class="detail-stat">
             <span class="detail-value">${f.commitCount}</span>
@@ -944,34 +955,42 @@ export class GcCodeCity extends LitElement {
         <div class="detail-changes">
           <div class="change-bar">
             <span class="change-label">Changes</span>
-            <span class="change-value">+${formatNumber(f.additions)} / -${formatNumber(f.deletions)}</span>
+            <span class="change-value"
+              >+${formatNumber(f.additions)} / -${formatNumber(f.deletions)}</span
+            >
           </div>
           <div class="net-bar ${netChange >= 0 ? "positive" : "negative"}">
             <span class="net-label">Net</span>
             <span class="net-value">${netChange >= 0 ? "+" : ""}${formatNumber(netChange)}</span>
           </div>
-          ${activity > 0 ? html`
-            <div class="ratio-bar">
-              <span class="ratio-label">Ratio</span>
-              <div class="ratio-visual">
-                <div class="ratio-add" style="width: ${(f.additions / activity) * 100}%"></div>
-                <div class="ratio-del" style="width: ${(f.deletions / activity) * 100}%"></div>
-              </div>
-            </div>
-          ` : nothing}
+          ${activity > 0
+            ? html`
+                <div class="ratio-bar">
+                  <span class="ratio-label">Ratio</span>
+                  <div class="ratio-visual">
+                    <div class="ratio-add" style="width: ${(f.additions / activity) * 100}%"></div>
+                    <div class="ratio-del" style="width: ${(f.deletions / activity) * 100}%"></div>
+                  </div>
+                </div>
+              `
+            : nothing}
         </div>
 
         <div class="detail-actions">
           <button class="detail-btn" @click=${() => this.dispatchOpenFile(f.path)}>
             View File
           </button>
-          <button class="detail-btn secondary" @click=${() => this.dispatchEvent(
-            new CustomEvent("gc:explain-in-chat", {
-              detail: { path: f.path },
-              bubbles: true,
-              composed: true,
-            })
-          )}>
+          <button
+            class="detail-btn secondary"
+            @click=${() =>
+              this.dispatchEvent(
+                new CustomEvent("gc:explain-in-chat", {
+                  detail: { path: f.path },
+                  bubbles: true,
+                  composed: true,
+                }),
+              )}
+          >
             Explain in Chat
           </button>
         </div>
@@ -983,7 +1002,11 @@ export class GcCodeCity extends LitElement {
     const modes: { value: ColorMode; label: string; desc: string }[] = [
       { value: "churn", label: "Churn", desc: "Commit frequency (hot = many commits)" },
       { value: "activity", label: "Activity", desc: "Total changes (additions + deletions)" },
-      { value: "velocity", label: "Velocity", desc: "Green = more additions, Red = more deletions" },
+      {
+        value: "velocity",
+        label: "Velocity",
+        desc: "Green = more additions, Red = more deletions",
+      },
       { value: "recency", label: "Recency", desc: "How recently modified" },
       { value: "size", label: "Size", desc: "File size in bytes" },
     ];
@@ -998,32 +1021,42 @@ export class GcCodeCity extends LitElement {
       <div class="legend-panel">
         <div class="legend-row">
           <span class="legend-label">Color:</span>
-          <select class="legend-select" @change=${(e: Event) => this.colorMode = (e.target as HTMLSelectElement).value as ColorMode}>
-            ${modes.map(m => html`
-              <option value=${m.value} ?selected=${this.colorMode === m.value}>
-                ${m.label}
-              </option>
-            `)}
+          <select
+            class="legend-select"
+            @change=${(e: Event) =>
+              (this.colorMode = (e.target as HTMLSelectElement).value as ColorMode)}
+          >
+            ${modes.map(
+              (m) => html`
+                <option value=${m.value} ?selected=${this.colorMode === m.value}>${m.label}</option>
+              `,
+            )}
           </select>
         </div>
         <div class="legend-row">
           <span class="legend-label">Height:</span>
-          <select class="legend-select" @change=${(e: Event) => this.heightMode = (e.target as HTMLSelectElement).value as HeightMode}>
-            ${heights.map(h => html`
-              <option value=${h.value} ?selected=${this.heightMode === h.value}>
-                ${h.label}
-              </option>
-            `)}
+          <select
+            class="legend-select"
+            @change=${(e: Event) =>
+              (this.heightMode = (e.target as HTMLSelectElement).value as HeightMode)}
+          >
+            ${heights.map(
+              (h) => html`
+                <option value=${h.value} ?selected=${this.heightMode === h.value}>
+                  ${h.label}
+                </option>
+              `,
+            )}
           </select>
         </div>
-        <div class="legend-desc">
-          ${modes.find(m => m.value === this.colorMode)?.desc}
-        </div>
-        ${!this.showStats ? html`
-          <button class="show-stats-btn" @click=${() => this.showStats = true}>
-            Show Stats Panel
-          </button>
-        ` : nothing}
+        <div class="legend-desc">${modes.find((m) => m.value === this.colorMode)?.desc}</div>
+        ${!this.showStats
+          ? html`
+              <button class="show-stats-btn" @click=${() => (this.showStats = true)}>
+                Show Stats Panel
+              </button>
+            `
+          : nothing}
       </div>
     `;
   }
@@ -1048,13 +1081,12 @@ export class GcCodeCity extends LitElement {
               <pre>${this.tooltipText}</pre>
             </div>`
           : nothing}
-        
-        ${this.renderStatsPanel()}
-        ${this.renderLegend()}
-        ${this.renderFileDetail()}
+        ${this.renderStatsPanel()} ${this.renderLegend()} ${this.renderFileDetail()}
 
         <div class="city-controls">
-          <span class="time-label start">${this.globalTimeRange ? formatDate(this.globalTimeRange[0]) : "..."}</span>
+          <span class="time-label start"
+            >${this.globalTimeRange ? formatDate(this.globalTimeRange[0]) : "..."}</span
+          >
           <div class="slider-wrapper">
             <input
               type="range"
@@ -1067,7 +1099,9 @@ export class GcCodeCity extends LitElement {
             />
             <span class="slider-label">${this.getSliderLabel()}</span>
           </div>
-          <span class="time-label end">${this.globalTimeRange ? formatDate(this.globalTimeRange[1]) : "..."}</span>
+          <span class="time-label end"
+            >${this.globalTimeRange ? formatDate(this.globalTimeRange[1]) : "..."}</span
+          >
         </div>
       </div>
     `;
@@ -1154,7 +1188,8 @@ export class GcCodeCity extends LitElement {
       color: var(--accent-user);
       height: 16px;
     }
-    .hint, .err {
+    .hint,
+    .err {
       padding: var(--space-5);
       opacity: 0.55;
       margin: 0;
@@ -1257,7 +1292,8 @@ export class GcCodeCity extends LitElement {
       background: rgba(248, 113, 113, 0.2);
       color: #f87171;
     }
-    .velocity-badge, .churn-badge {
+    .velocity-badge,
+    .churn-badge {
       font-size: var(--text-xs);
       padding: 2px 8px;
       border-radius: var(--radius-sm);
@@ -1453,7 +1489,9 @@ export class GcCodeCity extends LitElement {
       padding: var(--space-3);
       margin-bottom: var(--space-3);
     }
-    .change-bar, .net-bar, .ratio-bar {
+    .change-bar,
+    .net-bar,
+    .ratio-bar {
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -1463,7 +1501,9 @@ export class GcCodeCity extends LitElement {
     .change-bar {
       margin-bottom: var(--space-2);
     }
-    .change-label, .net-label, .ratio-label {
+    .change-label,
+    .net-label,
+    .ratio-label {
       opacity: 0.7;
     }
     .change-value {
