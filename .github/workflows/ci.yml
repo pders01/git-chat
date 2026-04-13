@@ -54,7 +54,7 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     needs: check
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,19 +78,27 @@ jobs:
           restore-keys: |
             bun-${{ runner.os }}-
 
-      - name: Install Playwright dependencies
+      - name: Install Playwright
         run: |
           cd web
           bun install --frozen-lockfile
           bunx playwright install chromium
 
       - name: Run e2e tests
-        run: cd web && bunx playwright test --project=desktop --retries=2
+        run: cd web && bunx playwright test --project=desktop --workers=1
+        env:
+          # Increase timeouts for CI environment
+          PLAYWRIGHT_TIMEOUT: 60000
+          PLAYWRIGHT_EXPECT_TIMEOUT: 30000
+          PLAYWRIGHT_ACTION_TIMEOUT: 30000
+          PLAYWRIGHT_NAVIGATION_TIMEOUT: 30000
 
       - name: Upload test results
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: web/playwright-report/
+          path: |
+            web/playwright-report/
+            web/test-results/
           retention-days: 7

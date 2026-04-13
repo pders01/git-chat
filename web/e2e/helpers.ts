@@ -1,4 +1,4 @@
-import { type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { execSync, spawn } from "child_process";
 import * as fs from "fs";
 
@@ -72,7 +72,23 @@ export async function authenticate(page: Page, url: string) {
   await page.goto(url);
   // Wait for the hash redirect which only happens after successful auth
   // (boot → localClaim → whoami → enterAuthenticated → pushHash).
-  await page.waitForURL(/#\//, { timeout: 15_000 });
-  // Give Lit's Shadow DOM children time to fully render.
-  await page.waitForTimeout(1500);
+  // Note: history.pushState() doesn't trigger navigation events, so we poll.
+  await expect.poll(
+    async () => {
+      const hash = await page.evaluate(() => window.location.hash);
+      return hash.startsWith("#/");
+    },
+    { timeout: 30_000, interval: 100 }
+  ).toBe(true);
+  // Wait for authenticated state to be fully rendered
+  await expect.poll(
+    async () => {
+      const phase = await page.evaluate(() => {
+        const app = document.querySelector("gc-app");
+        return (app as any)?.state?.phase;
+      });
+      return phase;
+    },
+    { timeout: 10_000, interval: 100 }
+  ).toBe("authenticated");
 }
