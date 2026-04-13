@@ -24,9 +24,11 @@ var DefaultMaxFileBytes int64 = envInt64Reader("GITCHAT_DEFAULT_FILE_BYTES", 512
 
 // Package-level tunables, configurable via environment variables.
 var (
-	maxWholeDiffBytes_  = envIntReader("GITCHAT_MAX_DIFF_BYTES", 32*1024)
-	defaultCommitLimit  = envIntReader("GITCHAT_DEFAULT_COMMIT_LIMIT", 50)
-	diffContextLines    = envIntReader("GITCHAT_DIFF_CONTEXT_LINES", 3)
+	maxWholeDiffBytes_    = envIntReader("GITCHAT_MAX_DIFF_BYTES", 32*1024)
+	defaultCommitLimit    = envIntReader("GITCHAT_DEFAULT_COMMIT_LIMIT", 50)
+	diffContextLines      = envIntReader("GITCHAT_DIFF_CONTEXT_LINES", 3)
+	maxChurnCommits       = envIntReader("GITCHAT_MAX_CHURN_COMMITS", 5000)
+	churnTimeWindowDays   = envIntReader("GITCHAT_CHURN_WINDOW_DAYS", 90)
 )
 
 // ListBranches returns local branches sorted by committer time, newest first.
@@ -412,12 +414,18 @@ func commitDiffStats(c *object.Commit) *diffStats {
 func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.FileChurn, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+
+	// Apply sensible defaults for large repos to avoid walking entire history
+	if since == 0 && until == 0 {
+		until = time.Now().Unix()
+		since = until - int64(churnTimeWindowDays*24*3600)
+	}
+
 	commit, _, err := e.resolveCommit(ref)
 	if err != nil {
 		return nil, err
 	}
 
-	// Determine whether we filter by time window.
 	filterTime := since > 0 || until > 0
 
 	type churnAcc struct {
@@ -431,11 +439,16 @@ func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.Fi
 	iter := object.NewCommitIterCTime(commit, nil, nil)
 	defer iter.Close()
 
+	commitsProcessed := 0
 	for {
+		if commitsProcessed >= maxChurnCommits {
+			break
+		}
 		c, err := iter.Next()
 		if err != nil {
 			break
 		}
+		commitsProcessed++
 
 		ts := c.Author.When.Unix()
 		if filterTime {
