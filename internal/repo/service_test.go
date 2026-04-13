@@ -440,3 +440,63 @@ func TestGetBlame(t *testing.T) {
 		}
 	}
 }
+
+// TestScanDirectory verifies that ScanDirectory finds git repos in subdirectories.
+func TestScanDirectory(t *testing.T) {
+	// Create a temp workspace with 3 repos
+	workspace := t.TempDir()
+
+	for _, name := range []string{"repo-a", "repo-b", "repo-c"} {
+		dir := filepath.Join(workspace, name)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", name, err)
+		}
+		r, err := git.PlainInit(dir, false)
+		if err != nil {
+			t.Fatalf("init %s: %v", name, err)
+		}
+		w, err := r.Worktree()
+		if err != nil {
+			t.Fatalf("worktree %s: %v", name, err)
+		}
+		writeFile(t, filepath.Join(dir, "README.md"), "# "+name)
+		if _, err := w.Add("README.md"); err != nil {
+			t.Fatalf("add %s: %v", name, err)
+		}
+		if _, err := w.Commit("init", &git.CommitOptions{
+			Author: &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()},
+		}); err != nil {
+			t.Fatalf("commit %s: %v", name, err)
+		}
+	}
+
+	// Also create a non-git directory
+	nonGit := filepath.Join(workspace, "not-a-repo")
+	if err := os.MkdirAll(nonGit, 0755); err != nil {
+		t.Fatalf("mkdir non-git: %v", err)
+	}
+
+	// Scan the workspace
+	reg := repo.NewRegistry()
+	result, err := reg.ScanDirectory(workspace, 0)
+	if err != nil {
+		t.Fatalf("ScanDirectory: %v", err)
+	}
+
+	// Should find exactly 3 repos
+	if len(result.Added) != 3 {
+		t.Errorf("expected 3 repos, got %d", len(result.Added))
+	}
+	if len(result.Errors) > 0 {
+		t.Errorf("unexpected errors: %v", result.Errors)
+	}
+
+	// Verify repo IDs
+	ids := make(map[string]bool)
+	for _, e := range result.Added {
+		ids[e.ID] = true
+	}
+	if !ids["repo-a"] || !ids["repo-b"] || !ids["repo-c"] {
+		t.Errorf("expected repo-a, repo-b, repo-c, got: %v", ids)
+	}
+}
