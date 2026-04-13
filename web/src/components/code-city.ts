@@ -365,6 +365,7 @@ export class GcCodeCity extends LitElement {
   @state() private selectedFile: FileNode | null = null;
 
   private three: THREE | null = null;
+  private _initializingScene = false;
   private scene: InstanceType<THREE["Scene"]> | null = null;
   private camera: InstanceType<THREE["PerspectiveCamera"]> | null = null;
   private renderer: InstanceType<THREE["WebGLRenderer"]> | null = null;
@@ -398,6 +399,7 @@ export class GcCodeCity extends LitElement {
     canvas?.removeEventListener("click", this.onClick);
     canvas?.removeEventListener("mousemove", this.onHover);
     this._resizeObserver?.disconnect();
+    this.controls?.dispose();
     this.renderer?.dispose();
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
     if (this.sliderTimer) clearTimeout(this.sliderTimer);
@@ -442,9 +444,11 @@ export class GcCodeCity extends LitElement {
 
       // Only update global time bounds on initial load (not on slider changes)
       if (!sinceTimestamp && files.length > 0) {
-        const times = files.map((f) => f.lastModified).filter((t) => t > 0);
-        if (times.length > 0) {
-          const oldest = Math.min(...times);
+        let oldest = Infinity;
+        for (const f of files) {
+          if (f.lastModified > 0 && f.lastModified < oldest) oldest = f.lastModified;
+        }
+        if (oldest < Infinity) {
           const now = Math.floor(Date.now() / 1000);
           this.globalTimeRange = [oldest, now];
           this.currentSince = oldest;
@@ -455,16 +459,29 @@ export class GcCodeCity extends LitElement {
         this.error = "No activity in selected time window";
       }
 
-      // Compute max values for color normalization using global bounds
+      // Compute max values for color normalization — use reduce to avoid
+      // stack overflow on large repos (Math.max(...arr) hits call-stack limits).
+      let maxChurn = 1,
+        maxActivity = 1,
+        maxVelocity = 1,
+        minLastMod = Infinity,
+        maxSize = 1;
+      for (const f of files) {
+        if (f.commitCount > maxChurn) maxChurn = f.commitCount;
+        const act = f.additions + f.deletions;
+        if (act > maxActivity) maxActivity = act;
+        const vel = Math.abs(f.additions - f.deletions);
+        if (vel > maxVelocity) maxVelocity = vel;
+        if (f.lastModified > 0 && f.lastModified < minLastMod) minLastMod = f.lastModified;
+        if (f.size > maxSize) maxSize = f.size;
+      }
+      const now = Math.floor(Date.now() / 1000);
       this._maxValues = {
-        churn: Math.max(1, ...files.map((f) => f.commitCount)),
-        activity: Math.max(1, ...files.map((f) => f.additions + f.deletions)),
-        velocity: Math.max(1, ...files.map((f) => Math.abs(f.additions - f.deletions))),
-        recency: Math.max(
-          1,
-          Math.floor(Date.now() / 1000) - Math.min(...files.map((f) => f.lastModified || Infinity)),
-        ),
-        size: Math.max(1, ...files.map((f) => f.size)),
+        churn: maxChurn,
+        activity: maxActivity,
+        velocity: maxVelocity,
+        recency: Math.max(1, minLastMod < Infinity ? now - minLastMod : 1),
+        size: maxSize,
       };
 
       this.tree = parseTree(files);
@@ -482,7 +499,8 @@ export class GcCodeCity extends LitElement {
   /* ---- Three.js init ---- */
 
   private async initScene() {
-    if (this.scene) return;
+    if (this.scene || this._initializingScene) return;
+    this._initializingScene = true;
 
     const THREE = await import("three");
     const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
@@ -490,7 +508,10 @@ export class GcCodeCity extends LitElement {
     this.three = THREE;
 
     const canvas = this.renderRoot.querySelector<HTMLCanvasElement>(".city-canvas");
-    if (!canvas) return;
+    if (!canvas) {
+      this._initializingScene = false;
+      return;
+    }
 
     const container = canvas.parentElement!;
     const rect = container.getBoundingClientRect();
