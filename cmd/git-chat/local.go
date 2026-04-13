@@ -55,7 +55,7 @@ func runLocal(args []string) error {
 		return err
 	}
 
-	// Positional arg: path to the repo. Defaults to cwd.
+	// Positional arg: path to repo or directory to scan. Defaults to cwd.
 	repoPath := fs.Arg(0)
 	if repoPath == "" {
 		cwd, err := os.Getwd()
@@ -82,15 +82,7 @@ func runLocal(args []string) error {
 		}
 	} else {
 		// Positional arg: path to repo or directory to scan
-		repoPath := fs.Arg(0)
-		if repoPath == "" {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return fmt.Errorf("resolve cwd: %w", err)
-			}
-			repoPath = cwd
-		}
-
+		// (repoPath was already resolved above from fs.Arg(0) or cwd)
 		// Try as single repo first
 		entry, err := registry.Add(repoPath)
 		if err != nil {
@@ -104,7 +96,7 @@ func runLocal(args []string) error {
 				return fmt.Errorf("%q is not a valid git repo and cannot be scanned: %w", repoPath, scanErr)
 			}
 			if len(result.Added) == 0 {
-				return fmt.Errorf("%q is not a valid git repo and contains no git repositories", repoPath)
+				return fmt.Errorf("%q contains no git repositories (scanned %d subdirectories)", repoPath, len(result.Skipped)+len(result.Errors))
 			}
 
 			for _, e := range result.Added {
