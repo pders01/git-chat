@@ -14,8 +14,19 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
       - uses: oven-sh/setup-bun@v2
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            web/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
 
       - uses: bufbuild/buf-action@v1
         with:
@@ -49,11 +60,44 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
       - uses: oven-sh/setup-bun@v2
 
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            web/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Get Playwright version
+        id: playwright-version
+        run: |
+          VERSION=$(jq -r '.devDependencies."@playwright/test"' web/package.json | sed 's/^[^0-9]*//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
       - name: Install Playwright
-        run: cd web && bun install --frozen-lockfile && bunx playwright install --with-deps chromium
+        run: cd web && bun install --frozen-lockfile
+
+      - name: Install Playwright browsers (if not cached)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: cd web && bunx playwright install --with-deps chromium
+
+      - name: Verify Playwright browser installation
+        run: cd web && bunx playwright install-deps chromium
 
       - name: Run e2e tests
         run: make test-e2e
