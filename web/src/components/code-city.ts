@@ -903,6 +903,7 @@ export class GcCodeCity extends LitElement {
   }
 
   private dispatchOpenFile(path: string) {
+    this.selectedFile = null; // Close the detail modal
     this.dispatchEvent(
       new CustomEvent("gc:open-file", {
         detail: { path },
