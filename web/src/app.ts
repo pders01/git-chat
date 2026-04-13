@@ -126,7 +126,7 @@ export class GcApp extends LitElement {
   // tab and open a specific file.
   private onOpenFile = (e: CustomEvent<{ path: string }>) => {
     if (this.state.phase !== "authenticated") return;
-    this.navigateTo({ tab: "browse", filePath: e.detail.path });
+    this.navigateTo({ tab: "browse", filePath: e.detail.path, browseView: "file" });
   };
 
   // Bridge: file-view "history" button dispatches gc:view-file-history
@@ -615,6 +615,9 @@ export class GcApp extends LitElement {
             .branch=${this.currentBranch}
             .initialFilePath=${this.currentRoute.filePath ?? ""}
             .initialBlame=${this.currentRoute.blame ?? false}
+            .initialBrowseView=${this.currentRoute.browseView ?? "file"}
+            .initialCompareBase=${this.currentRoute.compareBase ?? ""}
+            .initialCompareHead=${this.currentRoute.compareHead ?? ""}
             class="tab-panel"
             ?hidden=${tab !== "browse"}
           ></gc-repo-browser>

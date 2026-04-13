@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { repoClient } from "../lib/transport.js";
 import { readFocus, writeFocus } from "../lib/focus.js";
 import { EntryType, type Repo } from "../gen/gitchat/v1/repo_pb.js";
+import type { BrowseView } from "../lib/routing.js";
 import "./file-view.js";
 import "./compare-view.js";
 import "./changes-view.js";
@@ -30,6 +31,9 @@ export class GcRepoBrowser extends LitElement {
   @property({ type: String }) branch = "";
   @property({ type: String }) initialFilePath = "";
   @property({ type: Boolean }) initialBlame = false;
+  @property({ type: String }) initialBrowseView: BrowseView = "file";
+  @property({ type: String }) initialCompareBase = "";
+  @property({ type: String }) initialCompareHead = "";
 
   @state() private state: BrowserState = { phase: "loading" };
   @state() private selectedFile = "";
@@ -59,53 +63,82 @@ export class GcRepoBrowser extends LitElement {
 
   private async toggleCompare() {
     if (this.compareFetching) return;
-    this.comparing = !this.comparing;
-    if (this.comparing) this.showChanges = false;
-    if (this.comparing && this.branches.length === 0) {
-      this.compareFetching = true;
-      try {
-        const resp = await repoClient.listBranches({ repoId: this.repoId });
-        if (!this.comparing) return; // toggled off while fetching
-        this.branches = resp.branches;
-        if (this.state.phase === "ready") {
-          this.baseRef = this.state.repo.defaultBranch || this.branches[0]?.name || "";
-          const other = this.branches.find((b) => b.name !== this.baseRef);
-          this.headRef = other ? other.name : this.baseRef;
-        }
-      } catch {
-        this.comparing = false;
-      } finally {
-        this.compareFetching = false;
+    const next = !this.comparing;
+    if (!next) {
+      // Turning off — clear compare from URL.
+      this.comparing = false;
+      this.emitNav({ compareBase: undefined, compareHead: undefined, browseView: "file" });
+      return;
+    }
+    // Turning on — need branch list first.
+    this.comparing = true;
+    this.showChanges = false;
+    this.showCity = false;
+    if (this.branches.length === 0) {
+      await this.fetchBranches();
+      if (!this.comparing) return; // toggled off while fetching
+      if (this.state.phase === "ready") {
+        this.baseRef = this.state.repo.defaultBranch || this.branches[0]?.name || "";
+        const other = this.branches.find((b) => b.name !== this.baseRef);
+        this.headRef = other ? other.name : this.baseRef;
       }
     }
+    this.emitNav({ compareBase: this.baseRef, compareHead: this.headRef, browseView: undefined });
   }
 
   private toggleChanges() {
-    this.showChanges = !this.showChanges;
-    if (this.showChanges) {
-      this.comparing = false;
-      this.showCity = false;
-    }
+    const next = !this.showChanges;
+    // Clear compare params when switching to a different view mode.
+    this.emitNav({
+      browseView: next ? "changes" : "file",
+      compareBase: undefined,
+      compareHead: undefined,
+    });
   }
 
   private toggleCity() {
-    this.showCity = !this.showCity;
-    if (this.showCity) {
-      this.comparing = false;
-      this.showChanges = false;
+    const next = !this.showCity;
+    this.emitNav({
+      browseView: next ? "city" : "file",
+      compareBase: undefined,
+      compareHead: undefined,
+    });
+  }
+
+  /** Fetch branch list for the compare dropdowns. */
+  private async fetchBranches() {
+    this.compareFetching = true;
+    try {
+      const resp = await repoClient.listBranches({ repoId: this.repoId });
+      this.branches = resp.branches;
+    } catch {
+      // Silently fail — dropdowns will remain empty.
+    } finally {
+      this.compareFetching = false;
     }
+  }
+
+  /** Dispatch a gc:nav event with partial route state. */
+  private emitNav(detail: Record<string, unknown>) {
+    this.dispatchEvent(
+      new CustomEvent("gc:nav", {
+        bubbles: true,
+        composed: true,
+        detail,
+      }),
+    );
   }
 
   private swapRefs() {
     [this.baseRef, this.headRef] = [this.headRef, this.baseRef];
+    this.emitNav({ compareBase: this.baseRef, compareHead: this.headRef });
   }
 
   private onOpenFile = ((e: CustomEvent<{ path: string }>) => {
-    // If the event came from code-city (which dispatches to navigate), let it bubble to app.ts
+    // If the event came from code-city, let it bubble to app.ts which
+    // will navigate to browse/file (clearing browseView via onOpenFile).
     const target = e.target as HTMLElement;
     const fromCodeCity = target?.tagName?.toLowerCase() === "gc-code-city";
-    // Always hide code city when a file is selected
-    this.showCity = false;
     if (this.state.phase === "ready") {
       this.selectedFile = e.detail.path;
       this.requestUpdate();
@@ -147,6 +180,31 @@ export class GcRepoBrowser extends LitElement {
         void this.revealAndSelect(this.initialFilePath);
       } else {
         this.pendingFile = this.initialFilePath;
+      }
+    }
+    // Sync view mode from URL (enables back/forward navigation).
+    if (changed.has("initialBrowseView")) {
+      const v = this.initialBrowseView;
+      this.showCity = v === "city";
+      this.showChanges = v === "changes";
+      // Compare is controlled by its own URL param, not browseView.
+      if (v === "city" || v === "changes") this.comparing = false;
+    }
+    // Sync compare state from URL.
+    if (changed.has("initialCompareBase") || changed.has("initialCompareHead")) {
+      if (this.initialCompareBase && this.initialCompareHead) {
+        this.comparing = true;
+        this.showCity = false;
+        this.showChanges = false;
+        this.baseRef = this.initialCompareBase;
+        this.headRef = this.initialCompareHead;
+        // Lazy-fetch branch list for the dropdowns if not loaded yet.
+        if (this.branches.length === 0 && !this.compareFetching) {
+          void this.fetchBranches();
+        }
+      } else if (!this.initialCompareBase && !this.initialCompareHead && this.comparing) {
+        // Compare params cleared (e.g. back from compare to file view).
+        this.comparing = false;
       }
     }
   }
@@ -227,7 +285,7 @@ export class GcRepoBrowser extends LitElement {
       new CustomEvent("gc:nav", {
         bubbles: true,
         composed: true,
-        detail: { filePath: node.fullPath },
+        detail: { filePath: node.fullPath, browseView: "file" },
       }),
     );
   }
@@ -292,6 +350,7 @@ export class GcRepoBrowser extends LitElement {
                     .value=${this.baseRef}
                     @change=${(e: Event) => {
                       this.baseRef = (e.target as HTMLSelectElement).value;
+                      this.emitNav({ compareBase: this.baseRef, compareHead: this.headRef });
                     }}
                     aria-label="Base branch"
                   >
@@ -315,6 +374,7 @@ export class GcRepoBrowser extends LitElement {
                     .value=${this.headRef}
                     @change=${(e: Event) => {
                       this.headRef = (e.target as HTMLSelectElement).value;
+                      this.emitNav({ compareBase: this.baseRef, compareHead: this.headRef });
                     }}
                     aria-label="Head branch"
                   >

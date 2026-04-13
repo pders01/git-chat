@@ -9,6 +9,7 @@
 //   kb:     /{cardId}
 //
 // Query params (tab-specific view state):
+//   ?view=city|changes browse: view mode (absent = default file view)
 //   ?blame=1          browse: blame toggle
 //   ?compare=base..head  browse: compare mode
 //   ?file=path        log: selected file in commit diff
@@ -18,6 +19,8 @@
 export type Tab = "chat" | "browse" | "log" | "kb";
 
 const TABS = new Set<Tab>(["chat", "browse", "log", "kb"]);
+
+export type BrowseView = "file" | "city" | "changes";
 
 export interface ParsedRoute {
   repoId: string;
@@ -29,6 +32,7 @@ export interface ParsedRoute {
   blame?: boolean;
   compareBase?: string;
   compareHead?: string;
+  browseView?: BrowseView; // "file" (default), "city", or "changes"
   // log
   commitSha?: string;
   logFile?: string;
@@ -60,7 +64,7 @@ export function parseRoute(url: URL): ParsedRoute {
     case "chat":
       if (cleanSub) route.sessionId = cleanSub;
       break;
-    case "browse":
+    case "browse": {
       if (cleanSub) route.filePath = cleanSub;
       if (params.get("blame") === "1") route.blame = true;
       if (params.has("compare")) {
@@ -70,7 +74,10 @@ export function parseRoute(url: URL): ParsedRoute {
           route.compareHead = parts[1];
         }
       }
+      const view = params.get("view");
+      if (view === "city" || view === "changes") route.browseView = view;
       break;
+    }
     case "log":
       if (cleanSub) route.commitSha = cleanSub;
       if (params.has("file")) route.logFile = params.get("file")!;
@@ -109,6 +116,9 @@ export function buildRoute(route: ParsedRoute): string {
     if (route.compareBase && route.compareHead) {
       params.set("compare", `${route.compareBase}..${route.compareHead}`);
     }
+    if (route.browseView && route.browseView !== "file") {
+      params.set("view", route.browseView);
+    }
   }
   if (route.tab === "log") {
     if (route.logFile) params.set("file", route.logFile);
@@ -136,6 +146,7 @@ export function clearStaleState(route: ParsedRoute): ParsedRoute {
       clean.blame = route.blame;
       clean.compareBase = route.compareBase;
       clean.compareHead = route.compareHead;
+      clean.browseView = route.browseView;
       break;
     case "log":
       clean.commitSha = route.commitSha;
