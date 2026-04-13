@@ -101,6 +101,11 @@ export class GcRepoBrowser extends LitElement {
   }
 
   private onOpenFile = ((e: CustomEvent<{ path: string }>) => {
+    // If the event came from code-city (which dispatches to navigate), let it bubble to app.ts
+    const target = e.target as HTMLElement;
+    if (target?.tagName?.toLowerCase() === "gc-code-city") {
+      return; // Don't handle here, let app.ts handle navigation
+    }
     if (this.state.phase === "ready") {
       this.selectedFile = e.detail.path;
       this.requestUpdate();
