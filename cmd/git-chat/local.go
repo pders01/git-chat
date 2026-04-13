@@ -46,6 +46,11 @@ func runLocal(args []string) error {
 	fs.Var(&repos, "repo", "explicit repo path (repeatable); if set, positional path is ignored")
 	_ = fs.Parse(args)
 
+	// Validate flags
+	if *maxRepos < 0 {
+		return errors.New("--max-repos cannot be negative")
+	}
+
 	if err := validateLoopback(*httpAddr); err != nil {
 		return err
 	}
