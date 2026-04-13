@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { parseRoute, buildRoute, routesEqual, clearStaleState, type ParsedRoute } from "./routing.js";
+import {
+  parseRoute,
+  buildRoute,
+  routesEqual,
+  clearStaleState,
+  type ParsedRoute,
+} from "./routing.js";
 
 // Helper: parse a hash string as if it were a full URL.
 function parse(hash: string): ParsedRoute {
@@ -126,7 +132,12 @@ describe("roundtrip", () => {
   });
 
   test("browse file with blame survives roundtrip", () => {
-    const original: ParsedRoute = { repoId: "r", tab: "browse", filePath: "src/lib/foo.ts", blame: true };
+    const original: ParsedRoute = {
+      repoId: "r",
+      tab: "browse",
+      filePath: "src/lib/foo.ts",
+      blame: true,
+    };
     const rebuilt = parse(buildRoute(original));
     expect(rebuilt.filePath).toBe("src/lib/foo.ts");
     expect(rebuilt.blame).toBe(true);
