@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -577,6 +578,11 @@ func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFi
 	if err != nil {
 		return nil, 0, 0, err
 	}
+	// Cap changes for very large diffs
+	maxChanges := 500
+	if len(changes) > maxChanges {
+		changes = changes[:maxChanges]
+	}
 	patch, err := changes.Patch()
 	if err != nil {
 		return nil, 0, 0, err
@@ -717,6 +723,16 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 	}
 	if len(changed) == 0 {
 		return "", fromResolved, toResolved, true, nil, nil
+	}
+	// Cap files processed for large diffs
+	maxFiles := 100
+	if len(changed) > maxFiles {
+		truncatedCount := len(changed) - maxFiles
+		changed = changed[:maxFiles]
+		files = append(files, &gitchatv1.ChangedFile{
+			Path:   fmt.Sprintf("... and %d more files", truncatedCount),
+			Status: "truncated",
+		})
 	}
 
 	var sb bytes.Buffer
