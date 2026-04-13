@@ -152,13 +152,14 @@ func (s *Service) Logout(
 	ctx context.Context,
 	_ *connect.Request[gitchatv1.LogoutRequest],
 ) (*connect.Response[gitchatv1.LogoutResponse], error) {
-	// We cannot read the cookie directly here (Connect abstracts the
-	// request), but the session middleware has already injected the
-	// principal into ctx. A logout without a session is a no-op; a logout
-	// with one clears the cookie via the response header.
 	principal, _, ok := PrincipalFromContext(ctx)
 	resp := connect.NewResponse(&gitchatv1.LogoutResponse{})
 	if ok {
+		// Invalidate the server-side session so captured tokens are
+		// unusable after logout, not just the browser cookie.
+		if token, hasToken := SessionTokenFromContext(ctx); hasToken {
+			s.Sessions.Delete(token)
+		}
 		s.writeClearCookie(resp.Header())
 		slog.Info("session logged out", "principal", principal)
 	}

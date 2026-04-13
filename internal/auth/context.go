@@ -8,7 +8,10 @@ import (
 
 type ctxKey int
 
-const principalKey ctxKey = iota
+const (
+	principalKey ctxKey = iota
+	sessionTokenKey
+)
 
 type principalInfo struct {
 	name string
@@ -30,4 +33,16 @@ func PrincipalFromContext(ctx context.Context) (name string, mode gitchatv1.Auth
 		return "", gitchatv1.AuthMode_AUTH_MODE_UNSPECIFIED, false
 	}
 	return info.name, info.mode, true
+}
+
+// withSessionToken stores the raw session token in the context so Logout
+// can invalidate the server-side session (not just clear the cookie).
+func withSessionToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, sessionTokenKey, token)
+}
+
+// SessionTokenFromContext returns the raw session token, if present.
+func SessionTokenFromContext(ctx context.Context) (string, bool) {
+	tok, ok := ctx.Value(sessionTokenKey).(string)
+	return tok, ok
 }

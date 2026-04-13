@@ -17,16 +17,25 @@ func SessionMiddleware(sessions *SessionStore, next http.Handler) http.Handler {
 		cookie, err := r.Cookie(CookieName)
 		if err == nil && cookie.Value != "" {
 			if sess := sessions.Get(cookie.Value); sess != nil {
-				r = r.WithContext(WithPrincipal(r.Context(), sess.Principal, sess.Mode))
+				ctx := WithPrincipal(r.Context(), sess.Principal, sess.Mode)
+				ctx = withSessionToken(ctx, cookie.Value)
+				r = r.WithContext(ctx)
 
 				// Rotate session if needed (after 50% of TTL)
 				if sessions.ShouldRotate(sess) {
 					if newSess, err := sessions.Rotate(cookie.Value, sess); err == nil {
 						sessions.SetCookie(w, newSess)
+						r = r.WithContext(withSessionToken(r.Context(), newSess.Token))
+						pfx := func(s string) string {
+							if len(s) >= 8 {
+								return s[:8]
+							}
+							return s
+						}
 						slog.Debug("session rotated",
 							"principal", sess.Principal,
-							"old_token_prefix", cookie.Value[:8],
-							"new_token_prefix", newSess.Token[:8],
+							"old_token_prefix", pfx(cookie.Value),
+							"new_token_prefix", pfx(newSess.Token),
 						)
 					} else {
 						slog.Warn("session rotation failed", "principal", sess.Principal, "error", err)
