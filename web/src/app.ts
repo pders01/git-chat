@@ -58,6 +58,7 @@ export class GcApp extends LitElement {
   // Deep-link routing state
   private currentRoute: ParsedRoute = { repoId: "", tab: "chat" };
   private _routing = false;
+  private _paletteScrollRafId: number | null = null;
 
   // Server config state
   @state() private configEntries: any[] = [];
@@ -91,6 +92,11 @@ export class GcApp extends LitElement {
     if (this.searchTimer) clearTimeout(this.searchTimer);
     for (const t of this.configDebounceTimers.values()) clearTimeout(t);
     this.configDebounceTimers.clear();
+    // Cancel any pending RAF to prevent memory leaks
+    if (this._paletteScrollRafId !== null) {
+      cancelAnimationFrame(this._paletteScrollRafId);
+      this._paletteScrollRafId = null;
+    }
   }
 
   // Bridge: any view can dispatch gc:ask-about to switch to chat
@@ -180,8 +186,15 @@ export class GcApp extends LitElement {
     if (e.key === "Escape" && (this.showShortcuts || this.showSettings || this.showPalette)) {
       this.showShortcuts = false;
       this.showSettings = false;
-      this.showPalette = false;
-      this.paletteQuery = "";
+      if (this.showPalette) {
+        // Cancel pending scroll RAF when closing palette
+        if (this._paletteScrollRafId !== null) {
+          cancelAnimationFrame(this._paletteScrollRafId);
+          this._paletteScrollRafId = null;
+        }
+        this.showPalette = false;
+        this.paletteQuery = "";
+      }
       return;
     }
 
@@ -1140,8 +1153,13 @@ export class GcApp extends LitElement {
   }
 
   private scrollPaletteSelectionIntoView() {
+    // Cancel any pending RAF to prevent memory leaks
+    if (this._paletteScrollRafId !== null) {
+      cancelAnimationFrame(this._paletteScrollRafId);
+    }
     // Wait for render update then scroll selected item into view
-    requestAnimationFrame(() => {
+    this._paletteScrollRafId = requestAnimationFrame(() => {
+      this._paletteScrollRafId = null;
       const palette = this.renderRoot.querySelector(".palette");
       const selected = palette?.querySelector(".palette-item.selected");
       selected?.scrollIntoView({ block: "nearest", behavior: "smooth" });
