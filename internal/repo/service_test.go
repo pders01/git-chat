@@ -2,6 +2,7 @@ package repo_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -464,7 +465,7 @@ func TestScanDirectory(t *testing.T) {
 			t.Fatalf("add %s: %v", name, err)
 		}
 		if _, err := w.Commit("init", &git.CommitOptions{
-			Author: &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()},
+			Author: &object.Signature{Name: "test", Email: "test@example.com", When: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
 		}); err != nil {
 			t.Fatalf("commit %s: %v", name, err)
 		}
@@ -498,5 +499,93 @@ func TestScanDirectory(t *testing.T) {
 	}
 	if !ids["repo-a"] || !ids["repo-b"] || !ids["repo-c"] {
 		t.Errorf("expected repo-a, repo-b, repo-c, got: %v", ids)
+	}
+}
+
+// TestScanDirectoryMaxRepos verifies that maxRepos limit is respected.
+func TestScanDirectoryMaxRepos(t *testing.T) {
+	workspace := t.TempDir()
+
+	// Create 5 repos
+	for i := 1; i <= 5; i++ {
+		dir := filepath.Join(workspace, fmt.Sprintf("repo-%d", i))
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("mkdir repo-%d: %v", i, err)
+		}
+		r, err := git.PlainInit(dir, false)
+		if err != nil {
+			t.Fatalf("init repo-%d: %v", i, err)
+		}
+		w, _ := r.Worktree()
+		writeFile(t, filepath.Join(dir, "README.md"), fmt.Sprintf("# repo-%d", i))
+		w.Add("README.md")
+		w.Commit("init", &git.CommitOptions{
+			Author: &object.Signature{Name: "test", Email: "test@example.com", When: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+		})
+	}
+
+	// Scan with maxRepos=3
+	reg := repo.NewRegistry()
+	result, err := reg.ScanDirectory(workspace, 3)
+	if err != nil {
+		t.Fatalf("ScanDirectory: %v", err)
+	}
+
+	if len(result.Added) != 3 {
+		t.Errorf("expected 3 repos with maxRepos=3, got %d", len(result.Added))
+	}
+}
+
+// TestScanDirectoryDuplicateIDs verifies duplicate ID handling.
+func TestScanDirectoryDuplicateIDs(t *testing.T) {
+	workspace := t.TempDir()
+
+	// Create two repos with same basename in different subdirs
+	for _, subdir := range []string{"group1", "group2"} {
+		dir := filepath.Join(workspace, subdir, "common-name")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", subdir, err)
+		}
+		r, err := git.PlainInit(dir, false)
+		if err != nil {
+			t.Fatalf("init %s: %v", subdir, err)
+		}
+		w, _ := r.Worktree()
+		writeFile(t, filepath.Join(dir, "README.md"), "# "+subdir)
+		w.Add("README.md")
+		w.Commit("init", &git.CommitOptions{
+			Author: &object.Signature{Name: "test", Email: "test@example.com", When: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+		})
+	}
+
+	// Scan group1 first
+	reg := repo.NewRegistry()
+	result1, err := reg.ScanDirectory(filepath.Join(workspace, "group1"), 0)
+	if err != nil {
+		t.Fatalf("ScanDirectory group1: %v", err)
+	}
+	if len(result1.Added) != 1 {
+		t.Fatalf("expected 1 repo in group1, got %d", len(result1.Added))
+	}
+
+	// Now scan group2 - should skip duplicate
+	result2, err := reg.ScanDirectory(filepath.Join(workspace, "group2"), 0)
+	if err != nil {
+		t.Fatalf("ScanDirectory group2: %v", err)
+	}
+	if len(result2.Added) != 0 {
+		t.Errorf("expected 0 added repos in group2 (duplicate), got %d", len(result2.Added))
+	}
+	if len(result2.Skipped) != 1 {
+		t.Errorf("expected 1 skipped repo in group2, got %d", len(result2.Skipped))
+	}
+}
+
+// TestScanDirectoryNegativeMaxRepos verifies error on negative maxRepos.
+func TestScanDirectoryNegativeMaxRepos(t *testing.T) {
+	reg := repo.NewRegistry()
+	_, err := reg.ScanDirectory(t.TempDir(), -1)
+	if err == nil {
+		t.Error("expected error for negative maxRepos, got nil")
 	}
 }
