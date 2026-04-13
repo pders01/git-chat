@@ -141,13 +141,18 @@ export class GcApp extends LitElement {
   private onExplainInChat = (e: CustomEvent<{ path: string }>) => {
     if (this.state.phase !== "authenticated") return;
     this.navigateTo({ tab: "chat" });
-    // After navigation, insert the mention into the chat view
-    requestAnimationFrame(() => {
-      const chatView =
-        this.renderRoot.querySelector<import("./components/chat-view").GcChatView>("gc-chat-view");
-      if (chatView) {
-        chatView.insertFileMention(e.detail.path);
-      }
+    // Wait for Lit's render cycle to complete so gc-chat-view exists,
+    // then wait one frame for the child component to be ready.
+    void this.updateComplete.then(() => {
+      requestAnimationFrame(() => {
+        const chatView =
+          this.renderRoot.querySelector<import("./components/chat-view").GcChatView>(
+            "gc-chat-view",
+          );
+        if (chatView) {
+          chatView.insertFileMention(e.detail.path);
+        }
+      });
     });
   };
 
