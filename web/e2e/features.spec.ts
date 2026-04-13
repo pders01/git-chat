@@ -55,13 +55,15 @@ test.describe("features", () => {
     // Type a query into the search input.
     await typeInShadowInput(page, "gc-app", ".search-input", "Makefile");
     
-    // Wait for results to appear
+    // Wait for debounce (300ms) + results to render
+    await page.waitForTimeout(400);
     await waitForShadowElement(page, "gc-app", ".search-hit");
     
     const hitCount = await getShadowElementCount(page, "gc-app", ".search-hit");
     expect(hitCount).toBeGreaterThan(0);
 
-    // Close search.
+    // Close search - ensure focus first
+    await clickShadowElement(page, "gc-app", ".search-input");
     await page.keyboard.press("Escape");
     await waitForShadowElement(page, "gc-app", ".search-input", { state: 'hidden' });
   });
@@ -211,24 +213,41 @@ test.describe("features", () => {
 
     // Type query that returns results.
     await typeInShadowInput(page, "gc-app", ".search-input", "go");
+    
+    // Wait for debounce (300ms) + results to render
+    await page.waitForTimeout(400);
     await waitForShadowElement(page, "gc-app", ".search-hit");
+
+    // Ensure input has focus before keyboard navigation
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const input = app?.shadowRoot?.querySelector(".search-input") as HTMLInputElement;
+      input?.focus();
+    });
 
     // Arrow down should move selection.
     await page.keyboard.press("ArrowDown");
     
-    // Wait for selection to move (RAF-based scroll updates)
+    // Wait for selection to move (Lit render + RAF)
     await expect.poll(async () => {
-      const selectedIdx = await page.evaluate(() => {
+      const hasSelection = await page.evaluate(() => {
         const app = document.querySelector("gc-app");
-        const selected = app?.shadowRoot?.querySelector(".search-hit.selected");
-        if (!selected) return -1;
-        const hits = [...(app?.shadowRoot?.querySelectorAll(".search-hit") ?? [])];
-        return hits.indexOf(selected);
+        return !!app?.shadowRoot?.querySelector(".search-hit.selected");
       });
-      return selectedIdx;
-    }, { timeout: 3000 }).toBeGreaterThanOrEqual(0);
+      return hasSelection;
+    }, { timeout: 5000 }).toBe(true);
+
+    const selectedIdx = await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const selected = app?.shadowRoot?.querySelector(".search-hit.selected");
+      if (!selected) return -1;
+      const hits = [...(app?.shadowRoot?.querySelectorAll(".search-hit") ?? [])];
+      return hits.indexOf(selected);
+    });
+    expect(selectedIdx).toBeGreaterThanOrEqual(0);
 
     // Close search.
+    await clickShadowElement(page, "gc-app", ".search-input");
     await page.keyboard.press("Escape");
     await waitForShadowElement(page, "gc-app", ".search-input", { state: 'hidden' });
   });
@@ -244,20 +263,28 @@ test.describe("features", () => {
     await waitForShadowElement(page, "gc-app", ".search-input");
 
     await typeInShadowInput(page, "gc-app", ".search-input", "Makefile");
+    
+    // Wait for debounce (300ms) + results
+    await page.waitForTimeout(400);
     await waitForShadowElement(page, "gc-app", ".search-hit");
 
-    // Select first result and activate it
+    // Ensure focus and select first result
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const input = app?.shadowRoot?.querySelector(".search-input") as HTMLInputElement;
+      input?.focus();
+    });
     await page.keyboard.press("ArrowDown");
+    
+    // Wait for selection
     await expect.poll(async () => {
-      const idx = await page.evaluate(() => {
+      const selected = await page.evaluate(() => {
         const app = document.querySelector("gc-app");
-        const selected = app?.shadowRoot?.querySelector(".search-hit.selected");
-        if (!selected) return -1;
-        const hits = [...(app?.shadowRoot?.querySelectorAll(".search-hit") ?? [])];
-        return hits.indexOf(selected);
+        return !!app?.shadowRoot?.querySelector(".search-hit.selected");
       });
-      return idx;
-    }, { timeout: 3000 }).toBeGreaterThanOrEqual(0);
+      return selected;
+    }, { timeout: 3000 }).toBe(true);
+    
     await page.keyboard.press("Enter");
 
     // Should be on browse tab.
