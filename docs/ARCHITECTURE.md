@@ -250,7 +250,7 @@ sequenceDiagram
 #### Security properties
 
 - No passwords anywhere. Key compromise is the only failure mode.
-- Session cookies are HttpOnly + SameSite=Strict. 7-day TTL, rotated on login.
+- Session cookies are HttpOnly + SameSite=Strict. 7-day TTL, rotated continuously after 50% of TTL.
 - SSH server accepts only `pair <CODE>` -- no shell, no PTY, no FS access.
 - Pairing codes: word + 4-digit number, ~40 bits entropy, 60s TTL, single use.
 
@@ -511,7 +511,10 @@ git-chat/
 │   ├── auth/                    # wish SSH server, pairing state, sessions
 │   │   ├── ssh.go
 │   │   ├── pairing.go
-│   │   └── cookies.go
+│   │   ├── sessions.go          # session store, cookie helpers, rotation
+│   │   ├── middleware.go         # session middleware (rotation, context injection)
+│   │   ├── service.go           # Connect handlers (pairing, claim, logout)
+│   │   └── context.go           # principal + token context helpers
 │   ├── chat/                    # ChatService: streaming LLM, KB, prompt builder
 │   │   ├── service.go           # Connect handler impls (SendMessage, Search, KB mgmt)
 │   │   ├── prompt.go            # System prompt builder (@-mention injection, context)
