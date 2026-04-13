@@ -40,6 +40,10 @@ func runLocal(args []string) error {
 	llmTemp := fs.Float64("llm-temperature", envFloat("LLM_TEMPERATURE", 0), "LLM temperature (0 = deterministic)")
 	llmMaxTok := fs.Int("llm-max-tokens", envIntFlag("LLM_MAX_TOKENS", 0), "LLM max tokens per response (0 = provider default)")
 	dbPath := fs.String("db", envOr("GITCHAT_DB", ""), "SQLite state file path (default: ~/.local/state/git-chat/state.db)")
+	noScan := fs.Bool("no-scan", false, "do not scan directory for multiple repos (treat as single repo)")
+	maxRepos := fs.Int("max-repos", 0, "maximum repos to load from directory scan (0 = unlimited)")
+	var repos repoFlags
+	fs.Var(&repos, "repo", "explicit repo path (repeatable); if set, positional path is ignored")
 	_ = fs.Parse(args)
 
 	if err := validateLoopback(*httpAddr); err != nil {
@@ -61,11 +65,61 @@ func runLocal(args []string) error {
 	})))
 
 	registry := repo.NewRegistry()
-	entry, err := registry.Add(repoPath)
-	if err != nil {
-		return fmt.Errorf("register repo %q: %w", repoPath, err)
+
+	// Handle explicit --repo flags (takes precedence over positional arg)
+	if len(repos) > 0 {
+		for _, p := range repos {
+			entry, err := registry.Add(p)
+			if err != nil {
+				return fmt.Errorf("register repo %q: %w", p, err)
+			}
+			slog.Info("repo registered", "id", entry.ID, "path", entry.Path, "branch", entry.DefaultBranch)
+		}
+	} else {
+		// Positional arg: path to repo or directory to scan
+		repoPath := fs.Arg(0)
+		if repoPath == "" {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("resolve cwd: %w", err)
+			}
+			repoPath = cwd
+		}
+
+		// Try as single repo first
+		entry, err := registry.Add(repoPath)
+		if err != nil {
+			// Not a valid git repo - try scanning if not disabled
+			if *noScan {
+				return fmt.Errorf("%q is not a valid git repo (--no-scan prevents directory scanning)", repoPath)
+			}
+
+			result, scanErr := registry.ScanDirectory(repoPath, *maxRepos)
+			if scanErr != nil {
+				return fmt.Errorf("%q is not a valid git repo and cannot be scanned: %w", repoPath, scanErr)
+			}
+			if len(result.Added) == 0 {
+				return fmt.Errorf("%q is not a valid git repo and contains no git repositories", repoPath)
+			}
+
+			for _, e := range result.Added {
+				slog.Info("repo registered (scanned)", "id", e.ID, "path", e.Path, "branch", e.DefaultBranch)
+			}
+			for _, skipped := range result.Skipped {
+				slog.Warn("repo skipped (duplicate id)", "path", skipped)
+			}
+			for _, err := range result.Errors {
+				slog.Warn("repo error during scan", "err", err)
+			}
+			slog.Info("directory scan complete", "path", repoPath, "registered", len(result.Added), "skipped", len(result.Skipped))
+		} else {
+			slog.Info("repo registered", "id", entry.ID, "path", entry.Path, "branch", entry.DefaultBranch)
+		}
 	}
-	slog.Info("repo registered", "id", entry.ID, "path", entry.Path, "branch", entry.DefaultBranch)
+
+	if registry.Count() == 0 {
+		return errors.New("no repositories registered")
+	}
 
 	db, err := openDB(*dbPath)
 	if err != nil {
