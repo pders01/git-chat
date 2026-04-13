@@ -52,11 +52,8 @@ test.describe("features", () => {
     await page.keyboard.press("Control+f");
     await waitForShadowElement(page, "gc-app", ".search-input");
 
-    // Type a query into the search input.
+    // Type a query into the search input; poll for results (debounce + render).
     await typeInShadowInput(page, "gc-app", ".search-input", "Makefile");
-    
-    // Wait for debounce (300ms) + results to render
-    await page.waitForTimeout(400);
     await waitForShadowElement(page, "gc-app", ".search-hit");
     
     const hitCount = await getShadowElementCount(page, "gc-app", ".search-hit");
@@ -211,11 +208,8 @@ test.describe("features", () => {
     await page.keyboard.press("Control+f");
     await waitForShadowElement(page, "gc-app", ".search-input");
 
-    // Type query that returns results.
+    // Type query that returns results; poll for results (debounce + render).
     await typeInShadowInput(page, "gc-app", ".search-input", "go");
-    
-    // Wait for debounce (300ms) + results to render
-    await page.waitForTimeout(400);
     await waitForShadowElement(page, "gc-app", ".search-hit");
 
     // Ensure input has focus before keyboard navigation
@@ -263,9 +257,6 @@ test.describe("features", () => {
     await waitForShadowElement(page, "gc-app", ".search-input");
 
     await typeInShadowInput(page, "gc-app", ".search-input", "Makefile");
-    
-    // Wait for debounce (300ms) + results
-    await page.waitForTimeout(400);
     await waitForShadowElement(page, "gc-app", ".search-hit");
 
     // Ensure focus and select first result
@@ -419,12 +410,12 @@ test.describe("features", () => {
 
   // ── Multi-repo command palette ──────────────────────────────
 
-  test("command palette shows repo switcher when multiple repos", async () => {
-    // Open command palette with Ctrl+K
+  test.skip("command palette shows repo switcher when multiple repos", async () => {
+    // Skipped: e2e setup only has a single repo, so this test cannot assert
+    // repo-switcher presence. Enable when multi-repo e2e fixture exists.
     await page.keyboard.press("Control+k");
     await waitForShadowElement(page, "gc-app", ".palette");
 
-    // Check for repo switcher actions
     const hasRepoSwitcher = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const palette = app?.shadowRoot?.querySelector(".palette");
@@ -438,11 +429,8 @@ test.describe("features", () => {
       return found;
     });
 
-    // This will be false when running with single repo (current e2e setup)
-    // but logs for debugging. With multi-repo setup, it should be true.
-    console.log("Has repo switcher:", hasRepoSwitcher);
+    expect(hasRepoSwitcher).toBe(true);
 
-    // Close palette
     await page.keyboard.press("Escape");
     await waitForShadowElement(page, "gc-app", ".palette", { state: 'hidden' });
   });
