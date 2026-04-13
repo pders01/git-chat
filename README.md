@@ -19,11 +19,24 @@ git chat --llm-backend=anthropic --llm-api-key=$ANTHROPIC_API_KEY
 ## CLI usage
 
 ```
-git chat                         # local mode, CWD repo, auto-open browser
+git chat                         # local mode, auto-detect repo, auto-open browser
 git chat serve --repo /path/to/repo1 --repo /path/to/repo2
+git chat local ~/workspace       # scan directory for git repos (multi-repo workspace)
+git chat local --no-scan .       # treat CWD as single repo (fail if not valid)
+git chat local --max-repos=5 .   # scan directory, load at most 5 repos
 git chat mcp                     # MCP server mode (stdio)
 git chat add-key paul@laptop < ~/.ssh/id_ed25519.pub
 ```
+
+### Multi-repo workspace support
+
+When running `git chat` on a directory that contains multiple git repositories:
+
+- **Auto-scan**: If the path is not a valid git repo, subdirectories are scanned for `.git` folders
+- **Explicit repos**: Use `--repo` (repeatable) to specify exact repo paths, bypassing scan
+- **Limit loading**: `--max-repos=N` caps the number of repos loaded from a scan
+- **Single repo mode**: `--no-scan` treats the path as a single repo (fails if invalid)
+- **UI switcher**: When multiple repos are loaded, a dropdown selector appears in the header, and `Cmd/Ctrl+K` command palette shows "Switch to: {repo}" actions
 
 ## Features
 

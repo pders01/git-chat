@@ -40,9 +40,9 @@ What makes it distinct from "RAG bot over a repo":
 ### Goals
 
 - **Single binary, three modes.** `go build` produces one static executable:
-  `git chat` (local, auto-detect repo), `git chat serve` (multi-user),
-  `git chat mcp` (MCP server on stdio). No runtime dependencies except `git`
-  on `$PATH`.
+  `git chat` (local, auto-detect repo, multi-repo workspace support),
+  `git chat serve` (multi-user), `git chat mcp` (MCP server on stdio). No
+  runtime dependencies except `git` on `$PATH`.
 - **Solo-local is first-class, not a degraded mode.** `git chat` is the
   zero-ceremony path for a developer. No SSH server, no key registration, no
   pairing codes -- just a loopback-bound HTTP listener and a one-time claim
@@ -260,9 +260,18 @@ sequenceDiagram
 > are authenticated.
 
 ```
-git chat                     # CWD repo
-git chat ~/code/my-repo      # explicit path
+git chat                                 # CWD repo (auto-detect)
+git chat ~/code/my-repo                  # explicit single repo
+git chat ~/workspace                     # scan directory for git repos
+git chat --no-scan ~/workspace           # treat as single repo (fail if invalid)
+git chat --max-repos=5 ~/workspace       # scan, load at most 5 repos
+git chat --repo ~/workspace/a --repo ~/workspace/b  # explicit multi-repo
 ```
+
+**Multi-repo workspace support:** When the path is not a valid git repo and
+`--no-scan` is not set, the directory is scanned for git repositories in
+immediate subdirectories. The registry collects valid repos up to `--max-repos`
+(or unlimited if 0). Duplicate IDs (same basename) are silently skipped.
 
 On startup: bind `127.0.0.1:0`, generate 32-byte claim token (60s TTL),
 print URL to stderr, auto-open browser. Token consumed on first use.
@@ -517,6 +526,7 @@ git-chat/
 │   │   └── defaults.go          # RegisterDefaults: all 18 GITCHAT_* keys
 │   ├── mcp/                     # MCP server (5 tools via mcp-go)
 │   ├── repo/                    # RepoService: git operations
+│   │   ├── registry.go          # Registry: repo collection, Add, ScanDirectory
 │   │   ├── reader.go            # go-git read path + git(1) fallbacks
 │   │   └── service.go           # Connect handler impls
 │   ├── rpc/                     # cross-service Connect wiring
