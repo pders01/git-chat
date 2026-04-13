@@ -431,8 +431,8 @@ func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.Fi
 
 	type churnAcc struct {
 		commits   int
-		additions int
-		deletions int
+		additions int64
+		deletions int64
 		lastMod   int64
 	}
 	m := map[string]*churnAcc{}
@@ -486,7 +486,7 @@ func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.Fi
 					m[f.Name] = acc
 				}
 				acc.commits++
-				acc.additions += int(f.Size) / 40 // rough estimate
+				acc.additions += f.Size / 40 // rough estimate
 				if ts > acc.lastMod {
 					acc.lastMod = ts
 				}
@@ -510,8 +510,8 @@ func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.Fi
 				m[st.Name] = acc
 			}
 			acc.commits++
-			acc.additions += st.Addition
-			acc.deletions += st.Deletion
+			acc.additions += int64(st.Addition)
+			acc.deletions += int64(st.Deletion)
 			if ts > acc.lastMod {
 				acc.lastMod = ts
 			}
@@ -535,8 +535,8 @@ func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.Fi
 		out = append(out, &gitchatv1.FileChurn{
 			Path:           path,
 			CommitCount:    int32(acc.commits),
-			TotalAdditions: int32(acc.additions),
-			TotalDeletions: int32(acc.deletions),
+			TotalAdditions: acc.additions,
+			TotalDeletions: acc.deletions,
 			LastModified:   acc.lastMod,
 			Size:           sizeMap[path],
 		})

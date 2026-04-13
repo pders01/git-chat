@@ -2081,8 +2081,8 @@ type FileChurn struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Path           string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	CommitCount    int32                  `protobuf:"varint,2,opt,name=commit_count,json=commitCount,proto3" json:"commit_count,omitempty"`
-	TotalAdditions int32                  `protobuf:"varint,3,opt,name=total_additions,json=totalAdditions,proto3" json:"total_additions,omitempty"`
-	TotalDeletions int32                  `protobuf:"varint,4,opt,name=total_deletions,json=totalDeletions,proto3" json:"total_deletions,omitempty"`
+	TotalAdditions int64                  `protobuf:"varint,3,opt,name=total_additions,json=totalAdditions,proto3" json:"total_additions,omitempty"`
+	TotalDeletions int64                  `protobuf:"varint,4,opt,name=total_deletions,json=totalDeletions,proto3" json:"total_deletions,omitempty"`
 	LastModified   int64                  `protobuf:"varint,5,opt,name=last_modified,json=lastModified,proto3" json:"last_modified,omitempty"`
 	Size           int64                  `protobuf:"varint,6,opt,name=size,proto3" json:"size,omitempty"`
 	unknownFields  protoimpl.UnknownFields
@@ -2133,14 +2133,14 @@ func (x *FileChurn) GetCommitCount() int32 {
 	return 0
 }
 
-func (x *FileChurn) GetTotalAdditions() int32 {
+func (x *FileChurn) GetTotalAdditions() int64 {
 	if x != nil {
 		return x.TotalAdditions
 	}
 	return 0
 }
 
-func (x *FileChurn) GetTotalDeletions() int32 {
+func (x *FileChurn) GetTotalDeletions() int64 {
 	if x != nil {
 		return x.TotalDeletions
 	}
@@ -2356,8 +2356,8 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\tFileChurn\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12!\n" +
 	"\fcommit_count\x18\x02 \x01(\x05R\vcommitCount\x12'\n" +
-	"\x0ftotal_additions\x18\x03 \x01(\x05R\x0etotalAdditions\x12'\n" +
-	"\x0ftotal_deletions\x18\x04 \x01(\x05R\x0etotalDeletions\x12#\n" +
+	"\x0ftotal_additions\x18\x03 \x01(\x03R\x0etotalAdditions\x12'\n" +
+	"\x0ftotal_deletions\x18\x04 \x01(\x03R\x0etotalDeletions\x12#\n" +
 	"\rlast_modified\x18\x05 \x01(\x03R\flastModified\x12\x12\n" +
 	"\x04size\x18\x06 \x01(\x03R\x04size\"F\n" +
 	"\x17GetFileChurnMapResponse\x12+\n" +

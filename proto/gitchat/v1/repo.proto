@@ -294,8 +294,8 @@ message GetFileChurnMapRequest {
 message FileChurn {
   string path = 1;
   int32 commit_count = 2;
-  int32 total_additions = 3;
-  int32 total_deletions = 4;
+  int64 total_additions = 3;
+  int64 total_deletions = 4;
   int64 last_modified = 5;
   int64 size = 6;
 }
