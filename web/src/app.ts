@@ -1126,15 +1126,26 @@ export class GcApp extends LitElement {
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       this.paletteSelectedIdx = Math.min(this.paletteSelectedIdx + 1, filtered.length - 1);
+      this.scrollPaletteSelectionIntoView();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       this.paletteSelectedIdx = Math.max(this.paletteSelectedIdx - 1, 0);
+      this.scrollPaletteSelectionIntoView();
     } else if (e.key === "Enter" && filtered.length > 0) {
       e.preventDefault();
       filtered[this.paletteSelectedIdx].action();
       this.showPalette = false;
       this.paletteQuery = "";
     }
+  }
+
+  private scrollPaletteSelectionIntoView() {
+    // Wait for render update then scroll selected item into view
+    requestAnimationFrame(() => {
+      const palette = this.renderRoot.querySelector(".palette");
+      const selected = palette?.querySelector(".palette-item.selected");
+      selected?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
   }
 
   private renderCommandPalette() {
