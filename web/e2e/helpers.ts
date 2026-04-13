@@ -44,8 +44,34 @@ export function ensureBinary(): string {
 
 // startServer starts a git-chat local instance on a free port and
 // returns the claim URL + a cleanup function. Uses a temp DB that's
-// deleted on cleanup.
-export async function startServer(): Promise<{
+// deleted on cleanup. Retries on port conflicts.
+export async function startServer(maxRetries = 3): Promise<{
+  url: string;
+  logPath: string;
+  cleanup: () => void;
+}> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await startServerOnce();
+    } catch (e) {
+      lastError = e as Error;
+      // If the error is about port in use, retry
+      if (lastError.message.includes("address already in use")) {
+        console.log(`Port conflict on attempt ${attempt + 1}, retrying...`);
+        await new Promise(r => setTimeout(r, 100));
+        continue;
+      }
+      // Other errors are fatal
+      throw lastError;
+    }
+  }
+  throw new Error(`Failed to start server after ${maxRetries} attempts: ${lastError?.message}`);
+}
+
+// Internal function that attempts to start server once
+async function startServerOnce(): Promise<{
   url: string;
   logPath: string;
   cleanup: () => void;
@@ -55,6 +81,9 @@ export async function startServer(): Promise<{
   const logPath = `/tmp/gc-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}.log`;
   const port = await getUniquePort();
 
+  // Open log file fd and close it when child spawns to prevent leaks
+  const logFd = fs.openSync(logPath, "w");
+
   const child = spawn(bin, [
     "local",
     "--http", `127.0.0.1:${port}`,
@@ -62,9 +91,12 @@ export async function startServer(): Promise<{
     "--db", dbPath,
     repoRoot,
   ], {
-    stdio: ["ignore", "ignore", fs.openSync(logPath, "w")],
+    stdio: ["ignore", "ignore", logFd],
     detached: true,
   });
+
+  // Close our copy of the fd now that child has inherited it
+  fs.closeSync(logFd);
 
   // Wait for the server to print the Open URL.
   let url = "";
