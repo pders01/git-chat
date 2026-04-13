@@ -10,6 +10,7 @@ package repo
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -48,6 +49,12 @@ func NewRegistry() *Registry {
 // not a git repository, if a repo with the derived ID already exists, or
 // if HEAD is detached (we need a branch name to call the "default").
 func (r *Registry) Add(path string) (*Entry, error) {
+	return r.addInternal(path, false)
+}
+
+// addInternal is the internal implementation that can optionally skip
+// duplicate ID errors (used by ScanDirectory).
+func (r *Registry) addInternal(path string, skipDuplicates bool) (*Entry, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("resolve %q: %w", path, err)
@@ -73,6 +80,9 @@ func (r *Registry) Add(path string) (*Entry, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.byID[id]; exists {
+		if skipDuplicates {
+			return nil, nil // silently skip duplicate
+		}
 		return nil, fmt.Errorf("repo id %q already registered (from another --repo path with the same basename)", id)
 	}
 
@@ -86,6 +96,67 @@ func (r *Registry) Add(path string) (*Entry, error) {
 	r.byID[id] = entry
 	r.order = append(r.order, id)
 	return entry, nil
+}
+
+// ScanResult holds the outcome of scanning a directory for repos.
+type ScanResult struct {
+	Added       []*Entry // Successfully registered repos
+	Skipped     []string // Repos skipped due to duplicate IDs (path only)
+	Errors      []error  // Non-fatal errors (failed git open, etc.)
+}
+
+// ScanDirectory scans immediate subdirectories for git repositories
+// and registers them. Returns results with successful adds, skipped
+// duplicates, and any errors encountered.
+func (r *Registry) ScanDirectory(dir string, maxRepos int) (*ScanResult, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve %q: %w", dir, err)
+	}
+
+	entries, err := os.ReadDir(abs)
+	if err != nil {
+		return nil, fmt.Errorf("read directory %q: %w", abs, err)
+	}
+
+	result := &ScanResult{
+		Added:   make([]*Entry, 0),
+		Skipped: make([]string, 0),
+		Errors:  make([]error, 0),
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Check if it's a git repo by looking for .git
+		subPath := filepath.Join(abs, entry.Name())
+		gitPath := filepath.Join(subPath, ".git")
+		if _, err := os.Stat(gitPath); err != nil {
+			continue // not a git repo, skip silently
+		}
+
+		// Try to register it
+		e, err := r.addInternal(subPath, true)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Errorf("%s: %w", subPath, err))
+			continue
+		}
+		if e == nil {
+			// Duplicate ID
+			result.Skipped = append(result.Skipped, subPath)
+			continue
+		}
+		result.Added = append(result.Added, e)
+
+		// Check max repos limit
+		if maxRepos > 0 && len(result.Added) >= maxRepos {
+			break
+		}
+	}
+
+	return result, nil
 }
 
 // Get returns the entry for id, or nil.
