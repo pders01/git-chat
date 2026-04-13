@@ -250,6 +250,14 @@ func (e *Entry) ListCommits(ref string, limit, offset int, pathFilter string) ([
 	if limit <= 0 {
 		limit = defaultCommitLimit
 	}
+	// Cap limit to prevent memory issues on large repos
+	if limit > 200 {
+		limit = 200
+	}
+	// Cap offset for performance
+	if offset > 10000 {
+		offset = 10000
+	}
 	commit, _, err := e.resolveCommit(ref)
 	if err != nil {
 		return nil, false, err
@@ -261,11 +269,17 @@ func (e *Entry) ListCommits(ref string, limit, offset int, pathFilter string) ([
 
 	skipped := 0
 	var out []*gitchatv1.CommitEntry
+	processed := 0
+	maxProcess := offset + limit*3 // Process extra to account for path filtering
 	for {
+		if processed >= maxProcess && len(out) >= limit {
+			break
+		}
 		c, err := iter.Next()
 		if err != nil {
 			break
 		}
+		processed++
 
 		// Path filter: skip commits that didn't touch the file.
 		if pathFilter != "" && !commitTouchedPath(c, pathFilter) {
