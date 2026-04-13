@@ -1028,7 +1028,7 @@ export class GcApp extends LitElement {
 
   private paletteActions(): Array<{ id: string; label: string; hint: string; action: () => void }> {
     const mod = navigator.platform.includes("Mac") ? "⌘" : "Ctrl+";
-    return [
+    const base = [
       { id: "new-chat", label: "New Chat", hint: `${mod}K`, action: () => this.newChat() },
       {
         id: "goto-chat",
@@ -1049,6 +1049,22 @@ export class GcApp extends LitElement {
         hint: `${mod}4`,
         action: () => this.switchTab("kb"),
       },
+    ];
+
+    // Add repo switch actions if multiple repos available
+    if (this.state.phase === "authenticated" && this.state.repos.length > 1) {
+      for (const repo of this.state.repos) {
+        const isCurrent = repo.id === this.state.selectedRepo;
+        base.push({
+          id: `switch-repo-${repo.id}`,
+          label: `Switch to: ${repo.label}${isCurrent ? " (current)" : ""}`,
+          hint: "",
+          action: () => this.switchRepo(repo.id),
+        });
+      }
+    }
+
+    base.push(
       {
         id: "toggle-focus",
         label: "Toggle Focus Mode",
@@ -1098,7 +1114,8 @@ export class GcApp extends LitElement {
           this.showShortcuts = true;
         },
       },
-    ];
+    );
+    return base;
   }
 
   private onPaletteKeydown(filtered: Array<{ action: () => void }>, e: KeyboardEvent) {
