@@ -524,10 +524,15 @@ func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.Fi
 		return nil, fmt.Errorf("get tree for sizes: %w", err)
 	}
 	sizeMap := map[string]int64{}
-	tree.Files().ForEach(func(f *object.File) error {
+	fileIter := tree.Files()
+	defer fileIter.Close()
+	for {
+		f, ferr := fileIter.Next()
+		if ferr != nil {
+			break
+		}
 		sizeMap[f.Name] = f.Size
-		return nil
-	})
+	}
 
 	// Merge into result.
 	out := make([]*gitchatv1.FileChurn, 0, len(m))

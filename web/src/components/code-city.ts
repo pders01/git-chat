@@ -429,9 +429,10 @@ export class GcCodeCity extends LitElement {
       const files: FileNode[] = (resp.files ?? []).map((f: any) => ({
         path: f.path ?? "",
         name: (f.path ?? "").split("/").pop() ?? "",
-        commitCount: Number(f.commitCount ?? f.commit_count ?? 0),
-        additions: Number(f.additions ?? f.total_additions ?? 0),
-        deletions: Number(f.deletions ?? f.total_deletions ?? 0),
+        commitCount: Number(f.commitCount ?? 0),
+        // Handle bigint fields from proto - convert to Number (safe for reasonable values)
+        additions: Number(f.totalAdditions ?? f.total_additions ?? 0),
+        deletions: Number(f.totalDeletions ?? f.total_deletions ?? 0),
         lastModified: Number(f.lastModified ?? f.last_modified ?? 0),
         size: Number(f.size ?? 1),
       }));
