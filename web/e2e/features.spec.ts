@@ -157,22 +157,28 @@ test.describe("features", () => {
   // ── Log view ───────────────────────────────────────────────
 
   test("log commit list loads and is clickable", async () => {
-    // Switch to log.
+    // Switch to log tab via the tab button with id="tab-log".
     await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
-      (tabs?.[2] as HTMLElement)?.click();
+      const logTab = app?.shadowRoot?.querySelector('#tab-log') as HTMLElement;
+      logTab?.click();
     });
-    // Wait for tab switch + async commit list RPC.
-    await page.waitForTimeout(2000);
+    // Verify tab is active, then poll for commit rows.
     await expect(async () => {
-      const count = await page.evaluate(() => {
+      const info = await page.evaluate(() => {
         const app = document.querySelector("gc-app");
         const log = app?.shadowRoot?.querySelector("gc-commit-log");
-        return log?.shadowRoot?.querySelectorAll(".commit-row")?.length ?? 0;
+        return {
+          exists: !!log,
+          hidden: log?.hasAttribute("hidden") ?? true,
+          rows: log?.shadowRoot?.querySelectorAll(".commit-row")?.length ?? 0,
+          phase: (log as any)?.state?.phase ?? "unknown",
+        };
       });
-      expect(count).toBeGreaterThan(0);
-    }).toPass({ timeout: 15_000 });
+      // Log must exist, be visible, and have rows.
+      expect(info.hidden).toBe(false);
+      expect(info.rows).toBeGreaterThan(0);
+    }).toPass({ timeout: 20_000 });
 
     // Click first commit.
     await page.evaluate(() => {

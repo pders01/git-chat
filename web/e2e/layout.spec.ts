@@ -153,19 +153,21 @@ test.describe("layout", () => {
   test("log shows commits", async () => {
     await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
-      (tabs?.[2] as HTMLElement)?.click();
+      const logTab = app?.shadowRoot?.querySelector('#tab-log') as HTMLElement;
+      logTab?.click();
     });
-    // Wait for tab switch + async commit list RPC.
-    await page.waitForTimeout(2000);
     await expect(async () => {
-      const count = await page.evaluate(() => {
+      const info = await page.evaluate(() => {
         const app = document.querySelector("gc-app");
         const log = app?.shadowRoot?.querySelector("gc-commit-log");
-        return log?.shadowRoot?.querySelectorAll(".commit-row")?.length ?? 0;
+        return {
+          hidden: log?.hasAttribute("hidden") ?? true,
+          rows: log?.shadowRoot?.querySelectorAll(".commit-row")?.length ?? 0,
+        };
       });
-      expect(count).toBeGreaterThan(0);
-    }).toPass({ timeout: 15_000 });
+      expect(info.hidden).toBe(false);
+      expect(info.rows).toBeGreaterThan(0);
+    }).toPass({ timeout: 20_000 });
 
     // Back to chat for other tests.
     await page.evaluate(() => {
