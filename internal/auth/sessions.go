@@ -84,6 +84,26 @@ func (s *SessionStore) Get(token string) *Session {
 	return sess
 }
 
+// ShouldRotate returns true if the session should be rotated (after 50% of TTL).
+// Rotation prevents long-lived sessions from being compromised.
+func (s *SessionStore) ShouldRotate(sess *Session) bool {
+	elapsed := time.Since(sess.CreatedAt)
+	return elapsed > s.ttl/2
+}
+
+// Rotate creates a new session with the same principal/mode, deletes the old one.
+// Returns the new session. Caller must set the new cookie.
+func (s *SessionStore) Rotate(oldToken string, sess *Session) (*Session, error) {
+	newSess, err := s.Create(sess.Principal, sess.Mode)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	delete(s.byToken, oldToken)
+	s.mu.Unlock()
+	return newSess, nil
+}
+
 // Delete invalidates a session (used by Logout).
 func (s *SessionStore) Delete(token string) {
 	s.mu.Lock()
@@ -127,4 +147,11 @@ func envDurAuth(key string, def time.Duration) time.Duration {
 		}
 	}
 	return def
+}
+
+// TTL returns the session time-to-live duration.
+func (s *SessionStore) TTL() time.Duration {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ttl
 }

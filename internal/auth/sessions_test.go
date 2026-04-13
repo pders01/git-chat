@@ -182,3 +182,64 @@ func TestSessionStore_ConcurrentAccess(t *testing.T) {
 	// We can't easily count them, but we shouldn't have panicked
 	t.Log("concurrent session creation completed")
 }
+
+func TestSessionStore_ShouldRotate(t *testing.T) {
+	store := auth.NewSessionStore(false)
+
+	sess, err := store.Create("paul@laptop", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// New session should not need rotation
+	if store.ShouldRotate(sess) {
+		t.Error("new session should not need rotation")
+	}
+
+	// Manually age the session to 75% of TTL
+	sess.CreatedAt = time.Now().Add(-store.TTL() * 3 / 4)
+	if !store.ShouldRotate(sess) {
+		t.Error("old session should need rotation after 75% of TTL")
+	}
+}
+
+func TestSessionStore_Rotate(t *testing.T) {
+	store := auth.NewSessionStore(false)
+
+	// Create original session
+	oldSess, err := store.Create("paul@laptop", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldToken := oldSess.Token
+
+	// Age the session to trigger rotation
+	oldSess.CreatedAt = time.Now().Add(-store.TTL() * 3 / 4)
+
+	// Rotate the session
+	newSess, err := store.Rotate(oldToken, oldSess)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// New session should have same principal/mode but different token
+	if newSess.Token == oldToken {
+		t.Error("rotated session should have new token")
+	}
+	if newSess.Principal != oldSess.Principal {
+		t.Error("rotated session should preserve principal")
+	}
+	if newSess.Mode != oldSess.Mode {
+		t.Error("rotated session should preserve mode")
+	}
+
+	// Old token should be invalidated
+	if store.Get(oldToken) != nil {
+		t.Error("old token should be invalidated after rotation")
+	}
+
+	// New token should work
+	if store.Get(newSess.Token) == nil {
+		t.Error("new token should be valid")
+	}
+}
