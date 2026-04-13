@@ -1,16 +1,18 @@
 import { expect, type Page } from "@playwright/test";
 import { execSync, spawn } from "child_process";
 import * as fs from "fs";
+import * as path from "path";
 
 // buildBinary builds the Go server binary if it doesn't exist or is
 // stale. Returns the path to the binary.
 export function ensureBinary(): string {
   const bin = "../dist/git-chat";
+  const binPath = path.resolve(__dirname, bin);
   execSync(
-    `cd .. && go build -trimpath -ldflags "-s -w -X main.version=e2e" -o dist/git-chat ./cmd/git-chat`,
-    { stdio: "pipe" },
+    `go build -trimpath -ldflags "-s -w -X main.version=e2e" -o dist/git-chat ./cmd/git-chat`,
+    { stdio: "pipe", cwd: path.resolve(__dirname, "..") },
   );
-  return bin;
+  return binPath;
 }
 
 // startServer starts a git-chat local instance on a free port and
@@ -18,18 +20,20 @@ export function ensureBinary(): string {
 // deleted on cleanup.
 export function startServer(): {
   url: string;
+  logPath: string;
   cleanup: () => void;
 } {
   const bin = ensureBinary();
   const dbPath = `/tmp/gc-e2e-${Date.now()}.db`;
   const logPath = `/tmp/gc-e2e-${Date.now()}.log`;
+  const repoPath = path.resolve(__dirname, "..");
 
   const child = spawn(bin, [
     "local",
     "--http", "127.0.0.1:0",
     "--no-browser",
     "--db", dbPath,
-    "..",
+    repoPath,
   ], {
     stdio: ["ignore", "ignore", fs.openSync(logPath, "w")],
     detached: true,
@@ -37,7 +41,7 @@ export function startServer(): {
 
   // Wait for the server to print the Open URL.
   let url = "";
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     try {
       const log = fs.readFileSync(logPath, "utf-8");
@@ -46,18 +50,25 @@ export function startServer(): {
         url = m[1];
         break;
       }
+      // Also check for errors
+      if (log.includes("error") || log.includes("Error")) {
+        console.error("Server error:", log);
+      }
     } catch {
       // file not ready yet
     }
-    execSync("sleep 0.2");
+    execSync("sleep 0.1");
   }
   if (!url) {
+    const log = fs.readFileSync(logPath, "utf-8");
+    console.error("Server log:", log);
     child.kill();
     throw new Error("Server didn't start in time");
   }
 
   return {
     url,
+    logPath,
     cleanup: () => {
       try { process.kill(-child.pid!, "SIGTERM"); } catch {}
       try { fs.unlinkSync(dbPath); } catch {}
@@ -68,18 +79,47 @@ export function startServer(): {
 
 // authenticate navigates to the claim URL so the session cookie is set,
 // then waits for the authenticated shell to render.
-export async function authenticate(page: Page, url: string) {
-  await page.goto(url);
+export async function authenticate(page: Page, url: string, logPath?: string) {
+  // Enable console logging for debugging
+  page.on("console", msg => {
+    console.log(`[Browser ${msg.type()}] ${msg.text()}`);
+  });
+  page.on("pageerror", err => {
+    console.error("[Browser error]", err);
+  });
+
+  await page.goto(url, { waitUntil: "networkidle" });
+  
+  // Debug: log initial state
+  const initialUrl = await page.evaluate(() => window.location.href);
+  console.log("Initial URL:", initialUrl);
+  
   // Wait for the hash redirect which only happens after successful auth
   // (boot → localClaim → whoami → enterAuthenticated → pushHash).
   // Note: history.pushState() doesn't trigger navigation events, so we poll.
-  await expect.poll(
-    async () => {
-      const hash = await page.evaluate(() => window.location.hash);
-      return hash.startsWith("#/");
-    },
-    { timeout: 30_000, interval: 100 }
-  ).toBe(true);
+  try {
+    await expect.poll(
+      async () => {
+        const hash = await page.evaluate(() => window.location.hash);
+        const href = await page.evaluate(() => window.location.href);
+        console.log(`Polling: hash=${hash}, href=${href}`);
+        return hash.startsWith("#/");
+      },
+      { timeout: 30_000, interval: 500 }
+    ).toBe(true);
+  } catch (e) {
+    // Log page content and server logs on failure
+    const content = await page.content();
+    console.error("Page content:", content.substring(0, 500));
+    if (logPath) {
+      try {
+        const log = fs.readFileSync(logPath, "utf-8");
+        console.error("Server log:", log);
+      } catch {}
+    }
+    throw e;
+  }
+  
   // Wait for authenticated state to be fully rendered
   await expect.poll(
     async () => {
@@ -87,6 +127,7 @@ export async function authenticate(page: Page, url: string) {
         const app = document.querySelector("gc-app");
         return (app as any)?.state?.phase;
       });
+      console.log(`Phase: ${phase}`);
       return phase;
     },
     { timeout: 10_000, interval: 100 }

@@ -12,7 +12,7 @@ test.describe("layout", () => {
     server = startServer();
     const ctx = await browser.newContext();
     page = await ctx.newPage();
-    await authenticate(page, server.url);
+    await authenticate(page, server.url, server.logPath);
   });
 
   test.afterAll(async () => {

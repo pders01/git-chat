@@ -13,7 +13,7 @@ test.describe("mobile", () => {
       viewport: { width: 375, height: 812 },
     });
     page = await ctx.newPage();
-    await authenticate(page, server.url);
+    await authenticate(page, server.url, server.logPath);
   });
 
   test.afterAll(async () => {
