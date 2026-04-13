@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"connectrpc.com/connect"
@@ -90,12 +91,18 @@ func (s *Service) Claim(
 	}
 	principal, err := s.Pairings.Claim(req.Msg.Sid, req.Msg.ClaimToken)
 	if err != nil {
+		slog.Debug("claim failed", "sid", req.Msg.Sid, "error", err)
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 	sess, err := s.Sessions.Create(principal, gitchatv1.AuthMode_AUTH_MODE_PAIRED)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	slog.Info("session created via pairing",
+		"principal", principal,
+		"mode", "paired",
+		"sid", req.Msg.Sid,
+	)
 	resp := connect.NewResponse(&gitchatv1.ClaimResponse{Principal: principal})
 	s.writeSetCookie(resp.Header(), sess)
 	_ = ctx
@@ -112,12 +119,14 @@ func (s *Service) LocalClaim(
 			errors.New("local claim disabled in serve mode"))
 	}
 	if err := s.Local.Claim(req.Msg.Token); err != nil {
+		slog.Debug("local claim failed", "error", err)
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 	sess, err := s.Sessions.Create("local", gitchatv1.AuthMode_AUTH_MODE_LOCAL)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	slog.Info("session created via local claim", "principal", "local", "mode", "local")
 	resp := connect.NewResponse(&gitchatv1.LocalClaimResponse{Principal: "local"})
 	s.writeSetCookie(resp.Header(), sess)
 	return resp, nil
@@ -147,10 +156,11 @@ func (s *Service) Logout(
 	// request), but the session middleware has already injected the
 	// principal into ctx. A logout without a session is a no-op; a logout
 	// with one clears the cookie via the response header.
-	_, _, ok := PrincipalFromContext(ctx)
+	principal, _, ok := PrincipalFromContext(ctx)
 	resp := connect.NewResponse(&gitchatv1.LogoutResponse{})
 	if ok {
 		s.writeClearCookie(resp.Header())
+		slog.Info("session logged out", "principal", principal)
 	}
 	return resp, nil
 }

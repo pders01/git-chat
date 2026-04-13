@@ -1,6 +1,9 @@
 package auth
 
-import "net/http"
+import (
+	"log/slog"
+	"net/http"
+)
 
 // SessionMiddleware reads the session cookie and, if valid, injects the
 // principal + auth mode into the request context. Missing or invalid cookies
@@ -20,6 +23,13 @@ func SessionMiddleware(sessions *SessionStore, next http.Handler) http.Handler {
 				if sessions.ShouldRotate(sess) {
 					if newSess, err := sessions.Rotate(cookie.Value, sess); err == nil {
 						sessions.SetCookie(w, newSess)
+						slog.Debug("session rotated",
+							"principal", sess.Principal,
+							"old_token_prefix", cookie.Value[:8],
+							"new_token_prefix", newSess.Token[:8],
+						)
+					} else {
+						slog.Warn("session rotation failed", "principal", sess.Principal, "error", err)
 					}
 				}
 			}
