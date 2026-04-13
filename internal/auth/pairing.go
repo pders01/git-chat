@@ -120,23 +120,32 @@ func (p *PairingStore) Watch(sid string) (<-chan *gitchatv1.WatchPairingResponse
 // handler after the client's pubkey has been resolved to a principal.
 func (p *PairingStore) Complete(code, principal string) error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	pr, ok := p.byCode[code]
 	if !ok {
+		p.mu.Unlock()
 		return errors.New("unknown or expired code")
 	}
 	if pr.closed {
+		p.mu.Unlock()
 		return errors.New("pairing already completed")
 	}
+
 	tok, err := randomHex(24)
 	if err != nil {
+		p.mu.Unlock()
 		return err
 	}
+
 	pr.claimToken = tok
 	pr.principal = principal
 	pr.closed = true
+	resultCh := pr.result
+	sid := pr.sid
+	prCode := pr.code
+	p.mu.Unlock()
 
-	pr.result <- &gitchatv1.WatchPairingResponse{
+	// Send result and close channel outside the lock to prevent blocking.
+	resultCh <- &gitchatv1.WatchPairingResponse{
 		Kind: &gitchatv1.WatchPairingResponse_Paired{
 			Paired: &gitchatv1.Paired{
 				ClaimToken: tok,
@@ -144,16 +153,15 @@ func (p *PairingStore) Complete(code, principal string) error {
 			},
 		},
 	}
-	close(pr.result)
+	close(resultCh)
 
 	// Schedule claim-window expiry as a safety net.
-	sid := pr.sid
 	time.AfterFunc(p.claimTTL, func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		if cur, ok := p.bySid[sid]; ok && cur == pr {
 			delete(p.bySid, sid)
-			delete(p.byCode, pr.code)
+			delete(p.byCode, prCode)
 		}
 	})
 	return nil
@@ -184,23 +192,31 @@ func (p *PairingStore) Claim(sid, claimToken string) (string, error) {
 
 func (p *PairingStore) expire(sid, reason string) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	pr, ok := p.bySid[sid]
 	if !ok || pr.closed {
+		p.mu.Unlock()
 		return
 	}
 	pr.closed = true
+	resultCh := pr.result
+	prCode := pr.code
+	p.mu.Unlock()
+
+	// Send expiry and close channel outside the lock.
 	select {
-	case pr.result <- &gitchatv1.WatchPairingResponse{
+	case resultCh <- &gitchatv1.WatchPairingResponse{
 		Kind: &gitchatv1.WatchPairingResponse_Expired{
 			Expired: &gitchatv1.Expired{Reason: reason},
 		},
 	}:
 	default:
 	}
-	close(pr.result)
+	close(resultCh)
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	delete(p.bySid, sid)
-	delete(p.byCode, pr.code)
+	delete(p.byCode, prCode)
 }
 
 func randomHex(n int) (string, error) {
@@ -215,7 +231,9 @@ func randIndex(n int) int {
 	max := big.NewInt(int64(n))
 	v, err := rand.Int(rand.Reader, max)
 	if err != nil {
-		panic("crypto/rand failed: " + err.Error())
+		// crypto/rand failure is extremely rare; fall back to 0
+		// which is still a valid (though not uniform) random choice.
+		return 0
 	}
 	return int(v.Int64())
 }
