@@ -41,17 +41,15 @@ export interface ParsedRoute {
 export type NavState = Partial<ParsedRoute>;
 
 export function parseRoute(url: URL): ParsedRoute {
-  const hash = url.hash.replace(/^#\/?/, "");
-  const [repoId, tab, ...rest] = hash.split("/");
+  const raw = url.hash.replace(/^#\/?/, "");
+  // Split path from query params (both live inside the hash fragment).
+  const qIdx = raw.indexOf("?");
+  const pathPart = qIdx >= 0 ? raw.slice(0, qIdx) : raw;
+  const params = qIdx >= 0 ? new URLSearchParams(raw.slice(qIdx + 1)) : new URLSearchParams();
+
+  const [repoId, tab, ...rest] = pathPart.split("/");
   const validTab = TABS.has(tab as Tab) ? (tab as Tab) : "chat";
-  const subPath = rest.length > 0 ? decodeURIComponent(rest.join("/")) : undefined;
-
-  // Query params from the hash portion: everything after ?
-  const qIdx = url.hash.indexOf("?");
-  const params = qIdx >= 0 ? new URLSearchParams(url.hash.slice(qIdx + 1)) : new URLSearchParams();
-
-  // Re-parse subPath without query string
-  const cleanSub = subPath?.split("?")[0] || undefined;
+  const cleanSub = rest.length > 0 ? decodeURIComponent(rest.join("/")) || undefined : undefined;
 
   const route: ParsedRoute = {
     repoId: repoId || "",
