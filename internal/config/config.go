@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 	"github.com/pders01/git-chat/internal/storage"
@@ -61,9 +62,11 @@ func (r *Registry) Register(key, defaultVal, desc, group string) {
 // Get resolves a config value: DB override → env var → default.
 // Returns the compiled default if the key is unknown.
 func (r *Registry) Get(key string) string {
-	// Check DB override first.
+	// Check DB override first (with timeout to prevent hanging on slow DB).
 	if r.db != nil {
-		if v, ok, err := r.db.GetConfigOverride(context.Background(), key); err == nil && ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if v, ok, err := r.db.GetConfigOverride(ctx, key); err == nil && ok {
 			return v
 		}
 	}

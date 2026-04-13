@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/mark3labs/mcp-go/server"
 
@@ -50,5 +52,10 @@ func runMCP(args []string) error {
 	})
 
 	stdio := server.NewStdioServer(mcpServer)
-	return stdio.Listen(context.Background(), os.Stdin, os.Stdout)
+
+	// Set up cancellation context for graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	return stdio.Listen(ctx, os.Stdin, os.Stdout)
 }
