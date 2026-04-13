@@ -76,6 +76,7 @@ export class GcApp extends LitElement {
     this.addEventListener("gc:view-commit", this.onViewCommit as EventListener);
     this.addEventListener("gc:open-file", this.onOpenFile as EventListener);
     this.addEventListener("gc:view-file-history", this.onViewFileHistory as EventListener);
+    this.addEventListener("gc:explain-in-chat", this.onExplainInChat as EventListener);
     await this.boot();
   }
 
@@ -89,6 +90,7 @@ export class GcApp extends LitElement {
     this.removeEventListener("gc:view-commit", this.onViewCommit as EventListener);
     this.removeEventListener("gc:open-file", this.onOpenFile as EventListener);
     this.removeEventListener("gc:view-file-history", this.onViewFileHistory as EventListener);
+    this.removeEventListener("gc:explain-in-chat", this.onExplainInChat as EventListener);
     if (this.searchTimer) clearTimeout(this.searchTimer);
     for (const t of this.configDebounceTimers.values()) clearTimeout(t);
     this.configDebounceTimers.clear();
@@ -132,6 +134,20 @@ export class GcApp extends LitElement {
   private onViewFileHistory = (e: CustomEvent<{ path: string }>) => {
     if (this.state.phase !== "authenticated") return;
     this.navigateTo({ tab: "log", filterPath: e.detail.path });
+  };
+
+  // Bridge: code-city and other views dispatch gc:explain-in-chat
+  // to switch to chat tab and insert a file mention.
+  private onExplainInChat = (e: CustomEvent<{ path: string }>) => {
+    if (this.state.phase !== "authenticated") return;
+    this.navigateTo({ tab: "chat" });
+    // After navigation, insert the mention into the chat view
+    requestAnimationFrame(() => {
+      const chatView = this.renderRoot.querySelector<import("./components/chat-view").GcChatView>("gc-chat-view");
+      if (chatView) {
+        chatView.insertFileMention(e.detail.path);
+      }
+    });
   };
 
   // ── Modal focus management ───────────────────────────────────

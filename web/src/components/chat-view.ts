@@ -475,6 +475,32 @@ export class GcChatView extends LitElement {
     this.showMentions = this.mentionResults.length > 0;
   }
 
+  /** Public method to insert a file mention at the current cursor position */
+  insertFileMention(path: string) {
+    const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
+    if (!ta) return;
+    const pos = ta.selectionStart;
+    const before = this.input.slice(0, pos);
+    const after = this.input.slice(pos);
+    // Check if there's an @ trigger already, otherwise insert fresh
+    const atIdx = before.lastIndexOf("@");
+    if (atIdx >= 0 && !before.slice(atIdx).includes(" ")) {
+      this.input = before.slice(0, atIdx) + "@" + path + " " + after;
+      requestAnimationFrame(() => {
+        ta.focus();
+        const newPos = atIdx + path.length + 2;
+        ta.setSelectionRange(newPos, newPos);
+      });
+    } else {
+      this.input = before + " @" + path + " " + after;
+      requestAnimationFrame(() => {
+        ta.focus();
+        const newPos = pos + path.length + 3;
+        ta.setSelectionRange(newPos, newPos);
+      });
+    }
+  }
+
   private insertMention(path: string) {
     const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
     if (!ta) return;
