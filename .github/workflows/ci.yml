@@ -87,11 +87,17 @@ jobs:
       - name: Run e2e tests
         run: cd web && bunx playwright test --project=desktop --workers=1
         env:
-          # Increase timeouts for CI environment
           PLAYWRIGHT_TIMEOUT: 60000
-          PLAYWRIGHT_EXPECT_TIMEOUT: 30000
-          PLAYWRIGHT_ACTION_TIMEOUT: 30000
-          PLAYWRIGHT_NAVIGATION_TIMEOUT: 30000
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "=== Server logs (last 100 lines) ==="
+          tail -100 /tmp/gc-e2e-*.log 2>/dev/null || echo "No logs found"
+          echo "=== Process status ==="
+          ps aux | grep git-chat || true
+          echo "=== Network ==="
+          netstat -tlnp 2>/dev/null || ss -tlnp 2>/dev/null || true
 
       - name: Upload test results
         if: always()
