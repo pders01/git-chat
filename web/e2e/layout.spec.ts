@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { startServer, authenticate } from "./helpers";
+import { startServer, authenticate, clickShadowElement, waitForShadowElement } from "./helpers";
 
 // Shared state: one server, one auth, all tests reuse the same page.
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -50,12 +50,8 @@ test.describe("layout", () => {
     });
 
     // Switch to browse.
-    await page.evaluate(() => {
-      const app = document.querySelector("gc-app");
-      const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
-      (tabs?.[1] as HTMLElement)?.click();
-    });
-    await page.waitForTimeout(500);
+    await clickShadowElement(page, "gc-app", '#tab-browse');
+    await expect(page).toHaveURL(/#\/.*\/browse$/);
 
     const browseWidth = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
@@ -67,40 +63,21 @@ test.describe("layout", () => {
     expect(chatWidth).toBe(browseWidth);
 
     // Go back to chat.
-    await page.evaluate(() => {
-      const app = document.querySelector("gc-app");
-      const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
-      (tabs?.[0] as HTMLElement)?.click();
-    });
-    await page.waitForTimeout(300);
+    await clickShadowElement(page, "gc-app", '#tab-chat');
+    await expect(page).toHaveURL(/#\/.*\/chat$/);
   });
 
   test("tab navigation via clicks", async () => {
     await expect(page).toHaveURL(/#\/.*\/chat$/);
 
-    await page.evaluate(() => {
-      const app = document.querySelector("gc-app");
-      const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
-      (tabs?.[1] as HTMLElement)?.click();
-    });
-    await page.waitForTimeout(300);
+    await clickShadowElement(page, "gc-app", '#tab-browse');
     await expect(page).toHaveURL(/#\/.*\/browse$/);
 
-    await page.evaluate(() => {
-      const app = document.querySelector("gc-app");
-      const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
-      (tabs?.[2] as HTMLElement)?.click();
-    });
-    await page.waitForTimeout(300);
+    await clickShadowElement(page, "gc-app", '#tab-log');
     await expect(page).toHaveURL(/#\/.*\/log$/);
 
     // Back to chat.
-    await page.evaluate(() => {
-      const app = document.querySelector("gc-app");
-      const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
-      (tabs?.[0] as HTMLElement)?.click();
-    });
-    await page.waitForTimeout(300);
+    await clickShadowElement(page, "gc-app", '#tab-chat');
     await expect(page).toHaveURL(/#\/.*\/chat$/);
   });
 
@@ -108,22 +85,19 @@ test.describe("layout", () => {
     await page.locator("body").click();
 
     await page.keyboard.press("Control+2");
-    await page.waitForTimeout(300);
     await expect(page).toHaveURL(/#\/.*\/browse$/);
 
     await page.keyboard.press("Control+3");
-    await page.waitForTimeout(300);
     await expect(page).toHaveURL(/#\/.*\/log$/);
 
     await page.keyboard.press("Control+1");
-    await page.waitForTimeout(300);
     await expect(page).toHaveURL(/#\/.*\/chat$/);
   });
 
   test("? opens shortcut modal", async () => {
     await page.locator("body").click();
     await page.keyboard.press("?");
-    await page.waitForTimeout(300);
+    await waitForShadowElement(page, "gc-app", 'div[role="dialog"]');
 
     const visible = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
@@ -132,7 +106,7 @@ test.describe("layout", () => {
     expect(visible).toBe(true);
 
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(300);
+    await waitForShadowElement(page, "gc-app", 'div[role="dialog"]', { state: 'hidden' });
 
     const gone = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
@@ -151,29 +125,23 @@ test.describe("layout", () => {
   });
 
   test("log shows commits", async () => {
-    await page.evaluate(() => {
+    await clickShadowElement(page, "gc-app", '#tab-log');
+    
+    // Wait for commit rows to appear
+    await waitForShadowElement(page, "gc-app gc-commit-log", ".commit-row", { timeout: 20000 });
+    
+    const info = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const logTab = app?.shadowRoot?.querySelector('#tab-log') as HTMLElement;
-      logTab?.click();
+      const log = app?.shadowRoot?.querySelector("gc-commit-log");
+      return {
+        hidden: log?.hasAttribute("hidden") ?? true,
+        rows: log?.shadowRoot?.querySelectorAll(".commit-row")?.length ?? 0,
+      };
     });
-    await expect(async () => {
-      const info = await page.evaluate(() => {
-        const app = document.querySelector("gc-app");
-        const log = app?.shadowRoot?.querySelector("gc-commit-log");
-        return {
-          hidden: log?.hasAttribute("hidden") ?? true,
-          rows: log?.shadowRoot?.querySelectorAll(".commit-row")?.length ?? 0,
-        };
-      });
-      expect(info.hidden).toBe(false);
-      expect(info.rows).toBeGreaterThan(0);
-    }).toPass({ timeout: 20_000 });
+    expect(info.hidden).toBe(false);
+    expect(info.rows).toBeGreaterThan(0);
 
     // Back to chat for other tests.
-    await page.evaluate(() => {
-      const app = document.querySelector("gc-app");
-      const tabs = app?.shadowRoot?.querySelectorAll('button[role="tab"]');
-      (tabs?.[0] as HTMLElement)?.click();
-    });
+    await clickShadowElement(page, "gc-app", '#tab-chat');
   });
 });

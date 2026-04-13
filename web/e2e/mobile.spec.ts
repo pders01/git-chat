@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { startServer, authenticate } from "./helpers";
+import { startServer, authenticate, clickShadowElement } from "./helpers";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let page: Page;
@@ -32,30 +32,32 @@ test.describe("mobile", () => {
   });
 
   test("drawer toggle opens sidebar", async () => {
-    await page.evaluate(() => {
-      const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const btn = chat?.shadowRoot?.querySelector(".drawer-toggle") as HTMLElement;
-      btn?.click();
-    });
-    await page.waitForTimeout(400);
+    await clickShadowElement(page, "gc-app gc-chat-view", ".drawer-toggle");
 
-    const sidebarX = await page.evaluate(() => {
-      const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const sidebar = chat?.shadowRoot?.querySelector(".sidebar");
-      return sidebar?.getBoundingClientRect().x ?? -999;
-    });
-    expect(sidebarX).toBeGreaterThanOrEqual(0);
+    // Wait for sidebar animation
+    await expect.poll(async () => {
+      const sidebarX = await page.evaluate(() => {
+        const app = document.querySelector("gc-app");
+        const chat = app?.shadowRoot?.querySelector("gc-chat-view");
+        const sidebar = chat?.shadowRoot?.querySelector(".sidebar");
+        return sidebar?.getBoundingClientRect().x ?? -999;
+      });
+      return sidebarX;
+    }, { timeout: 5000 }).toBeGreaterThanOrEqual(0);
 
     // Close via backdrop.
-    await page.evaluate(() => {
-      const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const backdrop = chat?.shadowRoot?.querySelector(".drawer-backdrop") as HTMLElement;
-      backdrop?.click();
-    });
-    await page.waitForTimeout(400);
+    await clickShadowElement(page, "gc-app gc-chat-view", ".drawer-backdrop");
+    
+    // Wait for sidebar to close
+    await expect.poll(async () => {
+      const sidebarX = await page.evaluate(() => {
+        const app = document.querySelector("gc-app");
+        const chat = app?.shadowRoot?.querySelector("gc-chat-view");
+        const sidebar = chat?.shadowRoot?.querySelector(".sidebar");
+        return sidebar?.getBoundingClientRect().x ?? 999;
+      });
+      return sidebarX;
+    }, { timeout: 5000 }).toBeLessThan(0);
   });
 
   test("chat content readable (not zero-width)", async () => {

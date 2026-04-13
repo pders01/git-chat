@@ -136,6 +136,103 @@ async function startServerOnce(): Promise<{
   };
 }
 
+// Shadow DOM helpers for more reliable element queries
+export async function waitForShadowElement(
+  page: Page,
+  hostSelector: string,
+  shadowSelector: string,
+  options?: { timeout?: number; state?: 'visible' | 'hidden' }
+) {
+  const { timeout = 20000, state = 'visible' } = options ?? {};
+  await expect.poll(
+    async () => {
+      const el = await page.evaluate(
+        ({ host, shadow }) => {
+          // Support nested shadow hosts (space-separated selectors)
+          const hosts = host.split(/\s+/).filter(Boolean);
+          let current: Element | null = document.querySelector(hosts[0] ?? '');
+          for (let i = 1; i < hosts.length && current; i++) {
+            current = current.shadowRoot?.querySelector(hosts[i]!) ?? null;
+          }
+          if (!current) return null;
+          return current.shadowRoot?.querySelector(shadow) ?? null;
+        },
+        { host: hostSelector, shadow: shadowSelector }
+      );
+      return state === 'visible' ? el !== null : el === null;
+    },
+    { timeout, intervals: [200] }
+  ).toBe(true);
+}
+
+export async function clickShadowElement(
+  page: Page,
+  hostSelector: string,
+  shadowSelector: string
+) {
+  await waitForShadowElement(page, hostSelector, shadowSelector);
+  await page.evaluate(
+    ({ host, shadow }) => {
+      // Support nested shadow hosts (space-separated selectors)
+      const hosts = host.split(/\s+/).filter(Boolean);
+      let current: Element | null = document.querySelector(hosts[0] ?? '');
+      for (let i = 1; i < hosts.length && current; i++) {
+        current = current.shadowRoot?.querySelector(hosts[i]!) ?? null;
+      }
+      if (!current) return;
+      const el = current.shadowRoot?.querySelector(shadow) as HTMLElement | null;
+      el?.click();
+    },
+    { host: hostSelector, shadow: shadowSelector }
+  );
+}
+
+export async function typeInShadowInput(
+  page: Page,
+  hostSelector: string,
+  shadowSelector: string,
+  value: string
+) {
+  await waitForShadowElement(page, hostSelector, shadowSelector);
+  await page.evaluate(
+    ({ host, shadow, val }) => {
+      // Support nested shadow hosts (space-separated selectors)
+      const hosts = host.split(/\s+/).filter(Boolean);
+      let current: Element | null = document.querySelector(hosts[0] ?? '');
+      for (let i = 1; i < hosts.length && current; i++) {
+        current = current.shadowRoot?.querySelector(hosts[i]!) ?? null;
+      }
+      if (!current) return;
+      const input = current.shadowRoot?.querySelector(shadow) as HTMLInputElement | null;
+      if (input) {
+        input.value = val;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    },
+    { host: hostSelector, shadow: shadowSelector, val: value }
+  );
+}
+
+export async function getShadowElementCount(
+  page: Page,
+  hostSelector: string,
+  shadowSelector: string
+): Promise<number> {
+  return page.evaluate(
+    ({ host, shadow }) => {
+      // Support nested shadow hosts (space-separated selectors)
+      const hosts = host.split(/\s+/).filter(Boolean);
+      let current: Element | null = document.querySelector(hosts[0] ?? '');
+      for (let i = 1; i < hosts.length && current; i++) {
+        current = current.shadowRoot?.querySelector(hosts[i]!) ?? null;
+      }
+      if (!current) return 0;
+      return current.shadowRoot?.querySelectorAll(shadow).length ?? 0;
+    },
+    { host: hostSelector, shadow: shadowSelector }
+  );
+}
+
 // authenticate navigates to the claim URL so the session cookie is set,
 // then waits for the authenticated shell to render.
 export async function authenticate(page: Page, url: string, logPath?: string) {
