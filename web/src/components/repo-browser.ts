@@ -88,7 +88,8 @@ export class GcRepoBrowser extends LitElement {
 
   private toggleChanges() {
     const next = !this.showChanges;
-    // Clear compare params when switching to a different view mode.
+    // Set local state immediately so the toggleCompare async guard fires.
+    this.comparing = false;
     this.emitNav({
       browseView: next ? "changes" : "file",
       compareBase: undefined,
@@ -98,6 +99,7 @@ export class GcRepoBrowser extends LitElement {
 
   private toggleCity() {
     const next = !this.showCity;
+    this.comparing = false;
     this.emitNav({
       browseView: next ? "city" : "file",
       compareBase: undefined,
@@ -281,13 +283,13 @@ export class GcRepoBrowser extends LitElement {
     this.selectedFile = node.fullPath;
     this._lastRestoredFile = node.fullPath;
     this.requestUpdate();
-    this.dispatchEvent(
-      new CustomEvent("gc:nav", {
-        bubbles: true,
-        composed: true,
-        detail: { filePath: node.fullPath, browseView: "file" },
-      }),
-    );
+    // Clear all view mode state — selecting a file returns to file view.
+    this.emitNav({
+      filePath: node.fullPath,
+      browseView: "file",
+      compareBase: undefined,
+      compareHead: undefined,
+    });
   }
 
   /** Expand all ancestor directories for a given file path. */

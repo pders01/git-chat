@@ -19,6 +19,7 @@ import {
   buildRoute,
   routesEqual,
   clearStaleState,
+  normalizeBrowseState,
 } from "./lib/routing.js";
 
 type AppState =
@@ -392,7 +393,16 @@ export class GcApp extends LitElement {
   private switchRepo(repoId: string) {
     if (this.state.phase !== "authenticated") return;
     this.state = { ...this.state, selectedRepo: repoId };
-    this.navigateTo({ repoId, tab: this.state.tab });
+    // Clear browse view state — city/compare refs belong to the old repo.
+    this.navigateTo({
+      repoId,
+      tab: this.state.tab,
+      browseView: undefined,
+      compareBase: undefined,
+      compareHead: undefined,
+      filePath: undefined,
+      blame: undefined,
+    });
     // Reset branch and reload branches for the new repo.
     this.currentBranch = "";
     void this.loadBranches(repoId);
@@ -424,7 +434,7 @@ export class GcApp extends LitElement {
     if (partial.tab && partial.tab !== base.tab) {
       base = clearStaleState({ repoId: base.repoId, tab: partial.tab });
     }
-    const next = { ...base, ...partial };
+    const next = normalizeBrowseState({ ...base, ...partial });
     this.applyRoute(next);
   }
 

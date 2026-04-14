@@ -89,7 +89,7 @@ export function parseRoute(url: URL): ParsedRoute {
       break;
   }
 
-  return route;
+  return normalizeBrowseState(route);
 }
 
 export function buildRoute(route: ParsedRoute): string {
@@ -132,6 +132,24 @@ export function buildRoute(route: ParsedRoute): string {
 
 export function routesEqual(a: ParsedRoute, b: ParsedRoute): boolean {
   return buildRoute(a) === buildRoute(b);
+}
+
+// Enforce mutual exclusion between browse view modes.
+// compare (compareBase+compareHead) and browseView (city/changes) cannot
+// coexist. compare wins if both are set (it's more specific).
+export function normalizeBrowseState(route: ParsedRoute): ParsedRoute {
+  if (route.tab !== "browse") return route;
+  const hasCompare = !!(route.compareBase && route.compareHead);
+  const hasView = !!(route.browseView && route.browseView !== "file");
+  if (hasCompare && hasView) {
+    // compare wins — clear browseView
+    return { ...route, browseView: undefined };
+  }
+  if (hasView) {
+    // browseView wins — clear compare
+    return { ...route, compareBase: undefined, compareHead: undefined };
+  }
+  return route;
 }
 
 // Clear sub-state fields that belong to tabs other than the target tab.
