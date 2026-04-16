@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { chatClient } from "../lib/transport.js";
 import type { KBCard } from "../gen/gitchat/v1/chat_pb.js";
+import "./loading-indicator.js";
 
 // Lazy-load markdown renderer (same pattern as chat-view).
 let markdownModule: Promise<typeof import("../lib/markdown.js")> | null = null;
@@ -223,7 +224,7 @@ export class GcKbView extends LitElement {
             }}
           />
           ${this.loading
-            ? html`<p class="hint">loading cards...</p>`
+            ? html`<gc-loading-banner heading="loading cards…"></gc-loading-banner>`
             : this.filteredCards.length === 0
               ? html`<p class="hint">${this.cards.length === 0 ? "no cards yet" : "no matches"}</p>`
               : html`
@@ -258,7 +259,7 @@ export class GcKbView extends LitElement {
         </aside>
         <section class="detail">
           ${this.detailLoading
-            ? html`<p class="hint">loading card...</p>`
+            ? html`<gc-loading-banner heading="loading card…"></gc-loading-banner>`
             : this.cardDetail
               ? this.renderDetail()
               : html`<p class="hint">select a card to view details</p>`}

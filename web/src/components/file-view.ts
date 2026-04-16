@@ -4,6 +4,7 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
 import { copyText } from "../lib/clipboard.js";
 import type { BlameLine } from "../gen/gitchat/v1/repo_pb.js";
+import "./loading-indicator.js";
 import type { GetFileResponse } from "../gen/gitchat/v1/repo_pb.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
 
@@ -138,7 +139,7 @@ export class GcFileView extends LitElement {
           <p class="empty-sub">click a file in the tree to view its contents</p>
         </div>`;
       case "loading":
-        return html`<p class="empty">loading…</p>`;
+        return html`<gc-loading-banner heading="loading file…"></gc-loading-banner>`;
       case "error":
         return html`<div class="err">
           ${this.view.message}
@@ -180,16 +181,10 @@ export class GcFileView extends LitElement {
 
   private renderBlameLoading() {
     return html`
-      <div class="blame-loading" role="status" aria-live="polite">
-        <span class="spinner large" aria-hidden="true"></span>
-        <div class="bl-text">
-          <div class="bl-title">computing blame…</div>
-          <div class="bl-sub">
-            this can take a while on large files or deep histories (first load only — subsequent
-            opens of the same file are instant)
-          </div>
-        </div>
-      </div>
+      <gc-loading-banner
+        heading="computing blame…"
+        detail="this can take a while on large files or deep histories (first load only — subsequent opens of the same file are instant)"
+      ></gc-loading-banner>
     `;
   }
 
@@ -257,8 +252,7 @@ export class GcFileView extends LitElement {
           aria-label="Toggle git blame"
           aria-busy=${this.blameLoading ? "true" : "false"}
         >
-          ${this.blameLoading ? html`<span class="spinner" aria-hidden="true"></span>` : nothing}
-          blame
+          ${this.blameLoading ? html`<gc-spinner></gc-spinner>` : nothing} blame
         </button>
         <button
           class="hd-btn"
@@ -699,42 +693,6 @@ export class GcFileView extends LitElement {
       display: inline-flex;
       align-items: center;
       gap: var(--space-1);
-    }
-    .spinner {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border: 1.5px solid var(--border-default);
-      border-top-color: var(--text-accent, var(--text));
-      border-radius: 50%;
-      animation: gc-spin 0.8s linear infinite;
-    }
-    .spinner.large {
-      width: 20px;
-      height: 20px;
-      border-width: 2px;
-    }
-    @keyframes gc-spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-    .blame-loading {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      padding: var(--space-4);
-      color: var(--text-muted);
-    }
-    .bl-text .bl-title {
-      color: var(--text);
-      font-size: var(--text-sm);
-      font-weight: 500;
-    }
-    .bl-text .bl-sub {
-      font-size: var(--text-xs);
-      margin-top: 2px;
-      max-width: 60ch;
     }
     .ask-btn {
       flex-shrink: 0;

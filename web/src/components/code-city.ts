@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repoClient } from "../lib/transport.js";
+import "./loading-indicator.js";
 
 /* ------------------------------------------------------------------ */
 /*  Data model                                                         */
@@ -820,7 +821,7 @@ export class GcCodeCity extends LitElement {
   }
 
   private getSliderLabel(): string {
-    if (!this.globalTimeRange) return "loading...";
+    if (!this.globalTimeRange) return "loading…";
     const [globalOldest, now] = this.globalTimeRange;
     if (now <= globalOldest) return "all history";
 
@@ -1083,7 +1084,13 @@ export class GcCodeCity extends LitElement {
   }
 
   override render() {
-    if (this.loading && !this.scene) return html`<div class="hint">loading activity data...</div>`;
+    if (this.loading && !this.scene)
+      return html`
+        <gc-loading-banner
+          heading="building code city…"
+          detail="walking commit history to aggregate per-file activity; takes a few seconds on large repos"
+        ></gc-loading-banner>
+      `;
     if (this.error && !this.scene) return html`<div class="hint err">${this.error}</div>`;
 
     return html`
@@ -1093,7 +1100,12 @@ export class GcCodeCity extends LitElement {
           role="img"
           aria-label="Code city visualization — file activity as 3D buildings"
         ></canvas>
-        ${this.loading ? html`<div class="city-loading">updating...</div>` : nothing}
+        ${this.loading
+          ? html`<div class="city-loading">
+              <gc-spinner></gc-spinner>
+              updating…
+            </div>`
+          : nothing}
         ${this.tooltipText
           ? html`<div
               class="city-tooltip"
@@ -1153,6 +1165,9 @@ export class GcCodeCity extends LitElement {
       right: var(--space-3);
       font-size: var(--text-xs);
       opacity: 0.5;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
     }
     .city-tooltip {
       position: absolute;

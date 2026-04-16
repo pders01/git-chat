@@ -4,6 +4,7 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
 import type { StatusFile } from "../gen/gitchat/v1/repo_pb.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
+import "./loading-indicator.js";
 
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
 function loadHighlight() {
@@ -177,7 +178,12 @@ export class GcChangesView extends LitElement {
 
   override render() {
     if (this.statusLoading) {
-      return html`<div class="hint">loading status…</div>`;
+      return html`
+        <gc-loading-banner
+          heading="scanning working tree…"
+          detail="asking git for staged / unstaged / untracked files"
+        ></gc-loading-banner>
+      `;
     }
     if (this.statusError) {
       return html`<div class="hint err">
@@ -211,7 +217,7 @@ export class GcChangesView extends LitElement {
           </div>
           <div class="diff-body">
             ${this.diffLoading
-              ? html`<div class="diff-loading">loading diff…</div>`
+              ? html` <gc-loading-banner heading="loading diff…"></gc-loading-banner> `
               : this.diffError
                 ? html`<p class="diff-err">${this.diffError}</p>`
                 : this.diffHtml

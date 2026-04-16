@@ -5,6 +5,7 @@ import { chatClient, repoClient } from "../lib/transport.js";
 import { readFocus, writeFocus } from "../lib/focus.js";
 import { type ChatSession, type ChatMessage, MessageRole } from "../gen/gitchat/v1/chat_pb.js";
 import { EntryType } from "../gen/gitchat/v1/repo_pb.js";
+import "./loading-indicator.js";
 
 // The markdown renderer pulls in `marked` + Shiki (via highlight.ts),
 // which together weigh ~270 kB gzipped. Loading them eagerly would
@@ -693,7 +694,7 @@ export class GcChatView extends LitElement {
 
   override render() {
     if (this.state.phase === "loading") {
-      return html`<div class="boot">loading chat…</div>`;
+      return html`<gc-loading-banner heading="loading chat…"></gc-loading-banner>`;
     }
     if (this.state.phase === "error") {
       return html`<div class="boot">
@@ -971,7 +972,10 @@ export class GcChatView extends LitElement {
         <div class="recent-activity">
           <div class="recent-title">recent activity</div>
           ${this.summaryLoading
-            ? html`<p class="activity-text loading">summarizing recent changes…</p>`
+            ? html`<p class="activity-text loading">
+                <gc-spinner></gc-spinner>
+                summarizing recent changes…
+              </p>`
             : this.activitySummary
               ? html`<p class="activity-text">${this.activitySummary}</p>`
               : nothing}

@@ -9,6 +9,7 @@ import "./components/chat-view.js";
 import "./components/commit-log.js";
 import "./components/toast.js";
 import "./components/kb-view.js";
+import "./components/loading-indicator.js";
 import * as settings from "./lib/settings.js";
 import { readFocus, writeFocus } from "./lib/focus.js";
 import {
@@ -767,7 +768,8 @@ export class GcApp extends LitElement {
 
     if (this.configLoading) {
       return html`<div class="config-section">
-        <span class="config-loading">loading server config…</span>
+        <gc-spinner></gc-spinner>
+        <span>loading server config…</span>
       </div>`;
     }
     if (this.configEntries.length === 0) {
@@ -1856,10 +1858,6 @@ export class GcApp extends LitElement {
       text-transform: uppercase;
       letter-spacing: 0.06em;
       opacity: 0.5;
-    }
-    .config-loading {
-      font-size: var(--text-xs);
-      opacity: 0.45;
     }
     .config-group {
       margin-bottom: var(--space-2);

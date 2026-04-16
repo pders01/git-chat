@@ -4,6 +4,7 @@ import { repoClient } from "../lib/transport.js";
 import { readFocus, writeFocus } from "../lib/focus.js";
 import { EntryType, type Repo } from "../gen/gitchat/v1/repo_pb.js";
 import type { BrowseView } from "../lib/routing.js";
+import "./loading-indicator.js";
 import "./file-view.js";
 import "./compare-view.js";
 import "./changes-view.js";
@@ -329,7 +330,7 @@ export class GcRepoBrowser extends LitElement {
   override render() {
     switch (this.state.phase) {
       case "loading":
-        return html`<p class="hint">loading repositories…</p>`;
+        return html`<gc-loading-banner heading="loading repositories…"></gc-loading-banner>`;
       case "no-repos":
         return html`<p class="hint">no repositories configured</p>`;
       case "error":
@@ -519,7 +520,7 @@ export class GcRepoBrowser extends LitElement {
           <li>
             <button class="entry dir" style=${indent} @click=${() => this.toggleDir(node)}>
               <span class="icon">${node.open ? "▾" : "▸"}</span>
-              ${node.name} ${node.loading ? html`<span class="loading-dot">…</span>` : nothing}
+              ${node.name} ${node.loading ? html`<gc-spinner></gc-spinner>` : nothing}
             </button>
             ${node.open && node.children
               ? html`<ul class="entries nested">
@@ -760,10 +761,6 @@ export class GcRepoBrowser extends LitElement {
     }
     .entries.nested {
       padding: 0;
-    }
-    .loading-dot {
-      opacity: 0.4;
-      margin-left: var(--space-1);
     }
     .hint,
     .err {

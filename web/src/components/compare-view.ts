@@ -4,6 +4,7 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
 import type { ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
+import "./loading-indicator.js";
 
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
 function loadHighlight() {
@@ -195,7 +196,10 @@ export class GcCompareView extends LitElement {
         <!-- Left: file list -->
         <aside class="file-sidebar">
           ${this.compareLoading
-            ? html`<div class="hint">comparing…</div>`
+            ? html`<div class="hint">
+                <gc-spinner></gc-spinner>
+                comparing…
+              </div>`
             : this.files.length === 0 && !this.diffError
               ? html`<div class="hint">no differences</div>`
               : html` <div class="file-list-header">
@@ -272,7 +276,12 @@ export class GcCompareView extends LitElement {
           </div>
           <div class="diff-body">
             ${this.compareLoading || this.diffLoading
-              ? html`<div class="diff-loading">loading diff…</div>`
+              ? html`
+                  <gc-loading-banner
+                    heading="loading diff…"
+                    detail="fetching the changed-file patch from git; large ranges or big files can take a few seconds"
+                  ></gc-loading-banner>
+                `
               : this.diffError
                 ? html`<p class="diff-err">${this.diffError}</p>`
                 : this.diffHtml
@@ -304,6 +313,9 @@ export class GcCompareView extends LitElement {
       padding: var(--space-4);
       opacity: 0.5;
       font-size: var(--text-sm);
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
     }
 
     /* ── Layout ──────────────────────────────────────────────── */
