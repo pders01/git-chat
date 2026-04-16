@@ -1,6 +1,7 @@
 BINARY := dist/git-chat
 GO_LDFLAGS := -s -w -X main.version=$(shell git describe --always --dirty 2>/dev/null || echo dev)
 DEV_PORT ?= 18081
+PREFIX ?= /usr/local
 
 .PHONY: all
 all: web build
@@ -69,6 +70,15 @@ check-web:
 # (375x812) projects.
 test-e2e: web build
 	cd web && bunx playwright test
+
+.PHONY: install
+install: all
+	install -d $(DESTDIR)$(PREFIX)/bin
+	install -m 0755 $(BINARY) $(DESTDIR)$(PREFIX)/bin/git-chat
+
+.PHONY: uninstall
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)/bin/git-chat
 
 .PHONY: tidy
 tidy:
