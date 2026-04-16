@@ -136,6 +136,23 @@ export class GcRepoBrowser extends LitElement {
     this.emitNav({ compareBase: this.baseRef, compareHead: this.headRef });
   }
 
+  // renderRefOptions emits <option> elements for the compare dropdowns.
+  // Non-branch refs supplied via URL (HEAD~N, tag names, commit SHAs — as
+  // produced by `git chat . HEAD~8..`) get a synthetic leading option so
+  // the dropdown reflects the active selection instead of silently
+  // falling back to the first branch.
+  private renderRefOptions(selected: string) {
+    const inBranches = !!selected && this.branches.some((b) => b.name === selected);
+    return html`
+      ${selected && !inBranches
+        ? html`<option value=${selected} selected>${selected}</option>`
+        : nothing}
+      ${this.branches.map(
+        (b) => html`<option value=${b.name} ?selected=${b.name === selected}>${b.name}</option>`,
+      )}
+    `;
+  }
+
   private onOpenFile = ((e: CustomEvent<{ path: string }>) => {
     // If the event came from code-city, let it bubble to app.ts which
     // will navigate to browse/file (clearing browseView via onOpenFile).
@@ -356,12 +373,7 @@ export class GcRepoBrowser extends LitElement {
                     }}
                     aria-label="Base branch"
                   >
-                    ${this.branches.map(
-                      (b) =>
-                        html`<option value=${b.name} ?selected=${b.name === this.baseRef}>
-                          ${b.name}
-                        </option>`,
-                    )}
+                    ${this.renderRefOptions(this.baseRef)}
                   </select>
                   <button
                     class="hd-btn swap-btn"
@@ -380,12 +392,7 @@ export class GcRepoBrowser extends LitElement {
                     }}
                     aria-label="Head branch"
                   >
-                    ${this.branches.map(
-                      (b) =>
-                        html`<option value=${b.name} ?selected=${b.name === this.headRef}>
-                          ${b.name}
-                        </option>`,
-                    )}
+                    ${this.renderRefOptions(this.headRef)}
                   </select>`
               : html` <span class="branch"
                   >${this.branch || s.repo.defaultBranch}@${s.repo.headCommit}</span

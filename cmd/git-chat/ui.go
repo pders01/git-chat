@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
+	"golang.org/x/term"
 )
 
 var (
@@ -54,18 +56,66 @@ func installLogger(w io.Writer, level string) {
 
 // renderOpenBanner returns a styled block advertising the URL the user
 // should open in their browser. Includes the resolved revspec when set.
+//
+// Falls back to an unboxed two-line layout if the URL wouldn't fit inside
+// the border at the current terminal width — a wrapped URL is unclickable
+// and a clipped box is worse than no box.
 func renderOpenBanner(openURL, rangeSummary string) string {
+	const (
+		hPadding   = 2 // lipgloss banner left+right padding (per side)
+		borderCols = 2 // ╭ + ╮
+		labelCols  = 6 // "Open  " label before the URL
+	)
+	termWidth := terminalWidth(os.Stderr)
+	required := len(openURL) + labelCols + 2*hPadding + borderCols
+	if termWidth > 0 && required > termWidth {
+		var b strings.Builder
+		b.WriteString("\n")
+		b.WriteString(styleHeading.Render("Open:"))
+		b.WriteString("\n  ")
+		b.WriteString(styleURL.Render(openURL))
+		if rangeSummary != "" {
+			b.WriteString("\n")
+			b.WriteString(styleDim.Render("range:"))
+			b.WriteString(" ")
+			b.WriteString(styleBrand.Render(rangeSummary))
+		}
+		b.WriteString("\n")
+		return b.String()
+	}
+
 	var b strings.Builder
-	b.WriteString(styleHeading.Render("Open"))
-	b.WriteString("  ")
+	// Keep a literal "Open: " prefix (colon + single space) in both
+	// branches — scripts, e2e helpers, and log greppers parse it with
+	// a /Open: (http\S+)/ regex that would miss two-space variants.
+	b.WriteString(styleHeading.Render("Open:"))
+	b.WriteString(" ")
 	b.WriteString(styleURL.Render(openURL))
 	if rangeSummary != "" {
 		b.WriteString("\n")
-		b.WriteString(styleDim.Render("range"))
+		b.WriteString(styleDim.Render("range:"))
 		b.WriteString(" ")
 		b.WriteString(styleBrand.Render(rangeSummary))
 	}
 	return "\n" + styleBanner.Render(b.String()) + "\n"
+}
+
+// terminalWidth returns the terminal width in columns for w, or 0 if w is
+// not a tty or the width can't be determined.
+func terminalWidth(w any) int {
+	type fder interface{ Fd() uintptr }
+	f, ok := w.(fder)
+	if !ok {
+		return 0
+	}
+	if !term.IsTerminal(int(f.Fd())) {
+		return 0
+	}
+	cols, _, err := term.GetSize(int(f.Fd()))
+	if err != nil {
+		return 0
+	}
+	return cols
 }
 
 // renderUsage returns the styled help text for `git chat --help`.
