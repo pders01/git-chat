@@ -6,6 +6,7 @@ import { repoClient } from "../lib/transport.js";
 import type { CommitEntry, ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { copyText } from "../lib/clipboard.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
+import "./loading-indicator.js";
 
 // Lazy-load highlight for diff rendering.
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
@@ -308,7 +309,12 @@ export class GcCommitLog extends LitElement {
       if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
       this.diffError = e instanceof Error ? e.message : String(e);
     } finally {
-      this.diffLoading = false;
+      // Stale-guard the flag flip: a faster second click could race and
+      // clear diffLoading while the newer request is still in flight,
+      // leaving the UI thinking it's done when it isn't.
+      if (this.selectedSha === requestedSha && this.selectedFile === path) {
+        this.diffLoading = false;
+      }
     }
     this.dispatchNav({ logFile: this.selectedFile || undefined });
   }
@@ -662,7 +668,12 @@ export class GcCommitLog extends LitElement {
 
   override render() {
     if (this.state.phase === "loading") {
-      return html`<div class="loading">loading commits…</div>`;
+      return html`
+        <gc-loading-banner
+          heading="loading commits…"
+          detail="walking git history; first load on a large repo or with a path filter can take a second"
+        ></gc-loading-banner>
+      `;
     }
     if (this.state.phase === "error") {
       return html`<div class="err">
@@ -907,7 +918,12 @@ export class GcCommitLog extends LitElement {
                 </div>
                 <div class="diff-body">
                   ${this.diffLoading
-                    ? html`<div class="diff-loading">loading diff…</div>`
+                    ? html`
+                        <gc-loading-banner
+                          heading="loading diff…"
+                          detail="fetching the commit's changes from git; large commits can take a second"
+                        ></gc-loading-banner>
+                      `
                     : this.diffError
                       ? html`<p style="color:var(--danger);padding:var(--space-4)">
                           ${this.diffError}
