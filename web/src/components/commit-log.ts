@@ -26,6 +26,27 @@ type LogState =
     }
   | { phase: "error"; message: string };
 
+// DiffPaneState models the right-hand diff area of the log view. It
+// replaces the earlier cluster of booleans (diffLoading, diffError,
+// diffHtml, rawDiff, parentSha) with a discriminated union so render
+// and mutation sites both stay legible under a single switch. Cached
+// "all files" diff lives separately (see fullDiff below) since it's a
+// plain optimisation, not user-facing state.
+type DiffPaneState =
+  | { phase: "empty" } // no commit selected yet
+  | { phase: "loading" } // fetching the diff for the current selection
+  | { phase: "error"; message: string }
+  | { phase: "ready"; rawDiff: string; diffHtml: string; parentSha: string };
+
+// SideFilesState models the 3-pane view's enrichment data — the full
+// before/after file bodies fetched in parallel with the diff. Only
+// consulted when the diff is `ready` AND threePane is toggled on;
+// otherwise it sits at `idle`.
+type SideFilesState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "ready"; leftText: string; rightText: string; language: string };
+
 @customElement("gc-commit-log")
 export class GcCommitLog extends LitElement {
   @property({ type: String }) repoId = "";
@@ -35,8 +56,6 @@ export class GcCommitLog extends LitElement {
   @property({ type: Boolean }) initialSplitView = false;
   @state() private state: LogState = { phase: "loading" };
   @state() private selectedSha = "";
-  @state() private diffHtml = "";
-  @state() private diffLoading = false;
   @state() private drawerOpen = false;
   @state() private graphMode = false;
   @state() private files: ChangedFile[] = [];
@@ -47,15 +66,15 @@ export class GcCommitLog extends LitElement {
   // when a single file is selected; toggle is disabled for the "all
   // files" combined view.
   @state() private threePane = false;
-  @state() private leftFileText = "";
-  @state() private rightFileText = "";
-  @state() private sideLoading = false;
-  @state() private fileLanguage = "plaintext";
-  @state() private parentSha = "";
+  // Right-hand diff area state. See DiffPaneState above.
+  @state() private diff: DiffPaneState = { phase: "empty" };
+  // Enrichment data for the 3-pane view (before/after file bodies).
+  @state() private sideFiles: SideFilesState = { phase: "idle" };
   @property({ type: String }) filterPath = "";
-  private fullDiffHtml = ""; // cached full-commit diff
-  private rawDiff = ""; // raw diff text for current view
-  private fullRawDiff = ""; // raw diff text for full commit
+  // Cached whole-commit diff so switching back to "all files" after
+  // looking at a single file is instant. Stays alongside @state as a
+  // plain cache — nothing here drives the view directly.
+  private fullDiff: { rawDiff: string; diffHtml: string; parentSha: string } | null = null;
   private pendingSha = "";
   private unsubSettings: (() => void) | null = null;
   // Abort signal for the progressive-enhancement rename call fired at
@@ -95,16 +114,18 @@ export class GcCommitLog extends LitElement {
   }
 
   private async rehighlight() {
-    const raw = this.rawDiff;
-    if (!raw) return;
+    if (this.diff.phase !== "ready" || !this.diff.rawDiff) return;
+    const raw = this.diff.rawDiff;
     const { highlight } = await loadHighlight();
     let highlighted = await highlight(raw, "diff");
-    if (this.rawDiff !== raw) return; // navigated away during highlight
+    // Bail if the user navigated away while highlight() was running.
+    if (this.diff.phase !== "ready" || this.diff.rawDiff !== raw) return;
     highlighted = this.highlightWordDiffs(highlighted);
-    this.diffHtml = highlighted;
-    // Also update full cache if viewing all files.
-    if (this.selectedFile === "" && this.fullRawDiff) {
-      this.fullDiffHtml = highlighted;
+    this.diff = { ...this.diff, diffHtml: highlighted };
+    // Keep the "all files" cache in step so toggling back later doesn't
+    // show a stale-themed render.
+    if (this.selectedFile === "" && this.fullDiff) {
+      this.fullDiff = { ...this.fullDiff, diffHtml: highlighted };
     }
   }
 
@@ -203,8 +224,6 @@ export class GcCommitLog extends LitElement {
     rows[next]?.focus();
   };
 
-  @state() private diffError = "";
-
   private async selectCommit(sha: string) {
     // Support prefix matching (e.g. 7-char short SHA from blame).
     if (this.state.phase === "ready" && sha.length < 40) {
@@ -233,12 +252,13 @@ export class GcCommitLog extends LitElement {
       }
     }
     if (this.selectedSha === sha) {
+      // Toggle off.
       this.selectedSha = "";
-      this.diffHtml = "";
-      this.fullDiffHtml = "";
-      this.diffError = "";
-      this.files = [];
       this.selectedFile = "";
+      this.files = [];
+      this.diff = { phase: "empty" };
+      this.sideFiles = { phase: "idle" };
+      this.fullDiff = null;
       return;
     }
     const requestedSha = sha;
@@ -251,11 +271,10 @@ export class GcCommitLog extends LitElement {
     this.selectedSha = sha;
     this.selectedFile = "";
     this.drawerOpen = false;
-    this.diffHtml = "";
-    this.fullDiffHtml = "";
-    this.diffError = "";
     this.files = [];
-    this.diffLoading = true;
+    this.fullDiff = null;
+    this.sideFiles = { phase: "idle" };
+    this.diff = { phase: "loading" };
 
     try {
       const resp = await repoClient.getDiff({
@@ -264,26 +283,27 @@ export class GcCommitLog extends LitElement {
       });
       if (this.selectedSha !== requestedSha) return; // stale
       this.files = resp.files;
+      const parentSha = resp.fromCommit || "";
       if (resp.empty) {
-        this.diffHtml = "";
-        this.fullDiffHtml = this.diffHtml;
-        this.rawDiff = "";
-        this.fullRawDiff = "";
+        const ready = { phase: "ready" as const, rawDiff: "", diffHtml: "", parentSha };
+        this.diff = ready;
+        this.fullDiff = { rawDiff: "", diffHtml: "", parentSha };
       } else {
         const { highlight } = await loadHighlight();
         let highlighted = await highlight(resp.unifiedDiff, "diff");
         if (this.selectedSha !== requestedSha) return; // stale
         highlighted = this.highlightWordDiffs(highlighted);
-        this.diffHtml = highlighted;
-        this.fullDiffHtml = highlighted;
-        this.rawDiff = resp.unifiedDiff;
-        this.fullRawDiff = resp.unifiedDiff;
+        this.diff = {
+          phase: "ready",
+          rawDiff: resp.unifiedDiff,
+          diffHtml: highlighted,
+          parentSha,
+        };
+        this.fullDiff = { rawDiff: resp.unifiedDiff, diffHtml: highlighted, parentSha };
       }
     } catch (e) {
       if (this.selectedSha !== requestedSha) return;
-      this.diffError = e instanceof Error ? e.message : String(e);
-    } finally {
-      if (this.selectedSha === requestedSha) this.diffLoading = false;
+      this.diff = { phase: "error", message: e instanceof Error ? e.message : String(e) };
     }
     this._lastRestoredSha = this.selectedSha;
     this.dispatchNav({ commitSha: this.selectedSha || undefined, logFile: undefined });
@@ -327,21 +347,21 @@ export class GcCommitLog extends LitElement {
   private async selectFile(path: string) {
     if (this.selectedFile === path) return;
     this.selectedFile = path;
-    this.diffError = "";
 
     // "All files" — restore cached full diff.
     if (path === "") {
-      this.diffHtml = this.fullDiffHtml;
-      this.rawDiff = this.fullRawDiff;
-      this.diffLoading = false;
+      if (this.fullDiff) {
+        this.diff = { phase: "ready", ...this.fullDiff };
+      } else {
+        this.diff = { phase: "empty" };
+      }
+      this.sideFiles = { phase: "idle" };
       return;
     }
 
     const requestedSha = this.selectedSha;
-    this.diffHtml = "";
-    this.diffLoading = true;
-    this.leftFileText = "";
-    this.rightFileText = "";
+    this.diff = { phase: "loading" };
+    this.sideFiles = { phase: "idle" };
 
     try {
       const resp = await repoClient.getDiff({
@@ -350,28 +370,24 @@ export class GcCommitLog extends LitElement {
         path,
       });
       if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
-      this.parentSha = resp.fromCommit || "";
+      const parentSha = resp.fromCommit || "";
       if (resp.empty) {
-        this.diffHtml = "";
-        this.rawDiff = "";
+        this.diff = { phase: "ready", rawDiff: "", diffHtml: "", parentSha };
       } else {
         const { highlight } = await loadHighlight();
         let highlighted = await highlight(resp.unifiedDiff, "diff");
         if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
         highlighted = this.highlightWordDiffs(highlighted);
-        this.diffHtml = highlighted;
-        this.rawDiff = resp.unifiedDiff;
+        this.diff = {
+          phase: "ready",
+          rawDiff: resp.unifiedDiff,
+          diffHtml: highlighted,
+          parentSha,
+        };
       }
     } catch (e) {
       if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
-      this.diffError = e instanceof Error ? e.message : String(e);
-    } finally {
-      // Stale-guard the flag flip: a faster second click could race and
-      // clear diffLoading while the newer request is still in flight,
-      // leaving the UI thinking it's done when it isn't.
-      if (this.selectedSha === requestedSha && this.selectedFile === path) {
-        this.diffLoading = false;
-      }
+      this.diff = { phase: "error", message: e instanceof Error ? e.message : String(e) };
     }
     this.dispatchNav({ logFile: this.selectedFile || undefined });
 
@@ -379,47 +395,47 @@ export class GcCommitLog extends LitElement {
   }
 
   // Fetch the full old- and new-file contents for the 3-pane view at
-  // the selected commit. `fromCommit` returned from GetDiff is the
-  // parent SHA; fetching that gives us the "before" side. Either fetch
-  // can legitimately fail (added file has no parent blob; deleted file
-  // has no child blob) — swallow and leave the side empty.
+  // the selected commit. Either fetch can legitimately fail (added file
+  // has no parent blob; deleted file has no child blob) — swallow and
+  // leave the side empty so add/delete commits still render sensibly.
   private async loadSideFiles(path: string, forSha: string) {
     if (!path || !forSha) return;
-    this.sideLoading = true;
-    try {
-      const [leftResp, rightResp] = await Promise.all([
-        this.parentSha
-          ? repoClient
-              .getFile({
-                repoId: this.repoId,
-                ref: this.parentSha,
-                path,
-                maxBytes: BigInt(512 * 1024),
-              })
-              .catch(() => null)
-          : Promise.resolve(null),
-        repoClient
-          .getFile({
-            repoId: this.repoId,
-            ref: forSha,
-            path,
-            maxBytes: BigInt(512 * 1024),
-          })
-          .catch(() => null),
-      ]);
-      if (this.selectedSha !== forSha || this.selectedFile !== path) return;
-      const td = new TextDecoder();
-      this.leftFileText = leftResp && !leftResp.isBinary ? td.decode(leftResp.content) : "";
-      this.rightFileText = rightResp && !rightResp.isBinary ? td.decode(rightResp.content) : "";
-      this.fileLanguage = rightResp?.language || leftResp?.language || "plaintext";
-    } finally {
-      if (this.selectedSha === forSha && this.selectedFile === path) this.sideLoading = false;
-    }
+    if (this.diff.phase !== "ready") return; // nothing to pane against yet
+    const parentSha = this.diff.parentSha;
+    this.sideFiles = { phase: "loading" };
+    const [leftResp, rightResp] = await Promise.all([
+      parentSha
+        ? repoClient
+            .getFile({
+              repoId: this.repoId,
+              ref: parentSha,
+              path,
+              maxBytes: BigInt(512 * 1024),
+            })
+            .catch(() => null)
+        : Promise.resolve(null),
+      repoClient
+        .getFile({
+          repoId: this.repoId,
+          ref: forSha,
+          path,
+          maxBytes: BigInt(512 * 1024),
+        })
+        .catch(() => null),
+    ]);
+    if (this.selectedSha !== forSha || this.selectedFile !== path) return;
+    const td = new TextDecoder();
+    this.sideFiles = {
+      phase: "ready",
+      leftText: leftResp && !leftResp.isBinary ? td.decode(leftResp.content) : "",
+      rightText: rightResp && !rightResp.isBinary ? td.decode(rightResp.content) : "",
+      language: rightResp?.language || leftResp?.language || "plaintext",
+    };
   }
 
   private toggleThreePane() {
     this.threePane = !this.threePane;
-    if (this.threePane && this.selectedFile) {
+    if (this.threePane && this.selectedFile && this.sideFiles.phase === "idle") {
       void this.loadSideFiles(this.selectedFile, this.selectedSha);
     }
   }
@@ -625,8 +641,47 @@ export class GcCommitLog extends LitElement {
     return this.files.find((f) => f.path === this.selectedFile);
   }
 
+  private renderDiffPane() {
+    switch (this.diff.phase) {
+      case "empty":
+        return nothing;
+      case "loading":
+        return html`<gc-loading-banner
+          heading="loading diff…"
+          detail="fetching the commit's changes from git; large commits can take a second"
+        ></gc-loading-banner>`;
+      case "error":
+        return html`<p style="color:var(--danger);padding:var(--space-4)">${this.diff.message}</p>`;
+      case "ready": {
+        if (this.threePane && this.selectedFile) return this.renderThreePane(this.diff);
+        if (!this.diff.diffHtml) return html`<div class="diff-empty">no changes</div>`;
+        return this.splitView
+          ? this.renderSplitDiff()
+          : html`<div class="diff-content">${unsafeHTML(this.diff.diffHtml)}</div>`;
+      }
+    }
+  }
+
+  private renderThreePane(ready: DiffPaneState & { phase: "ready" }) {
+    switch (this.sideFiles.phase) {
+      case "idle":
+      case "loading":
+        return html`<gc-loading-banner heading="loading 3-pane…"></gc-loading-banner>`;
+      case "ready":
+        return html`<gc-three-pane-view
+          .leftText=${this.sideFiles.leftText}
+          .rightText=${this.sideFiles.rightText}
+          .rawDiff=${ready.rawDiff}
+          .language=${this.sideFiles.language}
+          .leftLabel=${ready.parentSha ? ready.parentSha.slice(0, 12) + " (before)" : "(no parent)"}
+          .rightLabel=${this.selectedSha.slice(0, 12) + " (after)"}
+        ></gc-three-pane-view>`;
+    }
+  }
+
   private renderSplitDiff() {
-    const pairs = this.splitDiffHtml(this.diffHtml);
+    const diffHtml = this.diff.phase === "ready" ? this.diff.diffHtml : "";
+    const pairs = this.splitDiffHtml(diffHtml);
     return html`
       <div class="diff-content split-diff">
         <table class="split-table">
@@ -1040,37 +1095,7 @@ export class GcCommitLog extends LitElement {
                     3-pane
                   </button>
                 </div>
-                <div class="diff-body">
-                  ${this.diffLoading
-                    ? html`
-                        <gc-loading-banner
-                          heading="loading diff…"
-                          detail="fetching the commit's changes from git; large commits can take a second"
-                        ></gc-loading-banner>
-                      `
-                    : this.diffError
-                      ? html`<p style="color:var(--danger);padding:var(--space-4)">
-                          ${this.diffError}
-                        </p>`
-                      : this.threePane && this.selectedFile
-                        ? this.sideLoading
-                          ? html`<gc-loading-banner heading="loading 3-pane…"></gc-loading-banner>`
-                          : html`<gc-three-pane-view
-                              .leftText=${this.leftFileText}
-                              .rightText=${this.rightFileText}
-                              .rawDiff=${this.rawDiff}
-                              .language=${this.fileLanguage}
-                              .leftLabel=${this.parentSha
-                                ? this.parentSha.slice(0, 12) + " (before)"
-                                : "(no parent)"}
-                              .rightLabel=${this.selectedSha.slice(0, 12) + " (after)"}
-                            ></gc-three-pane-view>`
-                        : this.diffHtml
-                          ? this.splitView
-                            ? this.renderSplitDiff()
-                            : html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
-                          : html`<div class="diff-empty">no changes</div>`}
-                </div>`
+                <div class="diff-body">${this.renderDiffPane()}</div>`
             : html`<div class="empty-detail">
                 <p class="empty-sub">click a commit to view its diff</p>
               </div>`}

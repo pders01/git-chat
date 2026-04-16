@@ -31,31 +31,52 @@ function fileName(path: string): string {
   return i >= 0 ? path.slice(i + 1) : path;
 }
 
+// CompareState models the overall comparison (file list + total stats).
+// Before the diff is fetched the view sits at `loading`; once the server
+// answers we land in `ready` even if the list is empty (the UI then
+// shows "no differences" instead of an error).
+type CompareState =
+  | { phase: "loading" }
+  | { phase: "error"; message: string }
+  | {
+      phase: "ready";
+      files: ChangedFile[];
+      totalAdditions: number;
+      totalDeletions: number;
+    };
+
+// DiffPaneState models the right-hand diff area. Same shape as in
+// commit-log — single union lets render collapse to one switch.
+type DiffPaneState =
+  | { phase: "empty" } // no file selected and no whole-compare diff yet
+  | { phase: "loading" }
+  | { phase: "error"; message: string }
+  | { phase: "ready"; rawDiff: string; diffHtml: string };
+
+// SideFilesState: before/after file bodies for the 3-pane view. Mirrors
+// the commit-log definition.
+type SideFilesState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "ready"; leftText: string; rightText: string; language: string };
+
 @customElement("gc-compare-view")
 export class GcCompareView extends LitElement {
   @property({ type: String }) repoId = "";
   @property({ type: String }) baseRef = "";
   @property({ type: String }) headRef = "";
 
-  @state() private files: ChangedFile[] = [];
-  @state() private totalAdditions = 0;
-  @state() private totalDeletions = 0;
+  @state() private compare_: CompareState = { phase: "loading" };
   @state() private selectedFile = "";
-  @state() private diffHtml = "";
-  @state() private diffLoading = false;
-  @state() private diffError = "";
-  @state() private compareLoading = false;
+  @state() private diff: DiffPaneState = { phase: "empty" };
+  @state() private sideFiles: SideFilesState = { phase: "idle" };
   // Three-pane (before | diff | after) mode. Toggle persists for the
   // lifetime of the component; when on, selectFile also fetches the
   // left/right full-file contents for the side panes.
   @state() private threePane = false;
-  @state() private leftFileText = "";
-  @state() private rightFileText = "";
-  @state() private sideLoading = false;
-  @state() private fileLanguage = "plaintext";
-  private fullDiffHtml = "";
-  private rawDiff = "";
-  private fullRawDiff = "";
+  // Cached whole-compare diff so switching back to "all files" after
+  // looking at a single file is instant. Plain struct, not @state.
+  private fullDiff: { rawDiff: string; diffHtml: string } | null = null;
   private compareGeneration = 0;
   private lastCompareKey = "";
   private unsubSettings: (() => void) | null = null;
@@ -79,14 +100,14 @@ export class GcCompareView extends LitElement {
   }
 
   private async rehighlight() {
-    const raw = this.rawDiff;
-    if (!raw) return;
+    if (this.diff.phase !== "ready" || !this.diff.rawDiff) return;
+    const raw = this.diff.rawDiff;
     const { highlight } = await loadHighlight();
     const highlighted = await highlight(raw, "diff");
-    if (this.rawDiff !== raw) return; // navigated away during highlight
-    this.diffHtml = highlighted;
-    if (this.selectedFile === "" && this.fullRawDiff) {
-      this.fullDiffHtml = highlighted;
+    if (this.diff.phase !== "ready" || this.diff.rawDiff !== raw) return;
+    this.diff = { ...this.diff, diffHtml: highlighted };
+    if (this.selectedFile === "" && this.fullDiff) {
+      this.fullDiff = { ...this.fullDiff, diffHtml: highlighted };
     }
   }
 
@@ -109,14 +130,11 @@ export class GcCompareView extends LitElement {
     // the answer.
     this.renameAbort?.abort();
     this.renameAbort = null;
-    this.compareLoading = true;
-    this.files = [];
     this.selectedFile = "";
-    this.diffHtml = "";
-    this.fullDiffHtml = "";
-    this.diffError = "";
-    this.totalAdditions = 0;
-    this.totalDeletions = 0;
+    this.compare_ = { phase: "loading" };
+    this.diff = { phase: "loading" };
+    this.sideFiles = { phase: "idle" };
+    this.fullDiff = null;
 
     try {
       const [cmp, diff] = await Promise.all([
@@ -132,30 +150,29 @@ export class GcCompareView extends LitElement {
         }),
       ]);
       if (gen !== this.compareGeneration) return;
-      this.files = cmp.files;
-      this.totalAdditions = cmp.totalAdditions;
-      this.totalDeletions = cmp.totalDeletions;
+      this.compare_ = {
+        phase: "ready",
+        files: cmp.files,
+        totalAdditions: cmp.totalAdditions,
+        totalDeletions: cmp.totalDeletions,
+      };
 
       if (diff.empty) {
-        this.diffHtml = "";
-        this.fullDiffHtml = "";
-        this.rawDiff = "";
-        this.fullRawDiff = "";
+        this.diff = { phase: "ready", rawDiff: "", diffHtml: "" };
+        this.fullDiff = { rawDiff: "", diffHtml: "" };
       } else {
         const { highlight } = await loadHighlight();
         const highlighted = await highlight(diff.unifiedDiff, "diff");
         if (gen !== this.compareGeneration) return;
-        this.diffHtml = highlighted;
-        this.fullDiffHtml = highlighted;
-        this.rawDiff = diff.unifiedDiff;
-        this.fullRawDiff = diff.unifiedDiff;
+        this.diff = { phase: "ready", rawDiff: diff.unifiedDiff, diffHtml: highlighted };
+        this.fullDiff = { rawDiff: diff.unifiedDiff, diffHtml: highlighted };
       }
     } catch (e) {
       if (gen !== this.compareGeneration) return;
       this.lastCompareKey = "";
-      this.diffError = e instanceof Error ? e.message : String(e);
-    } finally {
-      if (gen === this.compareGeneration) this.compareLoading = false;
+      const message = e instanceof Error ? e.message : String(e);
+      this.compare_ = { phase: "error", message };
+      this.diff = { phase: "error", message };
     }
 
     // Progressive enhancement: the initial fetch skipped rename detection
@@ -163,10 +180,8 @@ export class GcCompareView extends LitElement {
     // deletes, renames are plausible — fire a second request that opts
     // into detection and swap the list in when it lands. Non-rename rows
     // stay identical, so the reshuffle is bounded to actual renames.
-    if (
-      this.files.some((f) => f.status === "added") &&
-      this.files.some((f) => f.status === "deleted")
-    ) {
+    const files = this.compare_.phase === "ready" ? this.compare_.files : [];
+    if (files.some((f) => f.status === "added") && files.some((f) => f.status === "deleted")) {
       void this.detectRenamesBackground(gen);
     }
   }
@@ -184,10 +199,13 @@ export class GcCompareView extends LitElement {
         },
         { signal: ac.signal },
       );
-      if (gen !== this.compareGeneration) return; // stale
-      this.files = cmp.files;
-      this.totalAdditions = cmp.totalAdditions;
-      this.totalDeletions = cmp.totalDeletions;
+      if (gen !== this.compareGeneration || this.compare_.phase !== "ready") return;
+      this.compare_ = {
+        phase: "ready",
+        files: cmp.files,
+        totalAdditions: cmp.totalAdditions,
+        totalDeletions: cmp.totalDeletions,
+      };
     } catch {
       // Silent — aborted or failed; the initial (fast) list is on screen.
     } finally {
@@ -198,21 +216,21 @@ export class GcCompareView extends LitElement {
   private async selectFile(path: string) {
     if (this.selectedFile === path) return;
     this.selectedFile = path;
-    this.diffError = "";
 
     if (path === "") {
-      this.diffHtml = this.fullDiffHtml;
-      this.rawDiff = this.fullRawDiff;
-      this.diffLoading = false;
+      // Restore cached whole-compare diff.
+      if (this.fullDiff) {
+        this.diff = { phase: "ready", ...this.fullDiff };
+      } else {
+        this.diff = { phase: "empty" };
+      }
+      this.sideFiles = { phase: "idle" };
       return;
     }
 
     const gen = this.compareGeneration;
-    this.diffHtml = "";
-    this.diffLoading = true;
-    // Reset side-pane contents; they'll be fetched below if 3-pane is on.
-    this.leftFileText = "";
-    this.rightFileText = "";
+    this.diff = { phase: "loading" };
+    this.sideFiles = { phase: "idle" };
 
     try {
       const resp = await repoClient.getDiff({
@@ -223,20 +241,16 @@ export class GcCompareView extends LitElement {
       });
       if (gen !== this.compareGeneration || this.selectedFile !== path) return;
       if (resp.empty) {
-        this.diffHtml = "";
-        this.rawDiff = "";
+        this.diff = { phase: "ready", rawDiff: "", diffHtml: "" };
       } else {
         const { highlight } = await loadHighlight();
         const highlighted = await highlight(resp.unifiedDiff, "diff");
         if (gen !== this.compareGeneration || this.selectedFile !== path) return;
-        this.diffHtml = highlighted;
-        this.rawDiff = resp.unifiedDiff;
+        this.diff = { phase: "ready", rawDiff: resp.unifiedDiff, diffHtml: highlighted };
       }
     } catch (e) {
       if (gen !== this.compareGeneration || this.selectedFile !== path) return;
-      this.diffError = e instanceof Error ? e.message : String(e);
-    } finally {
-      if (gen === this.compareGeneration && this.selectedFile === path) this.diffLoading = false;
+      this.diff = { phase: "error", message: e instanceof Error ? e.message : String(e) };
     }
 
     if (this.threePane) void this.loadSideFiles(path);
@@ -249,39 +263,40 @@ export class GcCompareView extends LitElement {
   private async loadSideFiles(path: string) {
     if (!path) return;
     const gen = this.compareGeneration;
-    this.sideLoading = true;
-    try {
-      const [leftResp, rightResp] = await Promise.all([
-        repoClient
-          .getFile({
-            repoId: this.repoId,
-            ref: this.baseRef,
-            path,
-            maxBytes: BigInt(512 * 1024),
-          })
-          .catch(() => null),
-        repoClient
-          .getFile({
-            repoId: this.repoId,
-            ref: this.headRef,
-            path,
-            maxBytes: BigInt(512 * 1024),
-          })
-          .catch(() => null),
-      ]);
-      if (gen !== this.compareGeneration || this.selectedFile !== path) return;
-      const td = new TextDecoder();
-      this.leftFileText = leftResp && !leftResp.isBinary ? td.decode(leftResp.content) : "";
-      this.rightFileText = rightResp && !rightResp.isBinary ? td.decode(rightResp.content) : "";
-      this.fileLanguage = rightResp?.language || leftResp?.language || "plaintext";
-    } finally {
-      if (gen === this.compareGeneration && this.selectedFile === path) this.sideLoading = false;
-    }
+    this.sideFiles = { phase: "loading" };
+    const [leftResp, rightResp] = await Promise.all([
+      repoClient
+        .getFile({
+          repoId: this.repoId,
+          ref: this.baseRef,
+          path,
+          maxBytes: BigInt(512 * 1024),
+        })
+        .catch(() => null),
+      repoClient
+        .getFile({
+          repoId: this.repoId,
+          ref: this.headRef,
+          path,
+          maxBytes: BigInt(512 * 1024),
+        })
+        .catch(() => null),
+    ]);
+    if (gen !== this.compareGeneration || this.selectedFile !== path) return;
+    const td = new TextDecoder();
+    this.sideFiles = {
+      phase: "ready",
+      leftText: leftResp && !leftResp.isBinary ? td.decode(leftResp.content) : "",
+      rightText: rightResp && !rightResp.isBinary ? td.decode(rightResp.content) : "",
+      language: rightResp?.language || leftResp?.language || "plaintext",
+    };
   }
 
   private toggleThreePane() {
     this.threePane = !this.threePane;
-    if (this.threePane && this.selectedFile) void this.loadSideFiles(this.selectedFile);
+    if (this.threePane && this.selectedFile && this.sideFiles.phase === "idle") {
+      void this.loadSideFiles(this.selectedFile);
+    }
   }
 
   private openInBrowse(path: string) {
@@ -291,71 +306,85 @@ export class GcCompareView extends LitElement {
   }
 
   private selectedFileEntry(): ChangedFile | undefined {
-    return this.files.find((f) => f.path === this.selectedFile);
+    const files = this.compare_.phase === "ready" ? this.compare_.files : [];
+    return files.find((f) => f.path === this.selectedFile);
+  }
+
+  private renderFileSidebar() {
+    switch (this.compare_.phase) {
+      case "loading":
+        return html`<div class="hint">
+          <gc-spinner></gc-spinner>
+          comparing…
+        </div>`;
+      case "error":
+        return html`<div class="hint">${this.compare_.message}</div>`;
+      case "ready": {
+        const { files, totalAdditions, totalDeletions } = this.compare_;
+        if (files.length === 0) return html`<div class="hint">no differences</div>`;
+        return html`
+          <div class="file-list-header">
+            <span>files</span>
+            <span class="file-count">${files.length}</span>
+          </div>
+          <ul class="file-list" role="list">
+            <li>
+              <button
+                class="file-entry ${this.selectedFile === "" ? "selected" : ""}"
+                @click=${() => this.selectFile("")}
+              >
+                <span class="file-status all">∗</span>
+                <span class="file-path">all files</span>
+                <span class="file-stats">
+                  <span class="adds">+${totalAdditions}</span>
+                  <span class="dels">-${totalDeletions}</span>
+                </span>
+              </button>
+            </li>
+            ${files.map(
+              (f) => html`
+                <li>
+                  <button
+                    class="file-entry ${this.selectedFile === f.path ? "selected" : ""}"
+                    @click=${(e: MouseEvent) => {
+                      if (e.metaKey || e.ctrlKey) {
+                        this.openInBrowse(f.path);
+                      } else {
+                        this.selectFile(f.path);
+                      }
+                    }}
+                    title="${f.fromPath
+                      ? `${f.fromPath} → ${f.path} (renamed)`
+                      : f.path} (⌘+click to open in browse)"
+                  >
+                    <span class="file-status ${f.status}">${statusLabel(f.status)}</span>
+                    <span class="file-path"
+                      >${fileName(f.path)}${f.fromPath
+                        ? html`<span class="rename-from">← ${fileName(f.fromPath)}</span>`
+                        : nothing}</span
+                    >
+                    <span class="file-stats">
+                      <span class="adds">+${f.additions}</span>
+                      <span class="dels">-${f.deletions}</span>
+                    </span>
+                  </button>
+                </li>
+              `,
+            )}
+          </ul>
+        `;
+      }
+    }
   }
 
   override render() {
+    const files = this.compare_.phase === "ready" ? this.compare_.files : [];
+    const totalAdditions = this.compare_.phase === "ready" ? this.compare_.totalAdditions : 0;
+    const totalDeletions = this.compare_.phase === "ready" ? this.compare_.totalDeletions : 0;
     return html`
       <div class="compare-layout">
         <!-- Left: file list -->
-        <aside class="file-sidebar">
-          ${this.compareLoading
-            ? html`<div class="hint">
-                <gc-spinner></gc-spinner>
-                comparing…
-              </div>`
-            : this.files.length === 0 && !this.diffError
-              ? html`<div class="hint">no differences</div>`
-              : html` <div class="file-list-header">
-                    <span>files</span>
-                    <span class="file-count">${this.files.length}</span>
-                  </div>
-                  <ul class="file-list" role="list">
-                    <li>
-                      <button
-                        class="file-entry ${this.selectedFile === "" ? "selected" : ""}"
-                        @click=${() => this.selectFile("")}
-                      >
-                        <span class="file-status all">∗</span>
-                        <span class="file-path">all files</span>
-                        <span class="file-stats">
-                          <span class="adds">+${this.totalAdditions}</span>
-                          <span class="dels">-${this.totalDeletions}</span>
-                        </span>
-                      </button>
-                    </li>
-                    ${this.files.map(
-                      (f) => html`
-                        <li>
-                          <button
-                            class="file-entry ${this.selectedFile === f.path ? "selected" : ""}"
-                            @click=${(e: MouseEvent) => {
-                              if (e.metaKey || e.ctrlKey) {
-                                this.openInBrowse(f.path);
-                              } else {
-                                this.selectFile(f.path);
-                              }
-                            }}
-                            title="${f.fromPath
-                              ? `${f.fromPath} → ${f.path} (renamed)`
-                              : f.path} (⌘+click to open in browse)"
-                          >
-                            <span class="file-status ${f.status}">${statusLabel(f.status)}</span>
-                            <span class="file-path"
-                              >${fileName(f.path)}${f.fromPath
-                                ? html`<span class="rename-from">← ${fileName(f.fromPath)}</span>`
-                                : nothing}</span
-                            >
-                            <span class="file-stats">
-                              <span class="adds">+${f.additions}</span>
-                              <span class="dels">-${f.deletions}</span>
-                            </span>
-                          </button>
-                        </li>
-                      `,
-                    )}
-                  </ul>`}
-        </aside>
+        <aside class="file-sidebar">${this.renderFileSidebar()}</aside>
 
         <!-- Right: diff pane -->
         <section class="diff-pane">
@@ -374,13 +403,13 @@ export class GcCompareView extends LitElement {
                     : nothing}`
               : html` <span class="diff-label">diff</span>
                   <span class="diff-spacer"></span>
-                  ${this.files.length
+                  ${files.length
                     ? html`<span class="diff-stats">
                         <span class="file-count"
-                          >${this.files.length} file${this.files.length > 1 ? "s" : ""}</span
+                          >${files.length} file${files.length > 1 ? "s" : ""}</span
                         >
-                        <span class="adds">+${this.totalAdditions}</span>
-                        <span class="dels">-${this.totalDeletions}</span>
+                        <span class="adds">+${totalAdditions}</span>
+                        <span class="dels">-${totalDeletions}</span>
                       </span>`
                     : nothing}`}
             <button
@@ -395,36 +424,50 @@ export class GcCompareView extends LitElement {
               3-pane
             </button>
           </div>
-          <div class="diff-body">
-            ${this.compareLoading || this.diffLoading
-              ? html`
-                  <gc-loading-banner
-                    heading="loading diff…"
-                    detail="fetching the changed-file patch from git; large ranges or big files can take a few seconds"
-                  ></gc-loading-banner>
-                `
-              : this.diffError
-                ? html`<p class="diff-err">${this.diffError}</p>`
-                : this.threePane && this.selectedFile
-                  ? this.sideLoading
-                    ? html`<gc-loading-banner heading="loading 3-pane…"></gc-loading-banner>`
-                    : html`<gc-three-pane-view
-                        .leftText=${this.leftFileText}
-                        .rightText=${this.rightFileText}
-                        .rawDiff=${this.rawDiff}
-                        .language=${this.fileLanguage}
-                        .leftLabel=${this.baseRef}
-                        .rightLabel=${this.headRef}
-                      ></gc-three-pane-view>`
-                  : this.diffHtml
-                    ? html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
-                    : html`<div class="diff-empty">
-                        ${this.baseRef === this.headRef ? "same branch selected" : "no differences"}
-                      </div>`}
-          </div>
+          <div class="diff-body">${this.renderDiffPane()}</div>
         </section>
       </div>
     `;
+  }
+
+  private renderDiffPane() {
+    switch (this.diff.phase) {
+      case "empty":
+        return nothing;
+      case "loading":
+        return html`<gc-loading-banner
+          heading="loading diff…"
+          detail="fetching the changed-file patch from git; large ranges or big files can take a few seconds"
+        ></gc-loading-banner>`;
+      case "error":
+        return html`<p class="diff-err">${this.diff.message}</p>`;
+      case "ready": {
+        if (this.threePane && this.selectedFile) return this.renderThreePane(this.diff);
+        if (!this.diff.diffHtml) {
+          return html`<div class="diff-empty">
+            ${this.baseRef === this.headRef ? "same branch selected" : "no differences"}
+          </div>`;
+        }
+        return html`<div class="diff-content">${unsafeHTML(this.diff.diffHtml)}</div>`;
+      }
+    }
+  }
+
+  private renderThreePane(ready: DiffPaneState & { phase: "ready" }) {
+    switch (this.sideFiles.phase) {
+      case "idle":
+      case "loading":
+        return html`<gc-loading-banner heading="loading 3-pane…"></gc-loading-banner>`;
+      case "ready":
+        return html`<gc-three-pane-view
+          .leftText=${this.sideFiles.leftText}
+          .rightText=${this.sideFiles.rightText}
+          .rawDiff=${ready.rawDiff}
+          .language=${this.sideFiles.language}
+          .leftLabel=${this.baseRef}
+          .rightLabel=${this.headRef}
+        ></gc-three-pane-view>`;
+    }
   }
 
   static override styles = css`
