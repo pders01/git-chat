@@ -207,7 +207,10 @@ export class GcApp extends LitElement {
       this.showShortcuts = !this.showShortcuts;
       return;
     }
-    if (e.key === "Escape" && (this.showShortcuts || this.showSettings || this.showPalette || this.showSearch)) {
+    if (
+      e.key === "Escape" &&
+      (this.showShortcuts || this.showSettings || this.showPalette || this.showSearch)
+    ) {
       this.showShortcuts = false;
       this.showSettings = false;
       this.showSearch = false;
