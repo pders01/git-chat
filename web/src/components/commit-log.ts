@@ -7,6 +7,7 @@ import type { CommitEntry, ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { copyText } from "../lib/clipboard.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
 import "./loading-indicator.js";
+import "./three-pane-view.js";
 
 // Lazy-load highlight for diff rendering.
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
@@ -42,6 +43,15 @@ export class GcCommitLog extends LitElement {
   @state() private selectedFile = ""; // "" = all files
   @state() private commitFilter = "";
   @state() private splitView = false;
+  // Three-pane diff view: before | unified diff | after. Only meaningful
+  // when a single file is selected; toggle is disabled for the "all
+  // files" combined view.
+  @state() private threePane = false;
+  @state() private leftFileText = "";
+  @state() private rightFileText = "";
+  @state() private sideLoading = false;
+  @state() private fileLanguage = "plaintext";
+  @state() private parentSha = "";
   @property({ type: String }) filterPath = "";
   private fullDiffHtml = ""; // cached full-commit diff
   private rawDiff = ""; // raw diff text for current view
@@ -330,6 +340,8 @@ export class GcCommitLog extends LitElement {
     const requestedSha = this.selectedSha;
     this.diffHtml = "";
     this.diffLoading = true;
+    this.leftFileText = "";
+    this.rightFileText = "";
 
     try {
       const resp = await repoClient.getDiff({
@@ -338,6 +350,7 @@ export class GcCommitLog extends LitElement {
         path,
       });
       if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
+      this.parentSha = resp.fromCommit || "";
       if (resp.empty) {
         this.diffHtml = "";
         this.rawDiff = "";
@@ -361,6 +374,54 @@ export class GcCommitLog extends LitElement {
       }
     }
     this.dispatchNav({ logFile: this.selectedFile || undefined });
+
+    if (this.threePane) void this.loadSideFiles(path, requestedSha);
+  }
+
+  // Fetch the full old- and new-file contents for the 3-pane view at
+  // the selected commit. `fromCommit` returned from GetDiff is the
+  // parent SHA; fetching that gives us the "before" side. Either fetch
+  // can legitimately fail (added file has no parent blob; deleted file
+  // has no child blob) — swallow and leave the side empty.
+  private async loadSideFiles(path: string, forSha: string) {
+    if (!path || !forSha) return;
+    this.sideLoading = true;
+    try {
+      const [leftResp, rightResp] = await Promise.all([
+        this.parentSha
+          ? repoClient
+              .getFile({
+                repoId: this.repoId,
+                ref: this.parentSha,
+                path,
+                maxBytes: BigInt(512 * 1024),
+              })
+              .catch(() => null)
+          : Promise.resolve(null),
+        repoClient
+          .getFile({
+            repoId: this.repoId,
+            ref: forSha,
+            path,
+            maxBytes: BigInt(512 * 1024),
+          })
+          .catch(() => null),
+      ]);
+      if (this.selectedSha !== forSha || this.selectedFile !== path) return;
+      const td = new TextDecoder();
+      this.leftFileText = leftResp && !leftResp.isBinary ? td.decode(leftResp.content) : "";
+      this.rightFileText = rightResp && !rightResp.isBinary ? td.decode(rightResp.content) : "";
+      this.fileLanguage = rightResp?.language || leftResp?.language || "plaintext";
+    } finally {
+      if (this.selectedSha === forSha && this.selectedFile === path) this.sideLoading = false;
+    }
+  }
+
+  private toggleThreePane() {
+    this.threePane = !this.threePane;
+    if (this.threePane && this.selectedFile) {
+      void this.loadSideFiles(this.selectedFile, this.selectedSha);
+    }
   }
 
   // ── Split diff helpers ──────────────────────────────────────────
@@ -967,6 +1028,17 @@ export class GcCommitLog extends LitElement {
                   >
                     ${this.splitView ? "unified" : "split"}
                   </button>
+                  <button
+                    class="split-toggle ${this.threePane ? "active" : ""}"
+                    @click=${() => this.toggleThreePane()}
+                    ?disabled=${!this.selectedFile}
+                    aria-pressed=${this.threePane ? "true" : "false"}
+                    title=${this.selectedFile
+                      ? "Toggle 3-pane view (before | diff | after)"
+                      : "Select a file to enable the 3-pane view"}
+                  >
+                    3-pane
+                  </button>
                 </div>
                 <div class="diff-body">
                   ${this.diffLoading
@@ -980,11 +1052,24 @@ export class GcCommitLog extends LitElement {
                       ? html`<p style="color:var(--danger);padding:var(--space-4)">
                           ${this.diffError}
                         </p>`
-                      : this.diffHtml
-                        ? this.splitView
-                          ? this.renderSplitDiff()
-                          : html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
-                        : html`<div class="diff-empty">no changes</div>`}
+                      : this.threePane && this.selectedFile
+                        ? this.sideLoading
+                          ? html`<gc-loading-banner heading="loading 3-pane…"></gc-loading-banner>`
+                          : html`<gc-three-pane-view
+                              .leftText=${this.leftFileText}
+                              .rightText=${this.rightFileText}
+                              .rawDiff=${this.rawDiff}
+                              .language=${this.fileLanguage}
+                              .leftLabel=${this.parentSha
+                                ? this.parentSha.slice(0, 12) + " (before)"
+                                : "(no parent)"}
+                              .rightLabel=${this.selectedSha.slice(0, 12) + " (after)"}
+                            ></gc-three-pane-view>`
+                        : this.diffHtml
+                          ? this.splitView
+                            ? this.renderSplitDiff()
+                            : html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
+                          : html`<div class="diff-empty">no changes</div>`}
                 </div>`
             : html`<div class="empty-detail">
                 <p class="empty-sub">click a commit to view its diff</p>
@@ -1264,6 +1349,13 @@ export class GcCommitLog extends LitElement {
       flex: 1;
       overflow: auto;
       min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .diff-body > gc-three-pane-view {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
     }
     /* ── Middle: commit info pane ──────────────────────────────── */
     .info-pane {

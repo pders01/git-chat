@@ -5,6 +5,7 @@ import { repoClient } from "../lib/transport.js";
 import type { ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
 import "./loading-indicator.js";
+import "./three-pane-view.js";
 
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
 function loadHighlight() {
@@ -44,6 +45,14 @@ export class GcCompareView extends LitElement {
   @state() private diffLoading = false;
   @state() private diffError = "";
   @state() private compareLoading = false;
+  // Three-pane (before | diff | after) mode. Toggle persists for the
+  // lifetime of the component; when on, selectFile also fetches the
+  // left/right full-file contents for the side panes.
+  @state() private threePane = false;
+  @state() private leftFileText = "";
+  @state() private rightFileText = "";
+  @state() private sideLoading = false;
+  @state() private fileLanguage = "plaintext";
   private fullDiffHtml = "";
   private rawDiff = "";
   private fullRawDiff = "";
@@ -201,6 +210,9 @@ export class GcCompareView extends LitElement {
     const gen = this.compareGeneration;
     this.diffHtml = "";
     this.diffLoading = true;
+    // Reset side-pane contents; they'll be fetched below if 3-pane is on.
+    this.leftFileText = "";
+    this.rightFileText = "";
 
     try {
       const resp = await repoClient.getDiff({
@@ -226,6 +238,50 @@ export class GcCompareView extends LitElement {
     } finally {
       if (gen === this.compareGeneration && this.selectedFile === path) this.diffLoading = false;
     }
+
+    if (this.threePane) void this.loadSideFiles(path);
+  }
+
+  // Fetch the full old- and new-file contents for the three-pane view.
+  // Errors on either side are non-fatal — the pane just shows "(empty)"
+  // or "(not present)" for that side, which is meaningful for adds and
+  // deletes.
+  private async loadSideFiles(path: string) {
+    if (!path) return;
+    const gen = this.compareGeneration;
+    this.sideLoading = true;
+    try {
+      const [leftResp, rightResp] = await Promise.all([
+        repoClient
+          .getFile({
+            repoId: this.repoId,
+            ref: this.baseRef,
+            path,
+            maxBytes: BigInt(512 * 1024),
+          })
+          .catch(() => null),
+        repoClient
+          .getFile({
+            repoId: this.repoId,
+            ref: this.headRef,
+            path,
+            maxBytes: BigInt(512 * 1024),
+          })
+          .catch(() => null),
+      ]);
+      if (gen !== this.compareGeneration || this.selectedFile !== path) return;
+      const td = new TextDecoder();
+      this.leftFileText = leftResp && !leftResp.isBinary ? td.decode(leftResp.content) : "";
+      this.rightFileText = rightResp && !rightResp.isBinary ? td.decode(rightResp.content) : "";
+      this.fileLanguage = rightResp?.language || leftResp?.language || "plaintext";
+    } finally {
+      if (gen === this.compareGeneration && this.selectedFile === path) this.sideLoading = false;
+    }
+  }
+
+  private toggleThreePane() {
+    this.threePane = !this.threePane;
+    if (this.threePane && this.selectedFile) void this.loadSideFiles(this.selectedFile);
   }
 
   private openInBrowse(path: string) {
@@ -327,6 +383,17 @@ export class GcCompareView extends LitElement {
                         <span class="dels">-${this.totalDeletions}</span>
                       </span>`
                     : nothing}`}
+            <button
+              class="pane-toggle ${this.threePane ? "active" : ""}"
+              @click=${() => this.toggleThreePane()}
+              ?disabled=${!this.selectedFile}
+              aria-pressed=${this.threePane ? "true" : "false"}
+              title=${this.selectedFile
+                ? "Toggle 3-pane view (before | diff | after)"
+                : "Select a file to enable the 3-pane view"}
+            >
+              3-pane
+            </button>
           </div>
           <div class="diff-body">
             ${this.compareLoading || this.diffLoading
@@ -338,11 +405,22 @@ export class GcCompareView extends LitElement {
                 `
               : this.diffError
                 ? html`<p class="diff-err">${this.diffError}</p>`
-                : this.diffHtml
-                  ? html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
-                  : html`<div class="diff-empty">
-                      ${this.baseRef === this.headRef ? "same branch selected" : "no differences"}
-                    </div>`}
+                : this.threePane && this.selectedFile
+                  ? this.sideLoading
+                    ? html`<gc-loading-banner heading="loading 3-pane…"></gc-loading-banner>`
+                    : html`<gc-three-pane-view
+                        .leftText=${this.leftFileText}
+                        .rightText=${this.rightFileText}
+                        .rawDiff=${this.rawDiff}
+                        .language=${this.fileLanguage}
+                        .leftLabel=${this.baseRef}
+                        .rightLabel=${this.headRef}
+                      ></gc-three-pane-view>`
+                  : this.diffHtml
+                    ? html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
+                    : html`<div class="diff-empty">
+                        ${this.baseRef === this.headRef ? "same branch selected" : "no differences"}
+                      </div>`}
           </div>
         </section>
       </div>
@@ -534,6 +612,34 @@ export class GcCompareView extends LitElement {
       flex: 1;
       overflow: auto;
       min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .diff-body > gc-three-pane-view {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .pane-toggle {
+      margin-left: auto;
+      padding: var(--space-1) var(--space-3);
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+    }
+    .pane-toggle:hover {
+      opacity: 0.9;
+    }
+    .pane-toggle.active {
+      background: var(--surface-2);
+    }
+    .pane-toggle[disabled] {
+      opacity: 0.35;
+      cursor: not-allowed;
     }
     .diff-loading {
       padding: var(--space-6);
