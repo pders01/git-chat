@@ -38,6 +38,15 @@ export class GcThreePaneView extends LitElement {
   @state() private ready = false;
 
   private parsed: ParsedDiff | null = null;
+  // Sorted-keys projections of parsed.{oldToNew,newToOld,oldToDiff,newToDiff}.
+  // Rebuilt only when rawDiff changes, queried via binary search on every
+  // scroll event. Previously each scroll walked every map linearly.
+  private parsedIndex: {
+    oldToNew: SortedIndex;
+    newToOld: SortedIndex;
+    oldToDiff: SortedIndex;
+    newToDiff: SortedIndex;
+  } | null = null;
   // Cached pixel line-heights, measured once per render so we don't
   // read layout on every scroll event.
   private leftLineHeight = 0;
@@ -59,6 +68,12 @@ export class GcThreePaneView extends LitElement {
   override updated(changed: Map<string, unknown>) {
     if (changed.has("rawDiff")) {
       this.parsed = parseUnifiedDiff(this.rawDiff);
+      this.parsedIndex = {
+        oldToNew: buildSortedIndex(this.parsed.oldToNew),
+        newToOld: buildSortedIndex(this.parsed.newToOld),
+        oldToDiff: buildSortedIndex(this.parsed.oldToDiff),
+        newToDiff: buildSortedIndex(this.parsed.newToDiff),
+      };
       this.middleLines = this.parsed.lines.map((l) => ({ text: l.text, kind: l.kind }));
     }
     if (
@@ -127,18 +142,23 @@ export class GcThreePaneView extends LitElement {
     let targetNew: number | null = null;
     let targetDiffIdx: number | null = null;
 
+    const idx = this.parsedIndex;
     if (source === "left") {
       targetOld = topLine + 1;
       targetNew =
-        this.parsed.oldToNew.get(targetOld) ?? nearest(this.parsed.oldToNew, targetOld) ?? null;
+        this.parsed.oldToNew.get(targetOld) ??
+        (idx ? (nearestFrom(idx.oldToNew, targetOld) ?? null) : null);
       targetDiffIdx =
-        this.parsed.oldToDiff.get(targetOld) ?? nearest(this.parsed.oldToDiff, targetOld) ?? null;
+        this.parsed.oldToDiff.get(targetOld) ??
+        (idx ? (nearestFrom(idx.oldToDiff, targetOld) ?? null) : null);
     } else if (source === "right") {
       targetNew = topLine + 1;
       targetOld =
-        this.parsed.newToOld.get(targetNew) ?? nearest(this.parsed.newToOld, targetNew) ?? null;
+        this.parsed.newToOld.get(targetNew) ??
+        (idx ? (nearestFrom(idx.newToOld, targetNew) ?? null) : null);
       targetDiffIdx =
-        this.parsed.newToDiff.get(targetNew) ?? nearest(this.parsed.newToDiff, targetNew) ?? null;
+        this.parsed.newToDiff.get(targetNew) ??
+        (idx ? (nearestFrom(idx.newToDiff, targetNew) ?? null) : null);
     } else {
       targetDiffIdx = topLine;
       const line = this.parsed.lines[topLine];
@@ -283,21 +303,34 @@ export class GcThreePaneView extends LitElement {
   `;
 }
 
-// nearest returns the closest mapping value for a given key; useful when
-// the pane we're scrolling from has a line number that doesn't exist
-// in the target map (e.g. an added line has no oldLine). We pick the
-// last-defined neighbour so the target pane stays "near" the driver.
-function nearest(map: Map<number, number>, key: number): number | undefined {
-  if (map.size === 0) return undefined;
-  let bestK = -Infinity;
-  let bestV: number | undefined;
-  for (const [k, v] of map) {
-    if (k <= key && k > bestK) {
-      bestK = k;
-      bestV = v;
-    }
+// A sorted-keys projection over a Map<number, number>. Built once per
+// diff parse; reused by every scroll event for O(log n) neighbour lookup
+// instead of the original O(n) Map iteration that ran on every tick.
+interface SortedIndex {
+  keys: number[];
+  values: number[];
+}
+
+function buildSortedIndex(map: Map<number, number>): SortedIndex {
+  const keys = [...map.keys()].sort((a, b) => a - b);
+  const values = keys.map((k) => map.get(k)!);
+  return { keys, values };
+}
+
+// nearestFrom returns the value for the largest key in the index that
+// is <= the target. O(log n). Returns undefined if every key > target.
+function nearestFrom(idx: SortedIndex, key: number): number | undefined {
+  const { keys, values } = idx;
+  if (keys.length === 0 || key < keys[0]) return undefined;
+  let lo = 0;
+  let hi = keys.length - 1;
+  while (lo < hi) {
+    // Ceil mid so lo advances when keys[mid] <= key.
+    const mid = (lo + hi + 1) >>> 1;
+    if (keys[mid] <= key) lo = mid;
+    else hi = mid - 1;
   }
-  return bestV;
+  return values[lo];
 }
 
 declare global {

@@ -66,7 +66,7 @@ export class GcCompareView extends LitElement {
   @property({ type: String }) baseRef = "";
   @property({ type: String }) headRef = "";
 
-  @state() private compare_: CompareState = { phase: "loading" };
+  @state() private compareState: CompareState = { phase: "loading" };
   @state() private selectedFile = "";
   @state() private diff: DiffPaneState = { phase: "empty" };
   @state() private sideFiles: SideFilesState = { phase: "idle" };
@@ -131,7 +131,7 @@ export class GcCompareView extends LitElement {
     this.renameAbort?.abort();
     this.renameAbort = null;
     this.selectedFile = "";
-    this.compare_ = { phase: "loading" };
+    this.compareState = { phase: "loading" };
     this.diff = { phase: "loading" };
     this.sideFiles = { phase: "idle" };
     this.fullDiff = null;
@@ -150,7 +150,7 @@ export class GcCompareView extends LitElement {
         }),
       ]);
       if (gen !== this.compareGeneration) return;
-      this.compare_ = {
+      this.compareState = {
         phase: "ready",
         files: cmp.files,
         totalAdditions: cmp.totalAdditions,
@@ -171,7 +171,7 @@ export class GcCompareView extends LitElement {
       if (gen !== this.compareGeneration) return;
       this.lastCompareKey = "";
       const message = e instanceof Error ? e.message : String(e);
-      this.compare_ = { phase: "error", message };
+      this.compareState = { phase: "error", message };
       this.diff = { phase: "error", message };
     }
 
@@ -180,7 +180,7 @@ export class GcCompareView extends LitElement {
     // deletes, renames are plausible — fire a second request that opts
     // into detection and swap the list in when it lands. Non-rename rows
     // stay identical, so the reshuffle is bounded to actual renames.
-    const files = this.compare_.phase === "ready" ? this.compare_.files : [];
+    const files = this.compareState.phase === "ready" ? this.compareState.files : [];
     if (files.some((f) => f.status === "added") && files.some((f) => f.status === "deleted")) {
       void this.detectRenamesBackground(gen);
     }
@@ -199,8 +199,8 @@ export class GcCompareView extends LitElement {
         },
         { signal: ac.signal },
       );
-      if (gen !== this.compareGeneration || this.compare_.phase !== "ready") return;
-      this.compare_ = {
+      if (gen !== this.compareGeneration || this.compareState.phase !== "ready") return;
+      this.compareState = {
         phase: "ready",
         files: cmp.files,
         totalAdditions: cmp.totalAdditions,
@@ -306,21 +306,21 @@ export class GcCompareView extends LitElement {
   }
 
   private selectedFileEntry(): ChangedFile | undefined {
-    const files = this.compare_.phase === "ready" ? this.compare_.files : [];
+    const files = this.compareState.phase === "ready" ? this.compareState.files : [];
     return files.find((f) => f.path === this.selectedFile);
   }
 
   private renderFileSidebar() {
-    switch (this.compare_.phase) {
+    switch (this.compareState.phase) {
       case "loading":
         return html`<div class="hint">
           <gc-spinner></gc-spinner>
           comparing…
         </div>`;
       case "error":
-        return html`<div class="hint">${this.compare_.message}</div>`;
+        return html`<div class="hint">${this.compareState.message}</div>`;
       case "ready": {
-        const { files, totalAdditions, totalDeletions } = this.compare_;
+        const { files, totalAdditions, totalDeletions } = this.compareState;
         if (files.length === 0) return html`<div class="hint">no differences</div>`;
         return html`
           <div class="file-list-header">
@@ -378,9 +378,11 @@ export class GcCompareView extends LitElement {
   }
 
   override render() {
-    const files = this.compare_.phase === "ready" ? this.compare_.files : [];
-    const totalAdditions = this.compare_.phase === "ready" ? this.compare_.totalAdditions : 0;
-    const totalDeletions = this.compare_.phase === "ready" ? this.compare_.totalDeletions : 0;
+    const files = this.compareState.phase === "ready" ? this.compareState.files : [];
+    const totalAdditions =
+      this.compareState.phase === "ready" ? this.compareState.totalAdditions : 0;
+    const totalDeletions =
+      this.compareState.phase === "ready" ? this.compareState.totalDeletions : 0;
     return html`
       <div class="compare-layout">
         <!-- Left: file list -->
