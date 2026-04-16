@@ -2,6 +2,7 @@ package repo
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -392,7 +393,12 @@ func commitDiffStats(c *object.Commit) *diffStats {
 		})
 		return &diffStats{files: files, additions: lines}
 	}
-	changes, err := pTree.Diff(cTree)
+	// Rename detection off: for per-commit +/- counts in the log sidebar,
+	// users don't need renames coalesced — and the similarity-matrix cost
+	// dominated ListCommits (~2s for 50 commits on Koha). A renamed file
+	// now shows up as a delete of the original + an add of the new, with
+	// inflated counts; acceptable for a compact summary.
+	changes, err := diffTreesNoRename(pTree, cTree)
 	if err != nil {
 		return nil
 	}
@@ -579,49 +585,45 @@ func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFi
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	changes, err := baseTree.Diff(headTree)
+	changes, err := diffTreesNoRename(baseTree, headTree)
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	// Cap changes for very large diffs
+	// Cap changes for very large diffs. Stats are computed via our own
+	// line-counter rather than go-git's Patch() — the latter runs Myers
+	// bisection on every file (67% of CPU in Koha profiling for nothing
+	// more than +/− counts).
 	maxChanges := 500
 	if len(changes) > maxChanges {
 		changes = changes[:maxChanges]
 	}
-	patch, err := changes.Patch()
-	if err != nil {
-		return nil, 0, 0, err
-	}
-	stats := patch.Stats()
 	var totalAdd, totalDel int32
-	out := make([]*gitchatv1.ChangedFile, 0, len(stats))
-	for _, s := range stats {
-		status := "modified"
-		// Detect add/delete from the change set.
-		for _, c := range changes {
-			name := c.To.Name
-			if name == "" {
-				name = c.From.Name
-			}
-			if name == s.Name {
-				if c.From.Name == "" {
-					status = "added"
-				} else if c.To.Name == "" {
-					status = "deleted"
-				} else if c.From.Name != c.To.Name {
-					status = "renamed"
-				}
-				break
-			}
+	out := make([]*gitchatv1.ChangedFile, 0, len(changes))
+	for _, c := range changes {
+		name := c.To.Name
+		if name == "" {
+			name = c.From.Name
 		}
+		status := "modified"
+		switch {
+		case c.From.Name == "":
+			status = "added"
+		case c.To.Name == "":
+			status = "deleted"
+		case c.From.Name != c.To.Name:
+			status = "renamed"
+		}
+		fromContent, _ := fileContent(baseCommit, c.From.Name)
+		toContent, _ := fileContent(headCommit, c.To.Name)
+		adds, dels := countDiffLines(fromContent, toContent)
 		out = append(out, &gitchatv1.ChangedFile{
-			Path:      s.Name,
+			Path:      name,
 			Status:    status,
-			Additions: int32(s.Addition),
-			Deletions: int32(s.Deletion),
+			Additions: adds,
+			Deletions: dels,
 		})
-		totalAdd += int32(s.Addition)
-		totalDel += int32(s.Deletion)
+		totalAdd += adds
+		totalDel += dels
 	}
 	return out, totalAdd, totalDel, nil
 }
@@ -729,11 +731,13 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 	if len(changed) == 0 {
 		return "", fromResolved, toResolved, true, nil, nil
 	}
-	// Cap files processed for large diffs
+	// Cap files processed for large diffs. files is index-aligned with
+	// changed, so we slice both together before appending the sentinel.
 	maxFiles := 100
 	if len(changed) > maxFiles {
 		truncatedCount := len(changed) - maxFiles
 		changed = changed[:maxFiles]
+		files = files[:maxFiles]
 		files = append(files, &gitchatv1.ChangedFile{
 			Path:   fmt.Sprintf("... and %d more files", truncatedCount),
 			Status: "truncated",
@@ -747,6 +751,12 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 		toContent, _ := fileContent(toCommit, p)
 		if fromContent == toContent {
 			continue
+		}
+		// Populate per-file +/− stats for files we actually emit. Anything
+		// past the byte cap below keeps its zero counts — that file list
+		// entry is shown only as a label in the truncated tail anyway.
+		if i < len(files) {
+			files[i].Additions, files[i].Deletions = countDiffLines(fromContent, toContent)
 		}
 		filePatch := renderUnifiedDiff(p, fromResolved, toResolved, fromContent, toContent)
 		if sb.Len()+len(filePatch) > maxWholeDiffBytes_ {
@@ -764,17 +774,22 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 	return sb.String(), fromResolved, toResolved, false, files, nil
 }
 
-// changedPathsWithFiles returns sorted changed paths AND per-file metadata
-// in a single tree-diff pass, avoiding the double diff that changedPaths +
-// a separate buildChangedFiles would incur.
+// changedPathsWithFiles returns sorted changed paths plus one ChangedFile
+// per path carrying Path + Status (no +/− stats). The returned files slice
+// is index-aligned with paths, so callers can look up a file by index and
+// lazily fill in Additions/Deletions when they render the actual patch.
+//
+// We deliberately do NOT call changes.Patch() here: for large divergences
+// (e.g. Koha main vs. a release branch ~ thousands of touched files) the
+// full Myers diff dominated CPU (67% flat in profiling) just to produce
+// per-file stats that the caller often discards past its file cap.
 func changedPathsWithFiles(from, to *object.Commit) ([]string, []*gitchatv1.ChangedFile, error) {
 	toTree, err := to.Tree()
 	if err != nil {
 		return nil, nil, fmt.Errorf("to tree: %w", err)
 	}
 	if from == nil {
-		// Root commit — every file is new. No patch stats available
-		// without materialising the full patch, so skip per-file stats.
+		// Root commit — every file is new.
 		var paths []string
 		err := toTree.Files().ForEach(func(f *object.File) error {
 			paths = append(paths, f.Name)
@@ -784,7 +799,6 @@ func changedPathsWithFiles(from, to *object.Commit) ([]string, []*gitchatv1.Chan
 			return nil, nil, err
 		}
 		sort.Strings(paths)
-		// Build files without stats (status = "added", counts = 0).
 		files := make([]*gitchatv1.ChangedFile, len(paths))
 		for i, p := range paths {
 			files[i] = &gitchatv1.ChangedFile{Path: p, Status: "added"}
@@ -796,60 +810,73 @@ func changedPathsWithFiles(from, to *object.Commit) ([]string, []*gitchatv1.Chan
 	if err != nil {
 		return nil, nil, fmt.Errorf("from tree: %w", err)
 	}
-	changes, err := fromTree.Diff(toTree)
+	changes, err := diffTreesNoRename(fromTree, toTree)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tree diff: %w", err)
 	}
 
-	// Extract sorted paths.
-	seen := map[string]struct{}{}
+	type entry struct {
+		status string
+		order  int
+	}
+	byPath := make(map[string]entry, len(changes))
 	for _, c := range changes {
 		name := c.To.Name
 		if name == "" {
 			name = c.From.Name
 		}
-		seen[name] = struct{}{}
+		status := "modified"
+		switch {
+		case c.From.Name == "":
+			status = "added"
+		case c.To.Name == "":
+			status = "deleted"
+		case c.From.Name != c.To.Name:
+			status = "renamed"
+		}
+		if _, seen := byPath[name]; !seen {
+			byPath[name] = entry{status: status, order: len(byPath)}
+		}
 	}
-	paths := make([]string, 0, len(seen))
-	for p := range seen {
+
+	paths := make([]string, 0, len(byPath))
+	for p := range byPath {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
 
-	// Build per-file metadata from patch stats.
-	patch, err := changes.Patch()
-	if err != nil {
-		// Paths are valid, stats are best-effort.
-		return paths, nil, nil
-	}
-	stats := patch.Stats()
-	files := make([]*gitchatv1.ChangedFile, 0, len(stats))
-	for _, s := range stats {
-		status := "modified"
-		for _, c := range changes {
-			name := c.To.Name
-			if name == "" {
-				name = c.From.Name
-			}
-			if name == s.Name {
-				if c.From.Name == "" {
-					status = "added"
-				} else if c.To.Name == "" {
-					status = "deleted"
-				} else if c.From.Name != c.To.Name {
-					status = "renamed"
-				}
-				break
-			}
-		}
-		files = append(files, &gitchatv1.ChangedFile{
-			Path:      s.Name,
-			Status:    status,
-			Additions: int32(s.Addition),
-			Deletions: int32(s.Deletion),
-		})
+	files := make([]*gitchatv1.ChangedFile, len(paths))
+	for i, p := range paths {
+		files[i] = &gitchatv1.ChangedFile{Path: p, Status: byPath[p].status}
 	}
 	return paths, files, nil
+}
+
+// countDiffLines counts additions and deletions between two file
+// contents using the same line-splitter renderUnifiedDiff uses. Much
+// cheaper than go-git's Patch() because it skips the intra-line diff
+// (Myers bisection) — status-bar stats only need line counts, not char
+// alignment.
+func countDiffLines(fromContent, toContent string) (adds, dels int32) {
+	if fromContent == toContent {
+		return 0, 0
+	}
+	fromLines := splitLinesKeepNL(fromContent)
+	toLines := splitLinesKeepNL(toContent)
+	for _, h := range diffHunks(fromLines, toLines) {
+		for _, line := range h.lines {
+			if line == "" {
+				continue
+			}
+			switch line[0] {
+			case '+':
+				adds++
+			case '-':
+				dels++
+			}
+		}
+	}
+	return adds, dels
 }
 
 // GetStatus returns the working tree status: staged, unstaged, and
@@ -1229,6 +1256,16 @@ func (e *Entry) resolveCommit(ref string) (*object.Commit, string, error) {
 		return nil, "", fmt.Errorf("read commit %s: %w", hash, err)
 	}
 	return commit, hash.String(), nil
+}
+
+// diffTreesNoRename returns a plain tree-diff without rename detection.
+// Rename detection reads every added + deleted blob and builds a pairwise
+// similarity matrix — catastrophic on wide diffs. For the compare / whole-
+// commit views we only need the set of touched paths + their add/delete
+// status, which the plain merkletrie walk gives us cheaply. Renames show
+// up as an add + a delete pair, which is acceptable for those views.
+func diffTreesNoRename(from, to *object.Tree) (object.Changes, error) {
+	return object.DiffTreeWithOptions(context.Background(), from, to, nil)
 }
 
 func entryType(m filemode.FileMode) gitchatv1.EntryType {
