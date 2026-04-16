@@ -48,6 +48,11 @@ export class GcCommitLog extends LitElement {
   private fullRawDiff = ""; // raw diff text for full commit
   private pendingSha = "";
   private unsubSettings: (() => void) | null = null;
+  // Abort signal for the progressive-enhancement rename call fired at
+  // the tail of selectCommit. Rapid commit switching cancels the
+  // in-flight request so the server's expensive similarity-matrix work
+  // doesn't accumulate after the user moved on.
+  private renameAbort: AbortController | null = null;
 
   private onSelectCommit = ((e: CustomEvent<{ sha: string }>) => {
     if (this.state.phase === "ready") {
@@ -75,6 +80,8 @@ export class GcCommitLog extends LitElement {
     this.removeEventListener("gc:set-filter-path", this.onSetFilterPath);
     this.unsubSettings?.();
     this.unsubSettings = null;
+    this.renameAbort?.abort();
+    this.renameAbort = null;
   }
 
   private async rehighlight() {
@@ -225,6 +232,12 @@ export class GcCommitLog extends LitElement {
       return;
     }
     const requestedSha = sha;
+    // Cancel any in-flight rename-detection request from the previous
+    // commit selection. Its result would be stale-guarded anyway, but
+    // we want the server to stop the similarity-matrix work, not just
+    // drop the answer on the client.
+    this.renameAbort?.abort();
+    this.renameAbort = null;
     this.selectedSha = sha;
     this.selectedFile = "";
     this.drawerOpen = false;
@@ -264,6 +277,37 @@ export class GcCommitLog extends LitElement {
     }
     this._lastRestoredSha = this.selectedSha;
     this.dispatchNav({ commitSha: this.selectedSha || undefined, logFile: undefined });
+
+    // Progressive enhancement: fire a rename-aware second request once
+    // the fast list is rendered. If any renames land we swap this.files,
+    // collapsing matching add/delete pairs.
+    if (
+      this.files.some((f) => f.status === "added") &&
+      this.files.some((f) => f.status === "deleted")
+    ) {
+      void this.detectRenamesBackground(requestedSha);
+    }
+  }
+
+  private async detectRenamesBackground(requestedSha: string) {
+    const ac = new AbortController();
+    this.renameAbort = ac;
+    try {
+      const resp = await repoClient.getDiff(
+        {
+          repoId: this.repoId,
+          toRef: requestedSha,
+          detectRenames: true,
+        },
+        { signal: ac.signal },
+      );
+      if (this.selectedSha !== requestedSha) return; // stale
+      this.files = resp.files;
+    } catch {
+      // Silent — aborted or failed; fast list is already on screen.
+    } finally {
+      if (this.renameAbort === ac) this.renameAbort = null;
+    }
   }
 
   private dispatchNav(detail: Record<string, string | boolean | undefined>) {
@@ -855,12 +899,20 @@ export class GcCommitLog extends LitElement {
                                     this.selectFile(f.path);
                                   }
                                 }}
-                                title="${f.path} (⌘+click to open in browse)"
+                                title="${f.fromPath
+                                  ? `${f.fromPath} → ${f.path} (renamed)`
+                                  : f.path} (⌘+click to open in browse)"
                               >
                                 <span class="file-status ${f.status}"
                                   >${statusLabel(f.status)}</span
                                 >
-                                <span class="file-path">${fileName(f.path)}</span>
+                                <span class="file-path"
+                                  >${fileName(f.path)}${f.fromPath
+                                    ? html`<span class="rename-from"
+                                        >← ${fileName(f.fromPath)}</span
+                                      >`
+                                    : nothing}</span
+                                >
                                 <span class="file-stats">
                                   <span class="adds">+${f.additions}</span>
                                   <span class="dels">-${f.deletions}</span>
@@ -1336,6 +1388,11 @@ export class GcCommitLog extends LitElement {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .rename-from {
+      margin-left: var(--space-2);
+      font-size: 0.9em;
+      opacity: 0.6;
     }
     .file-stats {
       flex-shrink: 0;

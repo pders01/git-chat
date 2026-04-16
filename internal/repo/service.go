@@ -116,7 +116,7 @@ func (s *Service) CompareBranches(
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	files, totalAdd, totalDel, err := entry.CompareBranches(req.Msg.BaseRef, req.Msg.HeadRef)
+	files, totalAdd, totalDel, err := entry.CompareBranches(req.Msg.BaseRef, req.Msg.HeadRef, req.Msg.DetectRenames)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -153,7 +153,7 @@ func (s *Service) GetDiff(
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	diff, fromSHA, toSHA, empty, files, err := entry.GetDiff(req.Msg.FromRef, req.Msg.ToRef, req.Msg.Path)
+	diff, fromSHA, toSHA, empty, files, err := entry.GetDiff(req.Msg.FromRef, req.Msg.ToRef, req.Msg.Path, req.Msg.DetectRenames)
 	if err != nil {
 		return nil, mapErr(err)
 	}

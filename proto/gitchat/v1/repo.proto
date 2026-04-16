@@ -203,6 +203,11 @@ message CompareBranchesRequest {
   string repo_id = 1;
   string base_ref = 2;   // e.g. "main"
   string head_ref = 3;   // e.g. "feature-branch"
+  // detect_renames: when true, the server runs rename detection
+  // (similarity matrix over all added+deleted blobs). Expensive on
+  // wide diffs — clients set this on a second, background request
+  // after the initial fast render has landed.
+  bool detect_renames = 4;
 }
 
 message CompareBranchesResponse {
@@ -216,6 +221,10 @@ message ChangedFile {
   string status = 2;     // "added", "modified", "deleted", "renamed"
   int32 additions = 3;
   int32 deletions = 4;
+  // from_path is the pre-rename filename when status="renamed". Only
+  // populated on responses where the request opted into rename
+  // detection; path carries the post-rename name.
+  string from_path = 5;
 }
 
 // ─── GetDiff ────────────────────────────────────────────────────────────
@@ -224,6 +233,10 @@ message GetDiffRequest {
   string from_ref = 2;  // branch/SHA; empty = parent of to_ref
   string to_ref = 3;    // branch/SHA; empty = HEAD
   string path = 4;      // file path (required)
+  // detect_renames: same semantics as on CompareBranchesRequest.
+  // Only affects the whole-commit (path="") response; single-file
+  // diffs don't care about renames.
+  bool detect_renames = 5;
 }
 
 message GetDiffResponse {

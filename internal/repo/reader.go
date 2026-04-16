@@ -398,7 +398,7 @@ func commitDiffStats(c *object.Commit) *diffStats {
 	// dominated ListCommits (~2s for 50 commits on Koha). A renamed file
 	// now shows up as a delete of the original + an add of the new, with
 	// inflated counts; acceptable for a compact summary.
-	changes, err := diffTreesNoRename(pTree, cTree)
+	changes, err := diffTrees(pTree, cTree)
 	if err != nil {
 		return nil
 	}
@@ -565,8 +565,11 @@ func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.Fi
 }
 
 // CompareBranches returns the files changed between two refs with
-// per-file add/delete stats.
-func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFile, int32, int32, error) {
+// per-file add/delete stats. detectRenames runs the expensive
+// similarity-matrix detection over all added+deleted blobs; callers
+// typically send a first request with it false (fast) and a second
+// request with it true (progressive enhancement).
+func (e *Entry) CompareBranches(baseRef, headRef string, detectRenames bool) ([]*gitchatv1.ChangedFile, int32, int32, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	baseCommit, _, err := e.resolveCommit(baseRef)
@@ -585,17 +588,26 @@ func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFi
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	changes, err := diffTreesNoRename(baseTree, headTree)
+	changes, err := diffTrees(baseTree, headTree)
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	// Cap changes for very large diffs. Stats are computed via our own
-	// line-counter rather than go-git's Patch() — the latter runs Myers
-	// bisection on every file (67% of CPU in Koha profiling for nothing
-	// more than +/− counts).
+	// Cap changes for very large diffs BEFORE any rename detection. The
+	// similarity matrix is O(adds × deletes) over blob reads — running it
+	// on thousands of rows just to discard most of them was a real DoS
+	// footgun when detect_renames=true came from the client. Stats are
+	// computed via our own line-counter rather than go-git's Patch()
+	// (see countDiffLines).
 	maxChanges := 500
 	if len(changes) > maxChanges {
 		changes = changes[:maxChanges]
+	}
+	if detectRenames {
+		if detected, derr := detectRenamesIn(changes); derr == nil {
+			changes = detected
+		}
+		// If detection errored, fall through with the cheap changes; the
+		// file list still renders, just without renames coalesced.
 	}
 	var totalAdd, totalDel int32
 	out := make([]*gitchatv1.ChangedFile, 0, len(changes))
@@ -605,6 +617,7 @@ func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFi
 			name = c.From.Name
 		}
 		status := "modified"
+		fromPath := ""
 		switch {
 		case c.From.Name == "":
 			status = "added"
@@ -612,6 +625,7 @@ func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFi
 			status = "deleted"
 		case c.From.Name != c.To.Name:
 			status = "renamed"
+			fromPath = c.From.Name
 		}
 		fromContent, _ := fileContent(baseCommit, c.From.Name)
 		toContent, _ := fileContent(headCommit, c.To.Name)
@@ -621,6 +635,7 @@ func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFi
 			Status:    status,
 			Additions: adds,
 			Deletions: dels,
+			FromPath:  fromPath,
 		})
 		totalAdd += adds
 		totalDel += dels
@@ -733,7 +748,7 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 // Empty fromRef defaults to the parent of toRef (i.e. "what did this
 // commit do"); empty toRef defaults to HEAD. Returns empty=true if
 // nothing changed between the two commits for the scope requested.
-func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA string, empty bool, files []*gitchatv1.ChangedFile, err error) {
+func (e *Entry) GetDiff(fromRef, toRef, path string, detectRenames bool) (diff, fromSHA, toSHA string, empty bool, files []*gitchatv1.ChangedFile, err error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	// Resolve to-side first so we can default fromRef to its parent.
@@ -782,7 +797,7 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 	// Enumerate every path touched between from and to, compute each
 	// file's single-file patch, and concatenate. Sort for determinism.
 	// Also builds per-file metadata in a single tree-diff pass.
-	changed, files, err := changedPathsWithFiles(fromCommit, toCommit)
+	changed, files, err := changedPathsWithFiles(fromCommit, toCommit, detectRenames)
 	if err != nil {
 		return "", fromResolved, toResolved, false, nil, err
 	}
@@ -841,7 +856,7 @@ func (e *Entry) GetDiff(fromRef, toRef, path string) (diff, fromSHA, toSHA strin
 // (e.g. Koha main vs. a release branch ~ thousands of touched files) the
 // full Myers diff dominated CPU (67% flat in profiling) just to produce
 // per-file stats that the caller often discards past its file cap.
-func changedPathsWithFiles(from, to *object.Commit) ([]string, []*gitchatv1.ChangedFile, error) {
+func changedPathsWithFiles(from, to *object.Commit, detectRenames bool) ([]string, []*gitchatv1.ChangedFile, error) {
 	toTree, err := to.Tree()
 	if err != nil {
 		return nil, nil, fmt.Errorf("to tree: %w", err)
@@ -868,14 +883,26 @@ func changedPathsWithFiles(from, to *object.Commit) ([]string, []*gitchatv1.Chan
 	if err != nil {
 		return nil, nil, fmt.Errorf("from tree: %w", err)
 	}
-	changes, err := diffTreesNoRename(fromTree, toTree)
+	changes, err := diffTrees(fromTree, toTree)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tree diff: %w", err)
 	}
+	// Rename detection is O(adds × deletes) over blob reads. Only run it
+	// when the change set is small enough that the caller won't truncate
+	// the bulk of it anyway. maxFilesForRenames matches GetDiff's
+	// per-file-output cap — if we'd truncate past 100, detecting renames
+	// on the tail is wasted work.
+	const maxFilesForRenames = 100
+	if detectRenames && len(changes) <= maxFilesForRenames {
+		if detected, derr := detectRenamesIn(changes); derr == nil {
+			changes = detected
+		}
+	}
 
 	type entry struct {
-		status string
-		order  int
+		status   string
+		fromPath string
+		order    int
 	}
 	byPath := make(map[string]entry, len(changes))
 	for _, c := range changes {
@@ -884,6 +911,7 @@ func changedPathsWithFiles(from, to *object.Commit) ([]string, []*gitchatv1.Chan
 			name = c.From.Name
 		}
 		status := "modified"
+		fromPath := ""
 		switch {
 		case c.From.Name == "":
 			status = "added"
@@ -891,9 +919,10 @@ func changedPathsWithFiles(from, to *object.Commit) ([]string, []*gitchatv1.Chan
 			status = "deleted"
 		case c.From.Name != c.To.Name:
 			status = "renamed"
+			fromPath = c.From.Name
 		}
 		if _, seen := byPath[name]; !seen {
-			byPath[name] = entry{status: status, order: len(byPath)}
+			byPath[name] = entry{status: status, fromPath: fromPath, order: len(byPath)}
 		}
 	}
 
@@ -905,7 +934,8 @@ func changedPathsWithFiles(from, to *object.Commit) ([]string, []*gitchatv1.Chan
 
 	files := make([]*gitchatv1.ChangedFile, len(paths))
 	for i, p := range paths {
-		files[i] = &gitchatv1.ChangedFile{Path: p, Status: byPath[p].status}
+		e := byPath[p]
+		files[i] = &gitchatv1.ChangedFile{Path: p, Status: e.status, FromPath: e.fromPath}
 	}
 	return paths, files, nil
 }
@@ -1326,14 +1356,23 @@ func (e *Entry) resolveCommit(ref string) (*object.Commit, string, error) {
 	return commit, hash.String(), nil
 }
 
-// diffTreesNoRename returns a plain tree-diff without rename detection.
-// Rename detection reads every added + deleted blob and builds a pairwise
-// similarity matrix — catastrophic on wide diffs. For the compare / whole-
-// commit views we only need the set of touched paths + their add/delete
-// status, which the plain merkletrie walk gives us cheaply. Renames show
-// up as an add + a delete pair, which is acceptable for those views.
-func diffTreesNoRename(from, to *object.Tree) (object.Changes, error) {
+// diffTrees compares two trees and returns the merkletrie change set
+// without rename detection. Rename detection is a separate, opt-in pass
+// via detectRenamesIn below so callers can cap the change set first and
+// avoid running the similarity matrix over thousands of rows only to
+// throw most of them away.
+func diffTrees(from, to *object.Tree) (object.Changes, error) {
 	return object.DiffTreeWithOptions(context.Background(), from, to, nil)
+}
+
+// detectRenamesIn runs go-git's rename detector on a (pre-capped) change
+// set. Operates on a local copy of DefaultDiffTreeOptions so we never
+// share that package-level pointer with concurrent callers; that's
+// latent-safe today because all option fields are scalars, but it would
+// become a race if go-git ever adds a slice or map field.
+func detectRenamesIn(changes object.Changes) (object.Changes, error) {
+	opts := *object.DefaultDiffTreeOptions
+	return object.DetectRenames(changes, &opts)
 }
 
 func entryType(m filemode.FileMode) gitchatv1.EntryType {

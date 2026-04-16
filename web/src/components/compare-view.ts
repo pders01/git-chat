@@ -50,6 +50,10 @@ export class GcCompareView extends LitElement {
   private compareGeneration = 0;
   private lastCompareKey = "";
   private unsubSettings: (() => void) | null = null;
+  // Abort signal for the progressive-enhancement rename call. Rapid
+  // navigation cancels the in-flight server request so the expensive
+  // similarity-matrix work doesn't pile up after the user moved on.
+  private renameAbort: AbortController | null = null;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -61,6 +65,8 @@ export class GcCompareView extends LitElement {
     super.disconnectedCallback();
     this.unsubSettings?.();
     this.unsubSettings = null;
+    this.renameAbort?.abort();
+    this.renameAbort = null;
   }
 
   private async rehighlight() {
@@ -88,6 +94,12 @@ export class GcCompareView extends LitElement {
   private async compare() {
     if (!this.baseRef || !this.headRef) return;
     const gen = ++this.compareGeneration;
+    // Cancel any in-flight rename request from the previous compare —
+    // its result would be dropped anyway (stale-guard), but we'd like
+    // the server to stop doing the work, not just the client to ignore
+    // the answer.
+    this.renameAbort?.abort();
+    this.renameAbort = null;
     this.compareLoading = true;
     this.files = [];
     this.selectedFile = "";
@@ -135,6 +147,42 @@ export class GcCompareView extends LitElement {
       this.diffError = e instanceof Error ? e.message : String(e);
     } finally {
       if (gen === this.compareGeneration) this.compareLoading = false;
+    }
+
+    // Progressive enhancement: the initial fetch skipped rename detection
+    // (expensive on wide diffs). If the file list contains both adds and
+    // deletes, renames are plausible — fire a second request that opts
+    // into detection and swap the list in when it lands. Non-rename rows
+    // stay identical, so the reshuffle is bounded to actual renames.
+    if (
+      this.files.some((f) => f.status === "added") &&
+      this.files.some((f) => f.status === "deleted")
+    ) {
+      void this.detectRenamesBackground(gen);
+    }
+  }
+
+  private async detectRenamesBackground(gen: number) {
+    const ac = new AbortController();
+    this.renameAbort = ac;
+    try {
+      const cmp = await repoClient.compareBranches(
+        {
+          repoId: this.repoId,
+          baseRef: this.baseRef,
+          headRef: this.headRef,
+          detectRenames: true,
+        },
+        { signal: ac.signal },
+      );
+      if (gen !== this.compareGeneration) return; // stale
+      this.files = cmp.files;
+      this.totalAdditions = cmp.totalAdditions;
+      this.totalDeletions = cmp.totalDeletions;
+    } catch {
+      // Silent — aborted or failed; the initial (fast) list is on screen.
+    } finally {
+      if (this.renameAbort === ac) this.renameAbort = null;
     }
   }
 
@@ -232,10 +280,16 @@ export class GcCompareView extends LitElement {
                                 this.selectFile(f.path);
                               }
                             }}
-                            title="${f.path} (⌘+click to open in browse)"
+                            title="${f.fromPath
+                              ? `${f.fromPath} → ${f.path} (renamed)`
+                              : f.path} (⌘+click to open in browse)"
                           >
                             <span class="file-status ${f.status}">${statusLabel(f.status)}</span>
-                            <span class="file-path">${fileName(f.path)}</span>
+                            <span class="file-path"
+                              >${fileName(f.path)}${f.fromPath
+                                ? html`<span class="rename-from">← ${fileName(f.fromPath)}</span>`
+                                : nothing}</span
+                            >
                             <span class="file-stats">
                               <span class="adds">+${f.additions}</span>
                               <span class="dels">-${f.deletions}</span>
@@ -411,6 +465,11 @@ export class GcCompareView extends LitElement {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .rename-from {
+      margin-left: var(--space-2);
+      font-size: 0.9em;
+      opacity: 0.6;
     }
     .file-stats {
       flex-shrink: 0;

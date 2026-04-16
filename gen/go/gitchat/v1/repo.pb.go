@@ -1169,10 +1169,15 @@ func (x *BlameLine) GetCommitMessage() string {
 
 // ─── CompareBranches ────────────────────────────────────────────────────
 type CompareBranchesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RepoId        string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
-	BaseRef       string                 `protobuf:"bytes,2,opt,name=base_ref,json=baseRef,proto3" json:"base_ref,omitempty"` // e.g. "main"
-	HeadRef       string                 `protobuf:"bytes,3,opt,name=head_ref,json=headRef,proto3" json:"head_ref,omitempty"` // e.g. "feature-branch"
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	RepoId  string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	BaseRef string                 `protobuf:"bytes,2,opt,name=base_ref,json=baseRef,proto3" json:"base_ref,omitempty"` // e.g. "main"
+	HeadRef string                 `protobuf:"bytes,3,opt,name=head_ref,json=headRef,proto3" json:"head_ref,omitempty"` // e.g. "feature-branch"
+	// detect_renames: when true, the server runs rename detection
+	// (similarity matrix over all added+deleted blobs). Expensive on
+	// wide diffs — clients set this on a second, background request
+	// after the initial fast render has landed.
+	DetectRenames bool `protobuf:"varint,4,opt,name=detect_renames,json=detectRenames,proto3" json:"detect_renames,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1226,6 +1231,13 @@ func (x *CompareBranchesRequest) GetHeadRef() string {
 		return x.HeadRef
 	}
 	return ""
+}
+
+func (x *CompareBranchesRequest) GetDetectRenames() bool {
+	if x != nil {
+		return x.DetectRenames
+	}
+	return false
 }
 
 type CompareBranchesResponse struct {
@@ -1289,11 +1301,15 @@ func (x *CompareBranchesResponse) GetTotalDeletions() int32 {
 }
 
 type ChangedFile struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // "added", "modified", "deleted", "renamed"
-	Additions     int32                  `protobuf:"varint,3,opt,name=additions,proto3" json:"additions,omitempty"`
-	Deletions     int32                  `protobuf:"varint,4,opt,name=deletions,proto3" json:"deletions,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Path      string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Status    string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // "added", "modified", "deleted", "renamed"
+	Additions int32                  `protobuf:"varint,3,opt,name=additions,proto3" json:"additions,omitempty"`
+	Deletions int32                  `protobuf:"varint,4,opt,name=deletions,proto3" json:"deletions,omitempty"`
+	// from_path is the pre-rename filename when status="renamed". Only
+	// populated on responses where the request opted into rename
+	// detection; path carries the post-rename name.
+	FromPath      string `protobuf:"bytes,5,opt,name=from_path,json=fromPath,proto3" json:"from_path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1356,13 +1372,24 @@ func (x *ChangedFile) GetDeletions() int32 {
 	return 0
 }
 
+func (x *ChangedFile) GetFromPath() string {
+	if x != nil {
+		return x.FromPath
+	}
+	return ""
+}
+
 // ─── GetDiff ────────────────────────────────────────────────────────────
 type GetDiffRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RepoId        string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
-	FromRef       string                 `protobuf:"bytes,2,opt,name=from_ref,json=fromRef,proto3" json:"from_ref,omitempty"` // branch/SHA; empty = parent of to_ref
-	ToRef         string                 `protobuf:"bytes,3,opt,name=to_ref,json=toRef,proto3" json:"to_ref,omitempty"`       // branch/SHA; empty = HEAD
-	Path          string                 `protobuf:"bytes,4,opt,name=path,proto3" json:"path,omitempty"`                      // file path (required)
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	RepoId  string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	FromRef string                 `protobuf:"bytes,2,opt,name=from_ref,json=fromRef,proto3" json:"from_ref,omitempty"` // branch/SHA; empty = parent of to_ref
+	ToRef   string                 `protobuf:"bytes,3,opt,name=to_ref,json=toRef,proto3" json:"to_ref,omitempty"`       // branch/SHA; empty = HEAD
+	Path    string                 `protobuf:"bytes,4,opt,name=path,proto3" json:"path,omitempty"`                      // file path (required)
+	// detect_renames: same semantics as on CompareBranchesRequest.
+	// Only affects the whole-commit (path="") response; single-file
+	// diffs don't care about renames.
+	DetectRenames bool `protobuf:"varint,5,opt,name=detect_renames,json=detectRenames,proto3" json:"detect_renames,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1423,6 +1450,13 @@ func (x *GetDiffRequest) GetPath() string {
 		return x.Path
 	}
 	return ""
+}
+
+func (x *GetDiffRequest) GetDetectRenames() bool {
+	if x != nil {
+		return x.DetectRenames
+	}
+	return false
 }
 
 type GetDiffResponse struct {
@@ -2293,25 +2327,28 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x04date\x18\x04 \x01(\x03R\x04date\x12\x1d\n" +
 	"\n" +
 	"commit_sha\x18\x05 \x01(\tR\tcommitSha\x12%\n" +
-	"\x0ecommit_message\x18\x06 \x01(\tR\rcommitMessage\"g\n" +
+	"\x0ecommit_message\x18\x06 \x01(\tR\rcommitMessage\"\x8e\x01\n" +
 	"\x16CompareBranchesRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x19\n" +
 	"\bbase_ref\x18\x02 \x01(\tR\abaseRef\x12\x19\n" +
-	"\bhead_ref\x18\x03 \x01(\tR\aheadRef\"\x9a\x01\n" +
+	"\bhead_ref\x18\x03 \x01(\tR\aheadRef\x12%\n" +
+	"\x0edetect_renames\x18\x04 \x01(\bR\rdetectRenames\"\x9a\x01\n" +
 	"\x17CompareBranchesResponse\x12-\n" +
 	"\x05files\x18\x01 \x03(\v2\x17.gitchat.v1.ChangedFileR\x05files\x12'\n" +
 	"\x0ftotal_additions\x18\x02 \x01(\x05R\x0etotalAdditions\x12'\n" +
-	"\x0ftotal_deletions\x18\x03 \x01(\x05R\x0etotalDeletions\"u\n" +
+	"\x0ftotal_deletions\x18\x03 \x01(\x05R\x0etotalDeletions\"\x92\x01\n" +
 	"\vChangedFile\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x1c\n" +
 	"\tadditions\x18\x03 \x01(\x05R\tadditions\x12\x1c\n" +
-	"\tdeletions\x18\x04 \x01(\x05R\tdeletions\"o\n" +
+	"\tdeletions\x18\x04 \x01(\x05R\tdeletions\x12\x1b\n" +
+	"\tfrom_path\x18\x05 \x01(\tR\bfromPath\"\x96\x01\n" +
 	"\x0eGetDiffRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x19\n" +
 	"\bfrom_ref\x18\x02 \x01(\tR\afromRef\x12\x15\n" +
 	"\x06to_ref\x18\x03 \x01(\tR\x05toRef\x12\x12\n" +
-	"\x04path\x18\x04 \x01(\tR\x04path\"\xb7\x01\n" +
+	"\x04path\x18\x04 \x01(\tR\x04path\x12%\n" +
+	"\x0edetect_renames\x18\x05 \x01(\bR\rdetectRenames\"\xb7\x01\n" +
 	"\x0fGetDiffResponse\x12!\n" +
 	"\funified_diff\x18\x01 \x01(\tR\vunifiedDiff\x12\x1f\n" +
 	"\vfrom_commit\x18\x02 \x01(\tR\n" +
