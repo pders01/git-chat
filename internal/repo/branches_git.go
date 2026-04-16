@@ -3,9 +3,7 @@ package repo
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
-	"os/exec"
 	"strconv"
 	"strings"
 
@@ -32,28 +30,19 @@ func gitListBranches(ctx context.Context, repoDir, refspec string) ([]*gitchatv1
 		"%(committerdate:unix)" + fieldSep +
 		"%(subject)" + recSep
 
-	cmd := exec.CommandContext(ctx,
-		"git", "-C", repoDir,
-		"-c", "core.quotePath=off",
-		"for-each-ref",
-		"--sort=-committerdate",
-		"--format="+format,
-		refspec,
-	)
-	stderr := &cappedBuffer{cap: blameStderrCap}
-	cmd.Stderr = stderr
-	out, err := cmd.Output()
+	out, err := gitCmd{
+		repoDir: repoDir,
+		config:  []string{"core.quotePath=off"},
+		args: []string{
+			"for-each-ref",
+			"--sort=-committerdate",
+			"--format=" + format,
+			refspec,
+		},
+	}.run(ctx)
 	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return nil, fmt.Errorf("git for-each-ref: %s", msg)
+		return nil, err
 	}
-
 	return parseForEachRef(bytes.NewReader(out))
 }
 

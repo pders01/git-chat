@@ -1,12 +1,10 @@
 package repo
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -20,36 +18,35 @@ func gitLsTreeSizes(ctx context.Context, repoDir, ref string) (map[string]int64,
 	if ref == "" {
 		ref = "HEAD"
 	}
-	cmd := exec.CommandContext(ctx,
-		"git", "-C", repoDir,
-		"-c", "core.quotePath=off",
-		"ls-tree", "-r", "-l", ref,
-	)
-	stderr := &cappedBuffer{cap: blameStderrCap}
-	cmd.Stderr = stderr
-	out, err := cmd.Output()
+	out, err := gitCmd{
+		repoDir: repoDir,
+		config:  []string{"core.quotePath=off"},
+		args:    []string{"ls-tree", "-r", "-l", ref},
+	}.run(ctx)
 	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return nil, fmt.Errorf("git ls-tree: %s", msg)
+		return nil, err
 	}
-	// Each line: "<mode> <type> <sha> <size>\t<path>"
+	// Each line: "<mode> <type> <sha> <size>\t<path>". Scan the
+	// already-in-memory bytes directly instead of wrapping in a
+	// bufio.Scanner — the buffer allocation was wasted and repeated
+	// per large churn run.
 	sizes := make(map[string]int64)
-	sc := bufio.NewScanner(bytes.NewReader(out))
-	sc.Buffer(make([]byte, 64*1024), 1024*1024)
-	for sc.Scan() {
-		line := sc.Text()
-		tab := strings.IndexByte(line, '\t')
+	for len(out) > 0 {
+		nl := bytes.IndexByte(out, '\n')
+		var line []byte
+		if nl < 0 {
+			line = out
+			out = nil
+		} else {
+			line = out[:nl]
+			out = out[nl+1:]
+		}
+		tab := bytes.IndexByte(line, '\t')
 		if tab < 0 {
 			continue
 		}
-		header := line[:tab]
-		path := line[tab+1:]
+		header := string(line[:tab])
+		path := string(line[tab+1:])
 		// header fields are space-separated; size is the 4th.
 		fields := strings.Fields(header)
 		if len(fields) < 4 {
@@ -90,9 +87,6 @@ type churnStatRow struct {
 func gitLogChurn(ctx context.Context, repoDir, ref string, since, until int64, maxCommits int) ([]churnRawEntry, error) {
 	// Each commit: \x01<author-time>\x02<blank-line><numstat>\n\n<next>
 	args := []string{
-		"-C", repoDir,
-		"-c", "core.quotePath=off",
-		"-c", "diff.renames=false",
 		"log",
 		"--format=" + string([]byte{logCommitStart}) + "%at" + string([]byte{logCommitEnd}),
 		"--numstat",
@@ -110,27 +104,17 @@ func gitLogChurn(ctx context.Context, repoDir, ref string, since, until int64, m
 		args = append(args, ref)
 	}
 
-	cmd := exec.CommandContext(ctx, "git", args...)
-	stderr := &cappedBuffer{cap: blameStderrCap}
-	cmd.Stderr = stderr
-	stdout, pipeErr := cmd.StdoutPipe()
-	if pipeErr != nil {
-		return nil, fmt.Errorf("git log churn pipe: %w", pipeErr)
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("git log churn start: %w", err)
+	stdout, done, err := gitCmd{
+		repoDir: repoDir,
+		config:  []string{"core.quotePath=off", "diff.renames=false"},
+		args:    args,
+	}.pipe(ctx)
+	if err != nil {
+		return nil, err
 	}
 	entries, parseErr := parseChurnStream(stdout)
-	waitErr := cmd.Wait()
-	if waitErr != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = waitErr.Error()
-		}
-		return nil, fmt.Errorf("git log churn: %s", msg)
+	if waitErr := done(); waitErr != nil {
+		return nil, waitErr
 	}
 	if parseErr != nil {
 		return nil, fmt.Errorf("git log churn parse: %w", parseErr)
@@ -170,10 +154,19 @@ func parseChurnStream(r io.Reader) ([]churnRawEntry, error) {
 			i = end + 1 + nextStart
 		}
 		entry := churnRawEntry{authorTime: ts}
-		sc := bufio.NewScanner(bytes.NewReader(block))
-		sc.Buffer(make([]byte, 64*1024), 2*1024*1024)
-		for sc.Scan() {
-			line := sc.Text()
+		// Scan the in-memory block directly — previously we wrapped it
+		// in a fresh bufio.Scanner + 64 KiB buffer per commit, which on
+		// a 5k-commit walk was 5k allocations for no reason.
+		for len(block) > 0 {
+			nl := bytes.IndexByte(block, '\n')
+			var line string
+			if nl < 0 {
+				line = string(block)
+				block = nil
+			} else {
+				line = string(block[:nl])
+				block = block[nl+1:]
+			}
 			if line == "" {
 				continue
 			}

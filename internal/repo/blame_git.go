@@ -2,21 +2,14 @@ package repo
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"os/exec"
 	"strconv"
 	"strings"
 
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 )
-
-// blameStderrCap bounds how much of git's stderr we buffer. A misbehaving
-// or hostile git binary streaming gigabytes into stderr mustn't push the
-// server OOM just because we wanted its error message.
-const blameStderrCap = 8 * 1024
 
 // gitBlamePorcelain runs `git blame --porcelain <sha> -- <path>` in the
 // given repo directory and parses the output into blame lines. Only the
@@ -28,67 +21,33 @@ const blameStderrCap = 8 * 1024
 // shell is ever invoked, so there is no injection surface beyond git
 // itself. Returns ErrNotFound if the file isn't present at that commit.
 //
-// The context is threaded to exec.CommandContext so a client cancel (or
-// deadline) actually terminates the git subprocess instead of orphaning
-// it.
+// The context is threaded through gitCmd.pipe so a client cancel (or
+// deadline) actually terminates the git subprocess instead of
+// orphaning it.
 func gitBlamePorcelain(ctx context.Context, repoDir, sha, path string) ([]*gitchatv1.BlameLine, error) {
-	cmd := exec.CommandContext(ctx, //nolint:gosec // argv-only; sha is full hex + path is behind `--`
-		"git", "-C", repoDir,
-		"-c", "core.quotePath=off", // keep non-ASCII filenames readable
-		"blame", "--porcelain", sha, "--", path,
-	)
-	stdout, err := cmd.StdoutPipe()
+	stdout, done, err := gitCmd{
+		repoDir: repoDir,
+		config:  []string{"core.quotePath=off"},
+		args:    []string{"blame", "--porcelain", sha, "--", path},
+	}.pipe(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("git blame pipe: %w", err)
-	}
-	stderr := &cappedBuffer{cap: blameStderrCap}
-	cmd.Stderr = stderr
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("git blame start: %w", err)
+		return nil, err
 	}
 	lines, parseErr := parseBlamePorcelain(stdout)
-	waitErr := cmd.Wait()
-	if waitErr != nil {
-		// Prefer the caller's cancellation over any stderr noise.
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		msg := strings.TrimSpace(stderr.String())
-		if strings.Contains(strings.ToLower(msg), "no such path") {
+	if waitErr := done(); waitErr != nil {
+		// `git blame` emits "no such path ..." to stderr when the file
+		// isn't present at the commit; translate that into ErrNotFound
+		// so callers can surface a clean 404 instead of a raw message.
+		if strings.Contains(strings.ToLower(waitErr.Error()), "no such path") {
 			return nil, ErrNotFound
 		}
-		if msg == "" {
-			msg = waitErr.Error()
-		}
-		return nil, fmt.Errorf("git blame: %s", msg)
+		return nil, waitErr
 	}
 	if parseErr != nil {
 		return nil, fmt.Errorf("git blame parse: %w", parseErr)
 	}
 	return lines, nil
 }
-
-// cappedBuffer is an io.Writer that silently drops bytes past cap. Used
-// as git's stderr sink so a runaway child can't force unbounded buffering
-// on the parent.
-type cappedBuffer struct {
-	buf bytes.Buffer
-	cap int
-}
-
-func (b *cappedBuffer) Write(p []byte) (int, error) {
-	remaining := b.cap - b.buf.Len()
-	if remaining <= 0 {
-		return len(p), nil
-	}
-	if len(p) > remaining {
-		b.buf.Write(p[:remaining])
-		return len(p), nil
-	}
-	return b.buf.Write(p)
-}
-
-func (b *cappedBuffer) String() string { return b.buf.String() }
 
 // parseBlamePorcelain reads the porcelain output stream. Format:
 //

@@ -3,10 +3,7 @@ package repo
 import (
 	"bytes"
 	"context"
-	"fmt"
-	"os/exec"
 	"sort"
-	"strings"
 
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 )
@@ -21,23 +18,13 @@ import (
 // or UTF-8 just pass through verbatim. `-c core.quotePath=off` keeps
 // non-ASCII paths readable in the rare case something leaks through.
 func gitStatusPorcelain(ctx context.Context, repoDir string) (staged, unstaged, untracked []*gitchatv1.StatusFile, err error) {
-	cmd := exec.CommandContext(ctx,
-		"git", "-C", repoDir,
-		"-c", "core.quotePath=off",
-		"status", "--porcelain=v1", "-z",
-	)
-	stderr := &cappedBuffer{cap: blameStderrCap}
-	cmd.Stderr = stderr
-	out, runErr := cmd.Output()
-	if runErr != nil {
-		if ctx.Err() != nil {
-			return nil, nil, nil, ctx.Err()
-		}
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = runErr.Error()
-		}
-		return nil, nil, nil, fmt.Errorf("git status: %s", msg)
+	out, err := gitCmd{
+		repoDir: repoDir,
+		config:  []string{"core.quotePath=off"},
+		args:    []string{"status", "--porcelain=v1", "-z"},
+	}.run(ctx)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	// Walk NUL-separated entries. Rename lines consume a second NUL-

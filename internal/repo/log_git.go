@@ -1,12 +1,10 @@
 package repo
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"os/exec"
 	"strconv"
 	"strings"
 
@@ -41,9 +39,6 @@ var logFormat = string([]byte{logCommitStart}) +
 // Caller is responsible for applying short-SHA truncation, etc.
 func gitLogCommits(ctx context.Context, repoDir, ref string, limit, offset int, path string) ([]*gitchatv1.CommitEntry, bool, error) {
 	args := []string{
-		"-C", repoDir,
-		"-c", "core.quotePath=off",
-		"-c", "diff.renames=false", // keep numstat one-path-per-line
 		"log",
 		"-n", strconv.Itoa(limit + 1), // +1 to detect has_more
 		"--skip=" + strconv.Itoa(offset),
@@ -57,28 +52,18 @@ func gitLogCommits(ctx context.Context, repoDir, ref string, limit, offset int, 
 		args = append(args, "--", path)
 	}
 
-	cmd := exec.CommandContext(ctx, "git", args...)
-	stderr := &cappedBuffer{cap: blameStderrCap}
-	cmd.Stderr = stderr
-	stdout, pipeErr := cmd.StdoutPipe()
-	if pipeErr != nil {
-		return nil, false, fmt.Errorf("git log pipe: %w", pipeErr)
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, false, fmt.Errorf("git log start: %w", err)
+	stdout, done, err := gitCmd{
+		repoDir: repoDir,
+		config:  []string{"core.quotePath=off", "diff.renames=false"}, // keep numstat one-path-per-line
+		args:    args,
+	}.pipe(ctx)
+	if err != nil {
+		return nil, false, err
 	}
 
 	commits, parseErr := parseGitLog(stdout, limit+1)
-	waitErr := cmd.Wait()
-	if waitErr != nil {
-		if ctx.Err() != nil {
-			return nil, false, ctx.Err()
-		}
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = waitErr.Error()
-		}
-		return nil, false, fmt.Errorf("git log: %s", msg)
+	if waitErr := done(); waitErr != nil {
+		return nil, false, waitErr
 	}
 	if parseErr != nil {
 		return nil, false, fmt.Errorf("git log parse: %w", parseErr)
@@ -182,10 +167,19 @@ func parseCommitMeta(meta []byte) (*gitchatv1.CommitEntry, error) {
 // totals. Binary files report "-\t-\t<path>"; those count toward files
 // changed but contribute zero to +/-.
 func parseNumstat(block []byte) (adds, dels, files int32) {
-	sc := bufio.NewScanner(bytes.NewReader(block))
-	sc.Buffer(make([]byte, 64*1024), 1024*1024)
-	for sc.Scan() {
-		line := sc.Text()
+	// Walk the in-memory block directly — bufio.Scanner + 64 KiB buffer
+	// per numstat block was a wasted allocation on every ListCommits
+	// page (one Scanner per commit, 50+ per page).
+	for len(block) > 0 {
+		nl := bytes.IndexByte(block, '\n')
+		var line string
+		if nl < 0 {
+			line = string(block)
+			block = nil
+		} else {
+			line = string(block[:nl])
+			block = block[nl+1:]
+		}
 		if line == "" {
 			continue
 		}
