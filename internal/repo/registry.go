@@ -24,6 +24,10 @@ import (
 // Entry is a registered repository. The mu mutex serializes go-git
 // operations — go-git's packfile index uses internal maps that are
 // not safe for concurrent access.
+//
+// blameCache holds per-(commitSHA, path) blame results. Blame is
+// deterministic for a given commit, so entries never need invalidation;
+// we just cap the total entry count to bound memory.
 type Entry struct {
 	ID            string
 	Label         string
@@ -31,6 +35,7 @@ type Entry struct {
 	DefaultBranch string
 	mu            sync.Mutex
 	repo          *git.Repository
+	blameCache    map[string]any // key: commitSHA + "\x00" + path → []*gitchatv1.BlameLine (declared as any to keep this file free of gen/ imports)
 }
 
 // Registry holds every repository the server exposes. Thread-safe for
@@ -203,11 +208,7 @@ func (e *Entry) HeadCommit() string {
 	if err != nil {
 		return ""
 	}
-	h := ref.Hash().String()
-	if len(h) >= 7 {
-		return h[:7]
-	}
-	return h
+	return ShortSHA(ref.Hash().String())
 }
 
 // isProbablyGitRepo checks if path might be a git repo (has .git file or dir).

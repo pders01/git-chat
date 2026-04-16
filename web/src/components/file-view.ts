@@ -38,6 +38,7 @@ export class GcFileView extends LitElement {
   @property({ type: Boolean }) initialBlame = false;
   @state() private showBlame = false;
   @state() private blameLines: BlameLine[] = [];
+  @state() private blameLoading = false;
   @state() private hoveredBlame: BlameLine | null = null;
   private hoverTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -93,6 +94,7 @@ export class GcFileView extends LitElement {
     const requestedPath = this.path;
     this.view = { phase: "loading" };
     this.blameLines = [];
+    this.blameLoading = false;
     this.hoveredBlame = null;
     this.showBlame = false;
     try {
@@ -151,7 +153,9 @@ export class GcFileView extends LitElement {
         return this.showBlame
           ? html`<div class="blame-shell">
               ${this.renderHeader(this.view.file)}
-              ${this.renderBlameView(this.view.text.split("\n"), false)}
+              ${this.blameLoading && this.blameLines.length === 0
+                ? this.renderBlameLoading()
+                : this.renderBlameView(this.view.text.split("\n"), false)}
             </div>`
           : html`
               ${this.renderHeader(this.view.file)}
@@ -162,7 +166,9 @@ export class GcFileView extends LitElement {
         return this.showBlame
           ? html`<div class="blame-shell">
               ${this.renderHeader(this.view.file)}
-              ${this.renderBlameView(this.getShikiLines(this.view.html), true)}
+              ${this.blameLoading && this.blameLines.length === 0
+                ? this.renderBlameLoading()
+                : this.renderBlameView(this.getShikiLines(this.view.html), true)}
             </div>`
           : html`
               ${this.renderHeader(this.view.file)}
@@ -170,6 +176,21 @@ export class GcFileView extends LitElement {
               ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
             `;
     }
+  }
+
+  private renderBlameLoading() {
+    return html`
+      <div class="blame-loading" role="status" aria-live="polite">
+        <span class="spinner large" aria-hidden="true"></span>
+        <div class="bl-text">
+          <div class="bl-title">computing blame…</div>
+          <div class="bl-sub">
+            this can take a while on large files or deep histories (first load only — subsequent
+            opens of the same file are instant)
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   private renderBlameInfoPane() {
@@ -182,7 +203,7 @@ export class GcFileView extends LitElement {
     return html`
       <div class="blame-info">
         <div class="bi-header">
-          <span class="bi-sha">${b.commitSha.slice(0, 7)}</span>
+          <span class="bi-sha">${b.commitSha}</span>
           <span class="bi-meta">${b.authorName} · ${age}</span>
         </div>
         <div class="bi-subject">${subject}</div>
@@ -230,10 +251,13 @@ export class GcFileView extends LitElement {
           history
         </button>
         <button
-          class="hd-btn ${this.showBlame ? "active" : ""}"
+          class="hd-btn ${this.showBlame ? "active" : ""} ${this.blameLoading ? "loading" : ""}"
           @click=${() => this.toggleBlame()}
+          ?disabled=${this.blameLoading}
           aria-label="Toggle git blame"
+          aria-busy=${this.blameLoading ? "true" : "false"}
         >
+          ${this.blameLoading ? html`<span class="spinner" aria-hidden="true"></span>` : nothing}
           blame
         </button>
         <button
@@ -343,7 +367,7 @@ export class GcFileView extends LitElement {
   // Single-line template: whitespace inside <td white-space:pre> becomes visible line gaps.
   // prettier-ignore
   private renderBlameRow(i: number, line: string, isHighlighted: boolean, isNewBlock: boolean, isSelected: boolean, blame: BlameLine | undefined) {
-    return html`<tr class="${isNewBlock ? "blame-start" : ""} ${isSelected ? "blame-selected" : ""}"><td class="blame-cell" data-idx=${i} tabindex=${isNewBlock ? "0" : "-1"} role="button">${isNewBlock && blame ? html`<span class="blame-sha">${blame.commitSha.slice(0, 7)}</span>` : nothing}</td><td class="lno-cell">${i + 1}</td><td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">${isHighlighted ? unsafeHTML(line) : line}</td></tr>`;
+    return html`<tr class="${isNewBlock ? "blame-start" : ""} ${isSelected ? "blame-selected" : ""}"><td class="blame-cell" data-idx=${i} tabindex=${isNewBlock ? "0" : "-1"} role="button">${isNewBlock && blame ? html`<span class="blame-sha">${blame.commitSha}</span>` : nothing}</td><td class="lno-cell">${i + 1}</td><td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">${isHighlighted ? unsafeHTML(line) : line}</td></tr>`;
   }
 
   private async toggleBlame() {
@@ -356,6 +380,7 @@ export class GcFileView extends LitElement {
       }),
     );
     if (this.showBlame && this.blameLines.length === 0) {
+      this.blameLoading = true;
       try {
         const resp = await repoClient.getBlame({
           repoId: this.repoId,
@@ -365,6 +390,8 @@ export class GcFileView extends LitElement {
       } catch {
         this.blameLines = [];
         this.showBlame = false;
+      } finally {
+        this.blameLoading = false;
       }
     }
   }
@@ -387,7 +414,7 @@ export class GcFileView extends LitElement {
         bubbles: true,
         composed: true,
         detail: {
-          prompt: `Explain commit ${sha.slice(0, 7)} "${subject}" — what changed and why?`,
+          prompt: `Explain commit ${sha} "${subject}" — what changed and why?`,
           tab: "chat",
         },
       }),
@@ -663,6 +690,51 @@ export class GcFileView extends LitElement {
       opacity: 1;
       background: var(--surface-2);
       border-color: var(--border-default);
+    }
+    .hd-btn[disabled] {
+      cursor: progress;
+      opacity: 0.75;
+    }
+    .hd-btn.loading {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+    .spinner {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border: 1.5px solid var(--border-default);
+      border-top-color: var(--text-accent, var(--text));
+      border-radius: 50%;
+      animation: gc-spin 0.8s linear infinite;
+    }
+    .spinner.large {
+      width: 20px;
+      height: 20px;
+      border-width: 2px;
+    }
+    @keyframes gc-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+    .blame-loading {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      color: var(--text-muted);
+    }
+    .bl-text .bl-title {
+      color: var(--text);
+      font-size: var(--text-sm);
+      font-weight: 500;
+    }
+    .bl-text .bl-sub {
+      font-size: var(--text-xs);
+      margin-top: 2px;
+      max-width: 60ch;
     }
     .ask-btn {
       flex-shrink: 0;

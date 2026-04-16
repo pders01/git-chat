@@ -94,14 +94,14 @@ func (s *Service) GetFile(
 }
 
 func (s *Service) GetBlame(
-	_ context.Context,
+	ctx context.Context,
 	req *connect.Request[gitchatv1.GetBlameRequest],
 ) (*connect.Response[gitchatv1.GetBlameResponse], error) {
 	entry := s.lookup(req.Msg.RepoId)
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	lines, err := entry.GetBlame(req.Msg.Ref, req.Msg.Path)
+	lines, err := entry.GetBlame(ctx, req.Msg.Ref, req.Msg.Path)
 	if err != nil {
 		return nil, mapErr(err)
 	}

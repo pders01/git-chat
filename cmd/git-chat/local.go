@@ -313,13 +313,8 @@ func compareHash(repoID string, r *repo.RevRange) string {
 	return "#/" + repoID + "/browse?compare=" + base + ".." + head
 }
 
-// shortSHA trims a full hex SHA to 7 chars for log output. Empty in, empty out.
-func shortSHA(sha string) string {
-	if len(sha) > 7 {
-		return sha[:7]
-	}
-	return sha
-}
+// shortSHA wraps repo.ShortSHA for log output.
+func shortSHA(sha string) string { return repo.ShortSHA(sha) }
 
 // openBrowser launches the user's default browser pointing at url. Best
 // effort — failure is non-fatal; the user can click the link printed to

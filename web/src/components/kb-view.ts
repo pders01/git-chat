@@ -290,7 +290,7 @@ export class GcKbView extends LitElement {
                   title="View in log"
                   @click=${() => this.viewInLog(d.createdCommit)}
                 >
-                  ${d.createdCommit.slice(0, 7)}
+                  ${d.createdCommit}
                 </button>`
             : nothing}
         </div>

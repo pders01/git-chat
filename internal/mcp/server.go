@@ -232,9 +232,4 @@ func NewServer(cfg Config) *server.MCPServer {
 	return s
 }
 
-func shortSHA(s string) string {
-	if len(s) > 7 {
-		return s[:7]
-	}
-	return s
-}
+func shortSHA(s string) string { return repo.ShortSHA(s) }

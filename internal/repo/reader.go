@@ -307,7 +307,7 @@ func (e *Entry) ListCommits(ref string, limit, offset int, pathFilter string) ([
 		}
 		entry := &gitchatv1.CommitEntry{
 			Sha:         c.Hash.String(),
-			ShortSha:    c.Hash.String()[:7],
+			ShortSha:    ShortSHA(c.Hash.String()),
 			Message:     firstLine(c.Message),
 			Body:        commitBody(c.Message),
 			AuthorName:  c.Author.Name,
@@ -628,41 +628,99 @@ func (e *Entry) CompareBranches(baseRef, headRef string) ([]*gitchatv1.ChangedFi
 	return out, totalAdd, totalDel, nil
 }
 
-// GetBlame returns per-line author attribution for a file.
-func (e *Entry) GetBlame(ref, path string) ([]*gitchatv1.BlameLine, error) {
+// blameCacheCap bounds how many (commit, path) blame results we keep
+// per-Entry. Koha-scale blames are ~10-25s; one cache hit recovers that
+// entirely, so even a modest cap pays for itself. When full, half the
+// entries are dropped at random (map iteration order) — cheap,
+// effectively LRU-ish for bursty browsing.
+const blameCacheCap = 256
+
+// GetBlame returns per-line author attribution for a file. Results are
+// memoised per (commitSHA, path) because blame on a large-history file
+// (Koha C4/*.pm at ~23s via go-git) dominates perceived latency and
+// blame for a fixed commit never changes.
+//
+// Primary path shells out to `git blame --porcelain`: the C
+// implementation is typically 5-10× faster than go-git on deep history.
+// If the git binary is unavailable or the exec fails for any reason, we
+// fall back to go-git's native blame — keeping functionality portable.
+//
+// ctx is threaded to the subprocess so a client cancel (or deadline)
+// actually kills the git process instead of leaving it orphaned.
+func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.BlameLine, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	commit, _, err := e.resolveCommit(ref)
+	commit, resolved, err := e.resolveCommit(ref)
 	if err != nil {
 		return nil, err
 	}
-	result, err := git.Blame(commit, path)
-	if err != nil {
-		return nil, fmt.Errorf("blame %q: %w", path, err)
+	key := resolved + "\x00" + path
+	if e.blameCache != nil {
+		if cached, ok := e.blameCache[key]; ok {
+			return cached.([]*gitchatv1.BlameLine), nil
+		}
 	}
-	// Cache commit messages by hash to avoid repeated lookups.
+
+	var out []*gitchatv1.BlameLine
+	out, err = gitBlamePorcelain(ctx, e.Path, resolved, path)
+	if err != nil {
+		if err == ErrNotFound {
+			return nil, err
+		}
+		// Fall back to go-git so blame keeps working on hosts without
+		// the git binary (or if the exec fails unexpectedly).
+		result, gogitErr := git.Blame(commit, path)
+		if gogitErr != nil {
+			return nil, fmt.Errorf("blame %q: %w", path, gogitErr)
+		}
+		out = make([]*gitchatv1.BlameLine, 0, len(result.Lines))
+		for _, l := range result.Lines {
+			out = append(out, &gitchatv1.BlameLine{
+				Text:        l.Text,
+				AuthorName:  l.AuthorName,
+				AuthorEmail: l.Author,
+				Date:        l.Date.Unix(),
+				CommitSha:   l.Hash.String(), // full SHA; truncated on output
+			})
+		}
+	}
+
+	// Fill in full commit messages in a single pass, then truncate each
+	// line's CommitSha to the 7-char short form the UI expects. We do
+	// CommitObject lookups by full SHA (direct plumbing.NewHash is O(1))
+	// rather than ResolveRevision on a 7-char abbreviation, which does
+	// a prefix scan and turned out to dominate blame latency on deep
+	// histories.
 	msgCache := map[string]string{}
-	out := make([]*gitchatv1.BlameLine, 0, len(result.Lines))
-	for _, l := range result.Lines {
-		shortSHA := l.Hash.String()[:7]
-		msg, ok := msgCache[shortSHA]
+	for _, bl := range out {
+		full := bl.CommitSha
+		msg, ok := msgCache[full]
 		if !ok {
-			if c, err := e.repo.CommitObject(l.Hash); err == nil {
+			if c, err := e.repo.CommitObject(plumbing.NewHash(full)); err == nil {
 				msg = strings.TrimSpace(c.Message)
 			}
-			msgCache[shortSHA] = msg
+			msgCache[full] = msg
 		}
-		out = append(out, &gitchatv1.BlameLine{
-			Text:          l.Text,
-			AuthorName:    l.AuthorName,
-			AuthorEmail:   l.Author,
-			Date:          l.Date.Unix(),
-			CommitSha:     shortSHA,
-			CommitMessage: msg,
-		})
+		bl.CommitMessage = msg
+		bl.CommitSha = ShortSHA(full)
 	}
+
+	if e.blameCache == nil {
+		e.blameCache = make(map[string]any, blameCacheCap)
+	}
+	if len(e.blameCache) >= blameCacheCap {
+		drop := blameCacheCap / 2
+		for k := range e.blameCache {
+			delete(e.blameCache, k)
+			if drop--; drop <= 0 {
+				break
+			}
+		}
+	}
+	e.blameCache[key] = out
 	return out, nil
 }
+
 
 // GetDiff returns a unified-diff patch for either a single file or an
 // entire commit range, depending on whether `path` is provided.
@@ -1033,12 +1091,22 @@ func renderUnifiedDiff(path, fromSHA, toSHA, fromContent, toContent string) stri
 	return sb.String()
 }
 
-func shortSHA(s string) string {
-	if len(s) > 7 {
-		return s[:7]
+// ShortSHALen is the display-width for abbreviated commit hashes shared
+// between backend and frontend. 7 is git's historical default but becomes
+// ambiguous in large repos — git itself auto-extends to 11+ for repos with
+// more than ~16k commits, so we default to 12 (matches `git log --oneline`
+// on Koha-scale histories).
+const ShortSHALen = 12
+
+// ShortSHA truncates a full hex SHA to ShortSHALen. Safe for short inputs.
+func ShortSHA(s string) string {
+	if len(s) > ShortSHALen {
+		return s[:ShortSHALen]
 	}
 	return s
 }
+
+func shortSHA(s string) string { return ShortSHA(s) }
 
 // splitLinesKeepNL splits s into lines, keeping trailing newlines so
 // the diff output preserves line terminators. An input ending in "\n"
