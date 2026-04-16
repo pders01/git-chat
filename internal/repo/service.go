@@ -41,18 +41,18 @@ func (s *Service) ListRepos(
 }
 
 func (s *Service) ListBranches(
-	_ context.Context,
+	ctx context.Context,
 	req *connect.Request[gitchatv1.ListBranchesRequest],
 ) (*connect.Response[gitchatv1.ListBranchesResponse], error) {
 	entry := s.lookup(req.Msg.RepoId)
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	branches, err := entry.ListBranches()
+	branches, err := entry.ListBranches(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	tags, err := entry.ListTags()
+	tags, err := entry.ListTags(ctx)
 	if err != nil {
 		// Tags are best-effort — don't fail the whole response.
 		tags = nil
@@ -128,14 +128,14 @@ func (s *Service) CompareBranches(
 }
 
 func (s *Service) ListCommits(
-	_ context.Context,
+	ctx context.Context,
 	req *connect.Request[gitchatv1.ListCommitsRequest],
 ) (*connect.Response[gitchatv1.ListCommitsResponse], error) {
 	entry := s.lookup(req.Msg.RepoId)
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	commits, hasMore, err := entry.ListCommits(req.Msg.Ref, int(req.Msg.Limit), int(req.Msg.Offset), req.Msg.Path)
+	commits, hasMore, err := entry.ListCommits(ctx, req.Msg.Ref, int(req.Msg.Limit), int(req.Msg.Offset), req.Msg.Path)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -167,14 +167,14 @@ func (s *Service) GetDiff(
 }
 
 func (s *Service) GetStatus(
-	_ context.Context,
+	ctx context.Context,
 	req *connect.Request[gitchatv1.GetStatusRequest],
 ) (*connect.Response[gitchatv1.GetStatusResponse], error) {
 	entry := s.lookup(req.Msg.RepoId)
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	staged, unstaged, untracked, err := entry.GetStatus()
+	staged, unstaged, untracked, err := entry.GetStatus(ctx)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -204,14 +204,14 @@ func (s *Service) GetWorkingTreeDiff(
 }
 
 func (s *Service) GetFileChurnMap(
-	_ context.Context,
+	ctx context.Context,
 	req *connect.Request[gitchatv1.GetFileChurnMapRequest],
 ) (*connect.Response[gitchatv1.GetFileChurnMapResponse], error) {
 	entry := s.lookup(req.Msg.RepoId)
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	files, err := entry.GetFileChurnMap(req.Msg.Ref, req.Msg.SinceTimestamp, req.Msg.UntilTimestamp)
+	files, err := entry.GetFileChurnMap(ctx, req.Msg.Ref, req.Msg.SinceTimestamp, req.Msg.UntilTimestamp)
 	if err != nil {
 		return nil, mapErr(err)
 	}

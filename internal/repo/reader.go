@@ -34,9 +34,17 @@ var (
 )
 
 // ListBranches returns local branches sorted by committer time, newest first.
-func (e *Entry) ListBranches() ([]*gitchatv1.Branch, error) {
+func (e *Entry) ListBranches(ctx context.Context) ([]*gitchatv1.Branch, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+
+	if out, err := gitListBranches(ctx, e.Path, "refs/heads"); err == nil {
+		return out, nil
+	}
+
+	// Fallback: go-git. Much slower on large repos because each branch
+	// triggers a packfile commit lookup to populate committer time +
+	// subject — but keeps the RPC working without the git binary.
 	iter, err := e.repo.Branches()
 	if err != nil {
 		return nil, fmt.Errorf("iterate branches: %w", err)
@@ -45,8 +53,6 @@ func (e *Entry) ListBranches() ([]*gitchatv1.Branch, error) {
 	err = iter.ForEach(func(ref *plumbing.Reference) error {
 		commit, err := e.repo.CommitObject(ref.Hash())
 		if err != nil {
-			// Skip branches whose commit is missing rather than failing
-			// the whole list (happens on broken refs in pathological repos).
 			return nil
 		}
 		out = append(out, &gitchatv1.Branch{
@@ -70,9 +76,17 @@ func (e *Entry) ListBranches() ([]*gitchatv1.Branch, error) {
 // (most-recent first). Tags are returned as Branch messages for
 // wire-compatibility — name holds the tag name, Commit the target SHA,
 // CommitterTime the tagger timestamp, and Subject the tag message.
-func (e *Entry) ListTags() ([]*gitchatv1.Branch, error) {
+func (e *Entry) ListTags(ctx context.Context) ([]*gitchatv1.Branch, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+
+	if out, err := gitListBranches(ctx, e.Path, "refs/tags"); err == nil {
+		return out, nil
+	}
+
+	// Fallback: go-git. Annotated vs lightweight tag resolution is done
+	// via two different object lookups, same data the `for-each-ref`
+	// subprocess produces in one shot above.
 	iter, err := e.repo.Tags()
 	if err != nil {
 		return nil, fmt.Errorf("iterate tags: %w", err)
@@ -248,7 +262,13 @@ func (e *Entry) GetFile(ref, path string, maxBytes int64) (*gitchatv1.GetFileRes
 // Includes diff stats (files changed, additions, deletions) per commit.
 // When pathFilter is non-empty, only commits that touched that file are
 // included (the offset/limit still apply to the filtered result set).
-func (e *Entry) ListCommits(ref string, limit, offset int, pathFilter string) ([]*gitchatv1.CommitEntry, bool, error) {
+//
+// Primary path shells out to `git log --numstat`: one subprocess fills
+// every field the UI needs (metadata + per-file add/delete counts) in
+// native speed, replacing a go-git loop that called Tree.Diff + Patch
+// per commit and cost ~1.4s for the default 50-commit page on Koha.
+// Falls back to the go-git walk when the exec fails.
+func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, pathFilter string) ([]*gitchatv1.CommitEntry, bool, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if limit <= 0 {
@@ -262,6 +282,13 @@ func (e *Entry) ListCommits(ref string, limit, offset int, pathFilter string) ([
 	if offset > 10000 {
 		offset = 10000
 	}
+
+	commits, hasMore, gitErr := gitLogCommits(ctx, e.Path, ref, limit, offset, pathFilter)
+	if gitErr == nil {
+		return commits, hasMore, nil
+	}
+
+	// ── Fallback: go-git walk ──────────────────────────────────────
 	commit, _, err := e.resolveCommit(ref)
 	if err != nil {
 		return nil, false, err
@@ -418,7 +445,11 @@ func commitDiffStats(c *object.Commit) *diffStats {
 // GetFileChurnMap returns per-file commit counts, additions, deletions,
 // last modified timestamp, and file size over a time window [since, until].
 // If both since and until are 0 the entire history is walked.
-func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.FileChurn, error) {
+//
+// Primary path is a single `git log --numstat` subprocess that replaces
+// the ~5000 Tree.Diff + Patch calls go-git made per page (~1.3s on Koha).
+// Falls back to the go-git walk on exec error.
+func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until int64) ([]*gitchatv1.FileChurn, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -433,8 +464,6 @@ func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.Fi
 		return nil, err
 	}
 
-	filterTime := since > 0 || until > 0
-
 	type churnAcc struct {
 		commits   int
 		additions int64
@@ -443,101 +472,130 @@ func (e *Entry) GetFileChurnMap(ref string, since, until int64) ([]*gitchatv1.Fi
 	}
 	m := map[string]*churnAcc{}
 
-	iter := object.NewCommitIterCTime(commit, nil, nil)
-	defer iter.Close()
-
-	commitsProcessed := 0
-	for {
-		if commitsProcessed >= maxChurnCommits {
-			break
-		}
-		c, err := iter.Next()
-		if err != nil {
-			break
-		}
-		commitsProcessed++
-
-		ts := c.Author.When.Unix()
-		if filterTime {
-			// Past the window — stop walking (commits are in reverse
-			// chronological order).
-			if since > 0 && ts < since {
-				break
-			}
-			// Before window starts — skip but keep walking.
-			if until > 0 && ts > until {
-				continue
-			}
-		}
-
-		cTree, err := c.Tree()
-		if err != nil {
-			continue
-		}
-
-		var pTree *object.Tree
-		if c.NumParents() > 0 {
-			parent, perr := c.Parents().Next()
-			if perr == nil {
-				pTree, _ = parent.Tree()
-			}
-		}
-
-		if pTree == nil {
-			// Root commit — treat every file as added.
-			cTree.Files().ForEach(func(f *object.File) error {
-				acc, ok := m[f.Name]
+	// ── Primary: git log --numstat subprocess ────────────────────────
+	entries, gitErr := gitLogChurn(ctx, e.Path, ref, since, until, maxChurnCommits)
+	if gitErr == nil {
+		for _, entry := range entries {
+			ts := entry.authorTime
+			for _, row := range entry.rows {
+				acc, ok := m[row.path]
 				if !ok {
 					acc = &churnAcc{}
-					m[f.Name] = acc
+					m[row.path] = acc
 				}
 				acc.commits++
-				acc.additions += f.Size / 40 // rough estimate
+				if row.adds > 0 {
+					acc.additions += row.adds
+				}
+				if row.dels > 0 {
+					acc.deletions += row.dels
+				}
 				if ts > acc.lastMod {
 					acc.lastMod = ts
 				}
-				return nil
-			})
-			continue
-		}
-
-		changes, err := pTree.Diff(cTree)
-		if err != nil {
-			continue
-		}
-		patch, err := changes.Patch()
-		if err != nil {
-			continue
-		}
-		for _, st := range patch.Stats() {
-			acc, ok := m[st.Name]
-			if !ok {
-				acc = &churnAcc{}
-				m[st.Name] = acc
 			}
-			acc.commits++
-			acc.additions += int64(st.Addition)
-			acc.deletions += int64(st.Deletion)
-			if ts > acc.lastMod {
-				acc.lastMod = ts
+		}
+	} else {
+		// ── Fallback: go-git walk ────────────────────────────────────
+		filterTime := since > 0 || until > 0
+		iter := object.NewCommitIterCTime(commit, nil, nil)
+		defer iter.Close()
+
+		commitsProcessed := 0
+		for {
+			if commitsProcessed >= maxChurnCommits {
+				break
+			}
+			c, err := iter.Next()
+			if err != nil {
+				break
+			}
+			commitsProcessed++
+
+			ts := c.Author.When.Unix()
+			if filterTime {
+				if since > 0 && ts < since {
+					break
+				}
+				if until > 0 && ts > until {
+					continue
+				}
+			}
+
+			cTree, err := c.Tree()
+			if err != nil {
+				continue
+			}
+			var pTree *object.Tree
+			if c.NumParents() > 0 {
+				parent, perr := c.Parents().Next()
+				if perr == nil {
+					pTree, _ = parent.Tree()
+				}
+			}
+
+			if pTree == nil {
+				cTree.Files().ForEach(func(f *object.File) error {
+					acc, ok := m[f.Name]
+					if !ok {
+						acc = &churnAcc{}
+						m[f.Name] = acc
+					}
+					acc.commits++
+					acc.additions += f.Size / 40
+					if ts > acc.lastMod {
+						acc.lastMod = ts
+					}
+					return nil
+				})
+				continue
+			}
+
+			changes, err := pTree.Diff(cTree)
+			if err != nil {
+				continue
+			}
+			patch, err := changes.Patch()
+			if err != nil {
+				continue
+			}
+			for _, st := range patch.Stats() {
+				acc, ok := m[st.Name]
+				if !ok {
+					acc = &churnAcc{}
+					m[st.Name] = acc
+				}
+				acc.commits++
+				acc.additions += int64(st.Addition)
+				acc.deletions += int64(st.Deletion)
+				if ts > acc.lastMod {
+					acc.lastMod = ts
+				}
 			}
 		}
 	}
 
-	// Walk the current tree at ref to collect file sizes.
-	tree, err := commit.Tree()
-	if err != nil {
-		return nil, fmt.Errorf("get tree for sizes: %w", err)
-	}
-	sizeMap := map[string]int64{}
-	fileIter := tree.Files()
-	defer fileIter.Close()
-	for {
-		f, ferr := fileIter.Next()
-		if ferr != nil {
-			break
+	// Collect file sizes. Native `git ls-tree -r -l` emits all blob
+	// sizes in one subprocess; go-git's tree.Files() walker opens each
+	// blob header individually, which was half the churn latency.
+	sizeMap, sizeErr := gitLsTreeSizes(ctx, e.Path, ref)
+	if sizeErr != nil {
+		// Fallback: go-git tree walk. Slow, but keeps the feature
+		// working on hosts without the git binary.
+		tree, terr := commit.Tree()
+		if terr != nil {
+			return nil, fmt.Errorf("get tree for sizes: %w", terr)
 		}
-		sizeMap[f.Name] = f.Size
+		sizeMap = map[string]int64{}
+		fileIter := tree.Files()
+		defer fileIter.Close()
+		for {
+			f, ferr := fileIter.Next()
+			if ferr != nil {
+				break
+			}
+			sizeMap[f.Name] = f.Size
+		}
 	}
 
 	// Merge into result.
@@ -969,18 +1027,32 @@ func countDiffLines(fromContent, toContent string) (adds, dels int32) {
 
 // GetStatus returns the working tree status: staged, unstaged, and
 // untracked files categorized by their git status.
-func (e *Entry) GetStatus() (staged, unstaged, untracked []*gitchatv1.StatusFile, err error) {
+//
+// Primary path shells out to `git status --porcelain=v1 -z`; go-git's
+// worktree.Status() walks the full index and hashes every blob to
+// detect content changes, which on Koha-sized repos cost ~3.4s per
+// call. The subprocess returns the same buckets in 50-200ms. Context
+// cancel kills the subprocess. Falls back to go-git if the exec fails.
+func (e *Entry) GetStatus(ctx context.Context) (staged, unstaged, untracked []*gitchatv1.StatusFile, err error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	w, err := e.repo.Worktree()
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("worktree: %w", err)
-	}
-	status, err := w.Status()
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("status: %w", err)
+
+	staged, unstaged, untracked, err = gitStatusPorcelain(ctx, e.Path)
+	if err == nil {
+		return staged, unstaged, untracked, nil
 	}
 
+	// Fall back to go-git so the feature still works on hosts without
+	// the git binary (or if the exec errored unexpectedly).
+	w, werr := e.repo.Worktree()
+	if werr != nil {
+		return nil, nil, nil, fmt.Errorf("worktree: %w", werr)
+	}
+	status, serr := w.Status()
+	if serr != nil {
+		return nil, nil, nil, fmt.Errorf("status: %w", serr)
+	}
+	staged, unstaged, untracked = nil, nil, nil
 	for path, fs := range status {
 		if s := mapStatusCode(fs.Staging); s != "" {
 			staged = append(staged, &gitchatv1.StatusFile{Path: path, Status: s})
@@ -993,7 +1065,6 @@ func (e *Entry) GetStatus() (staged, unstaged, untracked []*gitchatv1.StatusFile
 			}
 		}
 	}
-
 	sort.Slice(staged, func(i, j int) bool { return staged[i].Path < staged[j].Path })
 	sort.Slice(unstaged, func(i, j int) bool { return unstaged[i].Path < unstaged[j].Path })
 	sort.Slice(untracked, func(i, j int) bool { return untracked[i].Path < untracked[j].Path })

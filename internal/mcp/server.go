@@ -171,7 +171,7 @@ func NewServer(cfg Config) *server.MCPServer {
 			if r == nil {
 				return mcp.NewToolResultError("repo not found"), nil
 			}
-			commits, _, err := r.ListCommits("", limit, 0, "")
+			commits, _, err := r.ListCommits(ctx, "", limit, 0, "")
 			if err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("error: %v", err)), nil
 			}

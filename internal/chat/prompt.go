@@ -58,8 +58,8 @@ var diffAttrPattern = regexp.MustCompile(`(\w+)=(?:"([^"]*)"|(\S+))`)
 // recentCommits returns a short git log (last 5 commits) for baseline
 // context. Lets the model answer "what changed recently?" without the
 // user switching to the log tab. ~200 bytes, negligible context cost.
-func recentCommits(r *repo.Entry) string {
-	commits, _, err := r.ListCommits("", int(recentCommitCount), 0, "")
+func recentCommits(ctx context.Context, r *repo.Entry) string {
+	commits, _, err := r.ListCommits(ctx, "", int(recentCommitCount), 0, "")
 	if err != nil || len(commits) == 0 {
 		return ""
 	}
@@ -119,7 +119,7 @@ func (s *Service) buildPrompt(
 	if overview, label := overviewDoc(repoEntry); overview != "" {
 		fmt.Fprintf(&sb, "\n\n## Project overview (from `%s`)\n\n```\n%s\n```", label, overview)
 	}
-	if recentLog := recentCommits(repoEntry); recentLog != "" {
+	if recentLog := recentCommits(ctx, repoEntry); recentLog != "" {
 		sb.WriteString("\n\n## Recent commits\n\n")
 		sb.WriteString(recentLog)
 	}
