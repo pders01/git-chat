@@ -137,7 +137,7 @@ func (s *Service) buildPrompt(
 	for _, m := range sessionHistory {
 		content := m.Content
 		if m.Role == "assistant" && diffMarkerPattern.MatchString(content) {
-			content = expandHistoryDiffMarkers(repoEntry, content, diffCache)
+			content = expandHistoryDiffMarkers(ctx, repoEntry, content, diffCache)
 		}
 		msgs = append(msgs, llm.Message{
 			Role:    llm.Role(m.Role),
@@ -158,7 +158,7 @@ func (s *Service) buildPrompt(
 // Unresolvable markers are left as-is — it's better for the model to
 // see the raw marker than to silently drop a reference it might have
 // been about to explain.
-func expandHistoryDiffMarkers(r *repo.Entry, text string, cache map[string]string) string {
+func expandHistoryDiffMarkers(ctx context.Context, r *repo.Entry, text string, cache map[string]string) string {
 	return diffMarkerPattern.ReplaceAllStringFunc(text, func(match string) string {
 		sub := diffMarkerPattern.FindStringSubmatch(match)
 		attrs := ""
@@ -170,7 +170,7 @@ func expandHistoryDiffMarkers(r *repo.Entry, text string, cache map[string]strin
 		if cached, ok := cache[cacheKey]; ok {
 			return cached
 		}
-		diff, _, _, empty, _, err := r.GetDiff(from, to, path, false)
+		diff, _, _, empty, _, err := r.GetDiff(ctx, from, to, path, false)
 		if err != nil {
 			cache[cacheKey] = match
 			return match

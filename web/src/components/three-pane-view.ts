@@ -44,12 +44,17 @@ export class GcThreePaneView extends LitElement {
   private rightLineHeight = 0;
   private middleLineHeight = 0;
 
-  // Guard against infinite scroll-sync loops: when we programmatically
-  // scroll a pane, its own scroll handler would otherwise re-fire and
-  // bounce back. `syncSource` holds the pane currently driving the
-  // update; other panes' handlers bail until the next user input.
+  // Guard against infinite scroll-sync loops: setting scrollTop on a
+  // pane fires a scroll event. Chromium/Firefox dispatch it
+  // synchronously from the assignment, so syncSource (set to the driving
+  // pane) keeps the re-entrant call from re-entering the handler.
+  // Safari, however, batches scrollTop writes until the next paint —
+  // the re-entrant scroll arrives *after* we've released the guard on
+  // rAF. We now count pending programmatic writes and only release
+  // syncSource when each target has been observed back, eliminating the
+  // ping-pong window entirely.
   private syncSource: "left" | "middle" | "right" | null = null;
-  private syncClearHandle = 0;
+  private pendingSyncAcks = 0;
 
   override updated(changed: Map<string, unknown>) {
     if (changed.has("rawDiff")) {
@@ -92,8 +97,18 @@ export class GcThreePaneView extends LitElement {
 
   private onScroll(source: "left" | "middle" | "right", e: Event) {
     if (!this.parsed || !this.ready) return;
-    if (this.syncSource && this.syncSource !== source) return; // programmatic, ignore
-    this.syncSource = source;
+
+    // If a sync is in flight, this is an ack for a programmatic scroll.
+    // Count it off and bail before we re-project — re-entry from the
+    // same pane that just received the write is how Safari's
+    // out-of-paint scroll delivery used to start a ping-pong.
+    if (this.syncSource !== null) {
+      if (this.syncSource !== source && this.pendingSyncAcks > 0) {
+        this.pendingSyncAcks--;
+        if (this.pendingSyncAcks <= 0) this.syncSource = null;
+      }
+      return;
+    }
 
     const el = e.currentTarget as HTMLElement;
     const scrollTop = el.scrollTop;
@@ -103,10 +118,8 @@ export class GcThreePaneView extends LitElement {
         : source === "middle"
           ? this.middleLineHeight
           : this.rightLineHeight;
-    if (lh <= 0) {
-      this.clearSyncSource();
-      return;
-    }
+    if (lh <= 0) return;
+
     const topLine = Math.max(0, Math.round(scrollTop / lh));
 
     // Project the top-visible line in the driver pane to the other two.
@@ -139,27 +152,41 @@ export class GcThreePaneView extends LitElement {
     const rightEl = this.renderRoot.querySelector<HTMLElement>(".pane-right");
     const middleEl = this.renderRoot.querySelector<HTMLElement>(".pane-middle");
 
+    // Stage the guard BEFORE any scrollTop writes so Safari's later
+    // scroll dispatch sees syncSource set.
+    const writes: Array<() => void> = [];
+    const planWrite = (el: HTMLElement, top: number) => {
+      // Skip no-op writes so we don't count a scroll event that
+      // won't actually fire.
+      if (Math.round(el.scrollTop) === Math.round(top)) return;
+      writes.push(() => {
+        el.scrollTop = top;
+      });
+    };
     if (source !== "left" && leftEl && targetOld != null && this.leftLineHeight > 0) {
-      leftEl.scrollTop = Math.max(0, (targetOld - 1) * this.leftLineHeight);
+      planWrite(leftEl, Math.max(0, (targetOld - 1) * this.leftLineHeight));
     }
     if (source !== "right" && rightEl && targetNew != null && this.rightLineHeight > 0) {
-      rightEl.scrollTop = Math.max(0, (targetNew - 1) * this.rightLineHeight);
+      planWrite(rightEl, Math.max(0, (targetNew - 1) * this.rightLineHeight));
     }
     if (source !== "middle" && middleEl && targetDiffIdx != null && this.middleLineHeight > 0) {
-      middleEl.scrollTop = Math.max(0, targetDiffIdx * this.middleLineHeight);
+      planWrite(middleEl, Math.max(0, targetDiffIdx * this.middleLineHeight));
     }
 
-    this.clearSyncSource();
-  }
+    if (writes.length === 0) return;
+    this.syncSource = source;
+    this.pendingSyncAcks = writes.length;
+    for (const w of writes) w();
 
-  private clearSyncSource() {
-    // Release the sync guard on the next frame so any reactive scroll
-    // events from our setters (which DO fire synchronously in some
-    // browsers) don't re-enter as a different source.
-    cancelAnimationFrame(this.syncClearHandle);
-    this.syncClearHandle = requestAnimationFrame(() => {
-      this.syncSource = null;
-    });
+    // Safety net: if a write somehow doesn't generate a scroll event
+    // (e.g. the element was detached between plan and write), release
+    // the guard on the next macrotask so user scrolls aren't blocked.
+    setTimeout(() => {
+      if (this.syncSource === source) {
+        this.syncSource = null;
+        this.pendingSyncAcks = 0;
+      }
+    }, 0);
   }
 
   override render() {

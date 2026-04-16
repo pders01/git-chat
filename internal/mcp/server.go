@@ -137,7 +137,7 @@ func NewServer(cfg Config) *server.MCPServer {
 			if r == nil {
 				return mcp.NewToolResultError("repo not found"), nil
 			}
-			diff, _, _, empty, _, err := r.GetDiff(fromRef, toRef, path, false)
+			diff, _, _, empty, _, err := r.GetDiff(ctx, fromRef, toRef, path, false)
 			if err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("diff error: %v", err)), nil
 			}

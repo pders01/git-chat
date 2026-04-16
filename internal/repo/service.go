@@ -109,14 +109,14 @@ func (s *Service) GetBlame(
 }
 
 func (s *Service) CompareBranches(
-	_ context.Context,
+	ctx context.Context,
 	req *connect.Request[gitchatv1.CompareBranchesRequest],
 ) (*connect.Response[gitchatv1.CompareBranchesResponse], error) {
 	entry := s.lookup(req.Msg.RepoId)
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	files, totalAdd, totalDel, err := entry.CompareBranches(req.Msg.BaseRef, req.Msg.HeadRef, req.Msg.DetectRenames)
+	files, totalAdd, totalDel, err := entry.CompareBranches(ctx, req.Msg.BaseRef, req.Msg.HeadRef, req.Msg.DetectRenames)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -146,14 +146,14 @@ func (s *Service) ListCommits(
 }
 
 func (s *Service) GetDiff(
-	_ context.Context,
+	ctx context.Context,
 	req *connect.Request[gitchatv1.GetDiffRequest],
 ) (*connect.Response[gitchatv1.GetDiffResponse], error) {
 	entry := s.lookup(req.Msg.RepoId)
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	diff, fromSHA, toSHA, empty, files, err := entry.GetDiff(req.Msg.FromRef, req.Msg.ToRef, req.Msg.Path, req.Msg.DetectRenames)
+	diff, fromSHA, toSHA, empty, files, err := entry.GetDiff(ctx, req.Msg.FromRef, req.Msg.ToRef, req.Msg.Path, req.Msg.DetectRenames)
 	if err != nil {
 		return nil, mapErr(err)
 	}
