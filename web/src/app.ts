@@ -207,9 +207,10 @@ export class GcApp extends LitElement {
       this.showShortcuts = !this.showShortcuts;
       return;
     }
-    if (e.key === "Escape" && (this.showShortcuts || this.showSettings || this.showPalette)) {
+    if (e.key === "Escape" && (this.showShortcuts || this.showSettings || this.showPalette || this.showSearch)) {
       this.showShortcuts = false;
       this.showSettings = false;
+      this.showSearch = false;
       if (this.showPalette) {
         // Cancel pending scroll RAF when closing palette
         if (this._paletteScrollRafId !== null) {
