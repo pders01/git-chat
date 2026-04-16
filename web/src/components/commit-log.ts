@@ -948,44 +948,49 @@ export class GcCommitLog extends LitElement {
             : nothing}
         </aside>
 
-        <!-- Middle: commit info pane -->
+        <!-- Middle: commit info pane — split vertically, top is the
+             commit metadata capped at 50% of the pane height, bottom is
+             the file list filling the remainder. -->
         <section class="info-pane">
           ${sel
             ? html`
-                <div class="info-sha">
-                  <span
-                    class="detail-sha copyable"
-                    tabindex="0"
-                    role="button"
-                    @click=${(e: Event) => {
-                      e.stopPropagation();
-                      copyText(this, sel.sha, "SHA copied");
-                    }}
-                    @keydown=${(e: KeyboardEvent) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
+                <div class="info-meta-section">
+                  <div class="info-sha">
+                    <span
+                      class="detail-sha copyable"
+                      tabindex="0"
+                      role="button"
+                      @click=${(e: Event) => {
+                        e.stopPropagation();
                         copyText(this, sel.sha, "SHA copied");
-                      }
-                    }}
-                    title="Press Enter to copy full SHA"
-                    >${sel.shortSha}</span
+                      }}
+                      @keydown=${(e: KeyboardEvent) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          copyText(this, sel.sha, "SHA copied");
+                        }
+                      }}
+                      title="Press Enter to copy full SHA"
+                      >${sel.shortSha}</span
+                    >
+                  </div>
+                  <div class="info-subject">${sel.message}</div>
+                  ${sel.body ? html`<pre class="info-body">${sel.body}</pre>` : nothing}
+                  <div class="info-meta">
+                    <span>${sel.authorName}</span>
+                    <span class="info-age">${formatAge(Number(sel.authorTime))}</span>
+                  </div>
+                  <button
+                    class="action-btn"
+                    @click=${() => this.askAboutCommit(sel)}
+                    aria-label="Explain commit ${sel.shortSha} in chat"
                   >
+                    explain in chat
+                  </button>
                 </div>
-                <div class="info-subject">${sel.message}</div>
-                ${sel.body ? html`<pre class="info-body">${sel.body}</pre>` : nothing}
-                <div class="info-meta">
-                  <span>${sel.authorName}</span>
-                  <span class="info-age">${formatAge(Number(sel.authorTime))}</span>
-                </div>
-                <button
-                  class="action-btn"
-                  @click=${() => this.askAboutCommit(sel)}
-                  aria-label="Explain commit ${sel.shortSha} in chat"
-                >
-                  explain in chat
-                </button>
                 ${this.files.length
-                  ? html` <div class="file-list-header">
+                  ? html` <div class="info-files-section">
+                      <div class="file-list-header">
                         <span>files</span>
                         <span class="info-files">${this.files.length}</span>
                       </div>
@@ -1037,7 +1042,8 @@ export class GcCommitLog extends LitElement {
                             </li>
                           `,
                         )}
-                      </ul>`
+                      </ul>
+                    </div>`
                   : nothing}
               `
             : html`<div class="info-empty">select a commit</div>`}
@@ -1386,12 +1392,33 @@ export class GcCommitLog extends LitElement {
     .info-pane {
       display: flex;
       flex-direction: column;
-      gap: var(--space-2);
       padding: var(--space-4);
+      gap: var(--space-3);
       border-right: 1px solid var(--surface-4);
       background: var(--surface-1);
-      overflow-y: auto;
       min-height: 0;
+      overflow: hidden;
+    }
+    /* Top half: commit metadata. max-height: 50% lets short commits
+       collapse to their natural size; long ones cap at half the pane
+       and scroll internally so the file list below keeps its half. */
+    .info-meta-section {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      max-height: 50%;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+    /* Bottom half: file list. flex: 1 + min-height: 0 lets it fill
+       whatever space the metadata section didn't claim and scroll
+       within that remainder. */
+    .info-files-section {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
     }
     .info-sha .detail-sha {
       font-size: var(--text-sm);
@@ -1410,8 +1437,6 @@ export class GcCommitLog extends LitElement {
       white-space: pre-wrap;
       opacity: 0.75;
       line-height: 1.6;
-      max-height: 200px;
-      overflow-y: auto;
     }
     .info-meta {
       display: flex;
@@ -1432,8 +1457,7 @@ export class GcCommitLog extends LitElement {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding-top: var(--space-3);
-      margin-top: var(--space-2);
+      padding-top: var(--space-2);
       border-top: 1px solid var(--surface-4);
       font-size: var(--text-xs);
       opacity: 0.5;
