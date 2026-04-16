@@ -61,13 +61,13 @@ func NewHTTPServer(cfg Config) *http.Server {
 	// handler runs if there's no principal in context.
 	repoPath, repoHandler := gitchatv1connect.NewRepoServiceHandler(
 		cfg.RepoSvc,
-		connect.WithInterceptors(auth.RequireAuth()),
+		connect.WithInterceptors(auth.RequireAuth(), TimingInterceptor()),
 	)
 	mux.Handle(repoPath, repoHandler)
 
 	chatPath, chatHandler := gitchatv1connect.NewChatServiceHandler(
 		cfg.ChatSvc,
-		connect.WithInterceptors(auth.RequireAuth()),
+		connect.WithInterceptors(auth.RequireAuth(), TimingInterceptor()),
 	)
 	mux.Handle(chatPath, chatHandler)
 

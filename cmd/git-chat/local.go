@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	_ "net/http/pprof" // registers /debug/pprof/* on http.DefaultServeMux; exposed only when --pprof is set
 	neturl "net/url"
 	"os"
 	"os/exec"
@@ -47,6 +48,7 @@ func runLocal(args []string) error {
 	var repos repoFlags
 	fs.Var(&repos, "repo", "explicit repo path (repeatable); if set, positional path is ignored")
 	rangeFlag := fs.String("range", "", "git revspec to open in compare view (A..B, A...B, or single ref)")
+	pprofAddr := fs.String("pprof", "", "if set, start net/http/pprof on this loopback address (e.g. 127.0.0.1:6060)")
 	_ = fs.Parse(args)
 
 	// Validate flags
@@ -216,6 +218,29 @@ func runLocal(args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if *pprofAddr != "" {
+		if err := validateLoopback(*pprofAddr); err != nil {
+			return fmt.Errorf("--pprof: %w", err)
+		}
+		pprofSrv := &http.Server{
+			Addr:              *pprofAddr,
+			Handler:           http.DefaultServeMux, // net/http/pprof registers on DefaultServeMux
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		go func() {
+			slog.Info("pprof listening", "addr", *pprofAddr,
+				"tip", "go tool pprof http://"+*pprofAddr+"/debug/pprof/profile?seconds=30")
+			if err := pprofSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Warn("pprof server stopped", "err", err)
+			}
+		}()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = pprofSrv.Shutdown(shutdownCtx)
+		}()
+	}
 
 	httpSrv := rpc.NewHTTPServer(rpc.Config{
 		Addr:     *httpAddr,
