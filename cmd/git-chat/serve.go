@@ -45,9 +45,7 @@ func runServe(args []string) error {
 		return errors.New("serve: at least one --repo is required")
 	}
 
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
+	installLogger(os.Stderr, "info")
 
 	signersPath, err := auth.AllowedSignersPath()
 	if err != nil {

@@ -32,6 +32,10 @@ func runAddKey(args []string) error {
 	if err := auth.AppendAllowedSignersFile(path, principal, pk); err != nil {
 		return fmt.Errorf("append: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "added %s → %s\n", principal, path)
+	fmt.Fprintf(os.Stderr, "%s %s %s %s\n",
+		styleBrand.Render("added"),
+		styleHeading.Render(principal),
+		styleDim.Render("→"),
+		styleURL.Render(path))
 	return nil
 }

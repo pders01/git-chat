@@ -8,10 +8,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -44,6 +46,7 @@ func runLocal(args []string) error {
 	maxRepos := fs.Int("max-repos", 0, "maximum repos to load from directory scan (0 = unlimited)")
 	var repos repoFlags
 	fs.Var(&repos, "repo", "explicit repo path (repeatable); if set, positional path is ignored")
+	rangeFlag := fs.String("range", "", "git revspec to open in compare view (A..B, A...B, or single ref)")
 	_ = fs.Parse(args)
 
 	// Validate flags
@@ -55,8 +58,19 @@ func runLocal(args []string) error {
 		return err
 	}
 
-	// Positional arg: path to repo or directory to scan. Defaults to cwd.
+	// Positional args: [path] [revspec]. A lone revspec (containing "..")
+	// as Arg(0) is accepted as shorthand for "cwd + that revspec".
 	repoPath := fs.Arg(0)
+	revspec := *rangeFlag
+	if repoPath != "" && revspec == "" && strings.Contains(repoPath, "..") && repoPath != ".." {
+		if _, err := os.Stat(repoPath); err != nil {
+			revspec = repoPath
+			repoPath = ""
+		}
+	}
+	if revspec == "" && fs.Arg(1) != "" {
+		revspec = fs.Arg(1)
+	}
 	if repoPath == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -65,9 +79,7 @@ func runLocal(args []string) error {
 		repoPath = cwd
 	}
 
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
+	installLogger(os.Stderr, "info")
 
 	registry := repo.NewRegistry()
 
@@ -116,6 +128,36 @@ func runLocal(args []string) error {
 
 	if registry.Count() == 0 {
 		return errors.New("no repositories registered")
+	}
+
+	// Resolve the revspec (if any) against the first registered repo. The
+	// resolved {from,to} refs are kept for the deep-link URL; actual
+	// diffing happens server-side via repo.GetDiff.
+	var (
+		resolvedRange *repo.RevRange
+		rangeRepoID   string
+	)
+	if revspec != "" {
+		if registry.Count() > 1 {
+			ids := make([]string, 0, registry.Count())
+			for _, e := range registry.List() {
+				ids = append(ids, e.ID)
+			}
+			return fmt.Errorf("revspec %q is ambiguous across %d registered repos (%s) — pass --repo <path> to pick one",
+				revspec, registry.Count(), strings.Join(ids, ", "))
+		}
+		target := registry.List()[0]
+		r, err := target.ResolveRange(revspec)
+		if err != nil {
+			return fmt.Errorf("resolve revspec %q: %w", revspec, err)
+		}
+		resolvedRange = r
+		rangeRepoID = target.ID
+		slog.Info("revspec resolved",
+			"repo", target.ID,
+			"range", r.Summary(),
+			"from", shortSHA(r.From),
+			"to", shortSHA(r.To))
 	}
 
 	db, err := openDB(*dbPath)
@@ -168,6 +210,9 @@ func runLocal(args []string) error {
 	if *openHost != "" {
 		openURL = fmt.Sprintf("http://%s/?t=%s", *openHost, token)
 	}
+	if resolvedRange != nil {
+		openURL += compareHash(rangeRepoID, resolvedRange)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -181,13 +226,15 @@ func runLocal(args []string) error {
 		ChatSvc:  chatSvc,
 	})
 
+	rangeSummary := ""
+	if resolvedRange != nil {
+		rangeSummary = resolvedRange.Summary()
+	}
 	go func() {
 		slog.Info("http listening",
 			"addr", addr.String(), "mode", "local", "version", version,
 			"llm_base", *llmBase, "llm_model", *llmModel)
-		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "  Open: "+openURL)
-		fmt.Fprintln(os.Stderr)
+		fmt.Fprint(os.Stderr, renderOpenBanner(openURL, rangeSummary))
 		if err := httpSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("http failed", "err", err)
 		}
@@ -230,6 +277,23 @@ func validateLoopback(addr string) error {
 		return fmt.Errorf("local mode refuses non-loopback host %q — run `git-chat serve` for network exposure", host)
 	}
 	return nil
+}
+
+// compareHash builds the hash fragment that deep-links the web UI into
+// its browse/compare view for a resolved range. Mirrors routing.ts's
+// buildRoute for tab="browse" with compareBase/compareHead set.
+func compareHash(repoID string, r *repo.RevRange) string {
+	base := neturl.QueryEscape(r.FromRef)
+	head := neturl.QueryEscape(r.ToRef)
+	return "#/" + repoID + "/browse?compare=" + base + ".." + head
+}
+
+// shortSHA trims a full hex SHA to 7 chars for log output. Empty in, empty out.
+func shortSHA(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
 }
 
 // openBrowser launches the user's default browser pointing at url. Best

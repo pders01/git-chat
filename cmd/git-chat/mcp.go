@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -30,9 +29,7 @@ func runMCP(args []string) error {
 		repoPath = cwd
 	}
 
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelWarn,
-	})))
+	installLogger(os.Stderr, "warn")
 
 	registry := repo.NewRegistry()
 	if _, err := registry.Add(repoPath); err != nil {

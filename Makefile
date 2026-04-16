@@ -8,6 +8,11 @@ all: web build
 
 .PHONY: web
 web:
+	@if [ "$$(id -u)" = "0" ]; then \
+		echo "refusing to build web assets as root — bun would write internal/assets/dist/* owned by root, breaking later non-sudo rebuilds"; \
+		echo "hint: run 'make all' as your user first, then 'sudo make install'"; \
+		exit 1; \
+	fi
 	cd web && bun install --frozen-lockfile && bun run build
 
 .PHONY: build
@@ -72,7 +77,15 @@ test-e2e: web build
 	cd web && bunx playwright test
 
 .PHONY: install
-install: all
+# install only copies the already-built binary. Intentionally does NOT
+# depend on `all` so that `sudo make install` never runs `bun run build`
+# as root (which would leave internal/assets/dist/* owned by root and
+# break later non-sudo rebuilds). Build first with `make all`.
+install:
+	@if [ ! -x $(BINARY) ]; then \
+		echo "$(BINARY) not found — run 'make all' (as your user) before 'sudo make install'"; \
+		exit 1; \
+	fi
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 0755 $(BINARY) $(DESTDIR)$(PREFIX)/bin/git-chat
 

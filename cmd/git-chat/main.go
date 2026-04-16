@@ -56,13 +56,15 @@ func main() {
 	case "-v", "--version", "version":
 		fmt.Println("git-chat", version)
 	default:
-		// Not a known subcommand — treat as a path.
-		if looksLikePath(cmd) {
+		// Not a known subcommand — treat as a path, revspec, or flag-only
+		// local invocation (e.g. `git chat --range HEAD~3..HEAD`).
+		if strings.HasPrefix(cmd, "-") || looksLikePath(cmd) || looksLikeRevspec(cmd) {
 			if err := runLocal(os.Args[1:]); err != nil {
 				fail(err)
 			}
 		} else {
-			fmt.Fprintf(os.Stderr, "git-chat: unknown subcommand %q\n\n", cmd)
+			fmt.Fprint(os.Stderr, renderFatal(fmt.Errorf("unknown subcommand %q", cmd)))
+			fmt.Fprintln(os.Stderr)
 			usage()
 			os.Exit(2)
 		}
@@ -83,33 +85,21 @@ func looksLikePath(s string) bool {
 	return err == nil
 }
 
+// looksLikeRevspec returns true if s looks like a git revspec (e.g.
+// HEAD~3..HEAD, main..feature, v1.0...v2.0). Single refs go through the
+// --range flag since they are indistinguishable from unknown subcommands.
+func looksLikeRevspec(s string) bool {
+	if strings.HasPrefix(s, "-") {
+		return false
+	}
+	return strings.Contains(s, "..")
+}
+
 func usage() {
-	fmt.Fprintln(os.Stderr, `git-chat — chat with a git repo, with a self-curated knowledge base.
-
-usage:
-  git chat                      open current repo in browser
-  git chat <path>               open a specific repo or directory
-  git chat serve [flags]        multi-user self-hosted mode
-  git chat local [path] [flags] explicit solo-local mode
-  git chat mcp [path]           MCP server mode (stdio)
-  git chat add-key <principal>  append SSH pubkey from stdin
-  git chat version              print version
-  git chat help                 show this help
-
-flags (local/serve):
-  --http <addr>           listen address (default: 127.0.0.1:0)
-  --llm-backend <name>   openai (default) or anthropic
-  --llm-model <name>     model name
-  --llm-api-key <key>    API key
-  --no-browser            don't auto-open browser
-
-examples:
-  cd ~/myproject && git chat                    # chat about current repo
-  git chat ~/Projects/myproject                 # specific repo
-  git chat serve --repo ~/r1 --repo ~/r2       # multi-repo server`)
+	fmt.Fprint(os.Stderr, renderUsage())
 }
 
 func fail(err error) {
-	fmt.Fprintf(os.Stderr, "git-chat: %v\n", err)
+	fmt.Fprint(os.Stderr, renderFatal(err))
 	os.Exit(1)
 }
