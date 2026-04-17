@@ -22,23 +22,7 @@ func envOr(name, def string) string {
 // buildLLM constructs the right LLM adapter based on --llm-backend.
 // Applies default model names per-backend if the user didn't specify one.
 func buildLLM(backend, baseURL, apiKey string, model *string) (llm.LLM, error) {
-	switch backend {
-	case "openai", "":
-		if *model == "" {
-			*model = "gemma-4-e4b-it"
-		}
-		return llm.NewOpenAI(baseURL, apiKey), nil
-	case "anthropic":
-		if apiKey == "" {
-			return nil, fmt.Errorf("--llm-api-key (or $LLM_API_KEY) is required for the anthropic backend")
-		}
-		if *model == "" {
-			*model = "claude-sonnet-4-6"
-		}
-		return llm.NewAnthropic(apiKey), nil
-	default:
-		return nil, fmt.Errorf("unknown --llm-backend %q (expected 'openai' or 'anthropic')", backend)
-	}
+	return llm.Build(backend, baseURL, apiKey, model)
 }
 
 // openDB resolves the SQLite path (explicit override or XDG default) and

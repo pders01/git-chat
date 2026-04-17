@@ -28,6 +28,14 @@ func RegisterDefaults(r *Registry) {
 	r.Register("GITCHAT_SESSION_TTL", "168h", "Browser session TTL (Go duration string)", "session")
 	r.Register("GITCHAT_DEFAULT_SESSION_LIMIT", "100", "Default number of sessions returned by list", "session")
 
+	// ── llm ──────────────────────────────────────────────────────
+	r.Register("LLM_BACKEND", "openai", "LLM backend: 'openai' or 'anthropic'", "llm")
+	r.Register("LLM_BASE_URL", "http://localhost:1234/v1", "OpenAI-compatible base URL (ignored for anthropic)", "llm")
+	r.Register("LLM_MODEL", "", "Model name (empty = backend default)", "llm")
+	r.Register("LLM_API_KEY", "", "API key (required for anthropic)", "llm")
+	r.Register("LLM_TEMPERATURE", "", "Sampling temperature (empty = use startup flag, 0 = deterministic)", "llm")
+	r.Register("LLM_MAX_TOKENS", "", "Max tokens per response (empty = use startup flag, 0 = provider default)", "llm")
+
 	// ── webhooks ──────────────────────────────────────────────────
 	r.Register("GITCHAT_WEBHOOK_URL", "", "Slack/Discord incoming webhook URL (empty = disabled)", "webhook")
 }
