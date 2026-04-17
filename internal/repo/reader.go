@@ -33,6 +33,20 @@ var (
 	churnTimeWindowDays   = envIntReader("GITCHAT_CHURN_WINDOW_DAYS", 90)
 )
 
+// errPathEscape is returned when a caller-supplied path would escape the
+// repository root after cleaning.
+var errPathEscape = errors.New("path escapes repository boundary")
+
+// safePath validates that a relative path does not escape the repo root.
+// Returns the cleaned path or an error.
+func safePath(p string) (string, error) {
+	clean := filepath.Clean(p)
+	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", errPathEscape
+	}
+	return clean, nil
+}
+
 // ListBranches returns local branches sorted by committer time, newest first.
 func (e *Entry) ListBranches(ctx context.Context) ([]*gitchatv1.Branch, error) {
 	e.mu.Lock()
@@ -1264,15 +1278,19 @@ func mapStatusCode(c git.StatusCode) string {
 // GetWorkingTreeDiff returns a unified diff for a single file between
 // its HEAD version and its current working tree content.
 func (e *Entry) GetWorkingTreeDiff(path string) (string, bool, error) {
+	clean, err := safePath(path)
+	if err != nil {
+		return "", false, err
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	headCommit, _, err := e.resolveCommit("")
 	if err != nil {
 		return "", false, err
 	}
-	headContent, _ := fileContent(headCommit, path)
+	headContent, _ := fileContent(headCommit, clean)
 
-	diskPath := filepath.Join(e.Path, path)
+	diskPath := filepath.Join(e.Path, clean)
 	diskBytes, err := os.ReadFile(diskPath)
 	if err != nil {
 		if os.IsNotExist(err) {
