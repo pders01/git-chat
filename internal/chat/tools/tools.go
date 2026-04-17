@@ -17,12 +17,22 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 	"github.com/pders01/git-chat/internal/repo"
 )
+
+// safePath validates that a relative path does not escape the repo root.
+func safePath(p string) (string, error) {
+	clean := filepath.Clean(p)
+	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", errors.New("path must be relative to repository root")
+	}
+	return clean, nil
+}
 
 // ErrUnknownTool is returned when the model emits a tool_use for a
 // name that is not in the registry. The service surfaces this as a
@@ -383,7 +393,11 @@ func handleSearchCode(ctx context.Context, entry *repo.Entry, raw json.RawMessag
 	cli = append(cli, "--", args.Query)
 	scope := "."
 	if args.Path != "" {
-		scope = args.Path
+		clean, err := safePath(args.Path)
+		if err != nil {
+			return "", fmt.Errorf("search_code: %w", err)
+		}
+		scope = clean
 	}
 	cli = append(cli, scope)
 
@@ -473,6 +487,10 @@ func handleOutline(ctx context.Context, entry *repo.Entry, raw json.RawMessage) 
 	if args.Path == "" {
 		return "", errors.New("outline: path is required")
 	}
+	clean, err := safePath(args.Path)
+	if err != nil {
+		return "", fmt.Errorf("outline: %w", err)
+	}
 	if _, err := exec.LookPath("ctags"); err != nil {
 		return "", errors.New("outline: ctags not installed (install universal-ctags)")
 	}
@@ -484,7 +502,7 @@ func handleOutline(ctx context.Context, entry *repo.Entry, raw json.RawMessage) 
 		"-R",
 		"--languages=Go,TypeScript,JavaScript,Python,Rust,C,C++,Java,Ruby",
 		"-f", "-",
-		args.Path,
+		clean,
 	}
 	cmd := exec.CommandContext(ctx, "ctags", cli...)
 	cmd.Dir = entry.Path
