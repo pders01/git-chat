@@ -610,6 +610,11 @@ func (s *Service) StreamMessage(
 	toolOrdinal := 0
 	roundMsgs := append([]llm.Message(nil), msgs...)
 	for round := 0; round < toolLoopMax; round++ {
+		// Bail early if the client disconnected.
+		if ctx.Err() != nil {
+			llmErr = "client disconnected"
+			break
+		}
 		slog.Debug("agentic round starting", "round", round, "msgs", len(roundMsgs))
 		llmChunks, err := adapter.Stream(ctx, llm.Request{
 			Model:       model,
@@ -655,15 +660,22 @@ func (s *Service) StreamMessage(
 					return err
 				}
 			case llm.ChunkDone:
-				finalIn = c.TokenCountIn
-				finalOut = c.TokenCountOut
+				finalIn += c.TokenCountIn
+				finalOut += c.TokenCountOut
 				llmErr = c.Error
 			}
 		}
 		slog.Debug("agentic round finished", "round", round,
 			"text_bytes", roundText.Len(), "calls", len(roundCalls),
+			"tokens_in", finalIn, "tokens_out", finalOut,
 			"llm_err", llmErr)
 		if llmErr != "" || len(roundCalls) == 0 || s.Tools == nil {
+			break
+		}
+		// Cap check before executing tools — avoids wasted work on
+		// the final round when we'd just discard the results.
+		if round == toolLoopMax-1 {
+			llmErr = fmt.Sprintf("tool loop cap reached (%d rounds)", toolLoopMax)
 			break
 		}
 		// Replay this round's assistant output into roundMsgs so the
@@ -676,7 +688,16 @@ func (s *Service) StreamMessage(
 		// Execute each tool and forward the result both to the client
 		// (for immediate UI rendering) and back into the prompt.
 		for _, tc := range roundCalls {
-			output, execErr := s.Tools.Execute(ctx, repoEntry, tc.Name, tc.Args)
+			// Check for client disconnect between tool executions.
+			if ctx.Err() != nil {
+				llmErr = "client disconnected"
+				break
+			}
+			// Per-tool timeout prevents a single slow tool from
+			// blocking the entire turn.
+			toolCtx, toolCancel := context.WithTimeout(ctx, 30*time.Second)
+			output, execErr := s.Tools.Execute(toolCtx, repoEntry, tc.Name, tc.Args)
+			toolCancel()
 			isErr := false
 			if execErr != nil {
 				output = execErr.Error()
@@ -707,11 +728,6 @@ func (s *Service) StreamMessage(
 				ToolUseID: tc.ID,
 				Content:   output,
 			})
-		}
-		if round == toolLoopMax-1 {
-			// Surface the cap on the next Done chunk so the UI can
-			// tell the user why the assistant stopped short.
-			llmErr = fmt.Sprintf("tool loop cap reached (%d rounds)", toolLoopMax)
 		}
 	}
 
