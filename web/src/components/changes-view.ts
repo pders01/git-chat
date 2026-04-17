@@ -258,7 +258,7 @@ export class GcChangesView extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 100%;
+      flex: 1;
       font-style: italic;
       opacity: 0.4;
     }
