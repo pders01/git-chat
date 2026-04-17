@@ -36,6 +36,7 @@ type Entry struct {
 	Description string
 	Group       string // "llm", "chat", "repo", "session"
 	Secret      bool   // true for API keys / tokens — encrypted at rest, masked in API
+	Restricted  bool   // true = only "local" principal may set via API
 }
 
 // New creates a Registry backed by the given ConfigStore.
@@ -66,12 +67,24 @@ func (r *Registry) Register(key, defaultVal, desc, group string) {
 }
 
 // RegisterSecret is like Register but marks the entry as a secret.
-// Secret values are encrypted at rest and masked when returned via All().
+// Secret values are encrypted at rest, masked when returned via All(),
+// and restricted to the "local" principal for API updates.
 func (r *Registry) RegisterSecret(key, defaultVal, desc, group string) {
-	r.register(key, defaultVal, desc, group, true)
+	r.registerFull(key, defaultVal, desc, group, true, true)
+}
+
+// RegisterRestricted is like Register but restricts API updates to the
+// "local" principal. Use for keys that affect security-sensitive
+// behaviour (e.g. LLM base URL, webhook URL).
+func (r *Registry) RegisterRestricted(key, defaultVal, desc, group string) {
+	r.registerFull(key, defaultVal, desc, group, false, true)
 }
 
 func (r *Registry) register(key, defaultVal, desc, group string, secret bool) {
+	r.registerFull(key, defaultVal, desc, group, secret, false)
+}
+
+func (r *Registry) registerFull(key, defaultVal, desc, group string, secret, restricted bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.byKey[key]; ok {
@@ -83,9 +96,20 @@ func (r *Registry) register(key, defaultVal, desc, group string, secret bool) {
 		Description: desc,
 		Group:       group,
 		Secret:      secret,
+		Restricted:  restricted,
 	}
 	r.entries = append(r.entries, e)
 	r.byKey[key] = &r.entries[len(r.entries)-1]
+}
+
+// IsRestricted reports whether a key is marked as restricted (admin-only).
+func (r *Registry) IsRestricted(key string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if e, ok := r.byKey[key]; ok {
+		return e.Restricted
+	}
+	return false
 }
 
 // Get resolves a config value: DB override → env var → default.

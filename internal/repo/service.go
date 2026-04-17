@@ -3,10 +3,12 @@ package repo
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"connectrpc.com/connect"
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 	"github.com/pders01/git-chat/gen/go/gitchat/v1/gitchatv1connect"
+	"github.com/pders01/git-chat/internal/auth"
 	"github.com/pders01/git-chat/internal/config"
 )
 
@@ -244,6 +246,15 @@ func (s *Service) UpdateConfig(
 ) (*connect.Response[gitchatv1.UpdateConfigResponse], error) {
 	if req.Msg.Key == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("key is required"))
+	}
+	// Restricted keys (API keys, base URLs, webhooks) can only be
+	// changed by the local principal to prevent multi-user escalation.
+	if s.Config.IsRestricted(req.Msg.Key) {
+		principal, _, _ := auth.PrincipalFromContext(ctx)
+		if principal != "local" {
+			return nil, connect.NewError(connect.CodePermissionDenied,
+				fmt.Errorf("key %q can only be changed by the server operator", req.Msg.Key))
+		}
 	}
 	if err := s.Config.Set(ctx, req.Msg.Key, req.Msg.Value); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)

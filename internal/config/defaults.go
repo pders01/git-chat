@@ -30,12 +30,12 @@ func RegisterDefaults(r *Registry) {
 
 	// ── llm ──────────────────────────────────────────────────────
 	r.Register("LLM_BACKEND", "openai", "LLM backend: 'openai' or 'anthropic'", "llm")
-	r.Register("LLM_BASE_URL", "http://localhost:1234/v1", "OpenAI-compatible base URL (ignored for anthropic)", "llm")
+	r.RegisterRestricted("LLM_BASE_URL", "http://localhost:1234/v1", "OpenAI-compatible base URL (ignored for anthropic)", "llm")
 	r.Register("LLM_MODEL", "", "Model name (empty = backend default)", "llm")
 	r.RegisterSecret("LLM_API_KEY", "", "API key (required for anthropic)", "llm")
 	r.Register("LLM_TEMPERATURE", "", "Sampling temperature (empty = use startup flag, 0 = deterministic)", "llm")
 	r.Register("LLM_MAX_TOKENS", "", "Max tokens per response (empty = use startup flag, 0 = provider default)", "llm")
 
 	// ── webhooks ──────────────────────────────────────────────────
-	r.Register("GITCHAT_WEBHOOK_URL", "", "Slack/Discord incoming webhook URL (empty = disabled)", "webhook")
+	r.RegisterRestricted("GITCHAT_WEBHOOK_URL", "", "Slack/Discord incoming webhook URL (empty = disabled)", "webhook")
 }
