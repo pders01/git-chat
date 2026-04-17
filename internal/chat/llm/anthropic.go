@@ -74,6 +74,16 @@ func (a *Anthropic) Stream(ctx context.Context, req Request) (<-chan Chunk, erro
 		maxTokens = 4096
 	}
 
+	// Cache-control the first system block (base rules + repo layout
+	// + overview doc). Everything upstream of and including the
+	// breakpoint is cached for 5 minutes, so repeated turns against
+	// the same repo skip re-billing that prefix. The second system
+	// block (HEAD, recent commits, @-mentions) intentionally gets no
+	// breakpoint because it changes across turns.
+	if len(systemBlocks) > 0 {
+		systemBlocks[0].CacheControl = anthropic.CacheControlEphemeralParam{}
+	}
+
 	params := anthropic.MessageNewParams{
 		Model:     req.Model,
 		Messages:  msgs,
@@ -242,9 +252,14 @@ func buildAssistantBlocks(m Message) []anthropic.ContentBlockParamUnion {
 // anthropic.ToolUnionParam entries. The input_schema is a draft-2020-12
 // JSON Schema; we unmarshal it into a generic map so the SDK can
 // marshal it back out verbatim against the wire format.
+//
+// The last tool's CacheControl is set to ephemeral: that pins the
+// whole tools array into the cached prefix since the catalog is
+// stable across turns. Anthropic charges tool specs as input tokens
+// per request — cache hit makes it a one-time cost per session.
 func buildAnthropicTools(specs []ToolSpec) []anthropic.ToolUnionParam {
 	out := make([]anthropic.ToolUnionParam, 0, len(specs))
-	for _, s := range specs {
+	for i, s := range specs {
 		var schema map[string]any
 		if len(s.InputSchema) > 0 {
 			_ = json.Unmarshal(s.InputSchema, &schema)
@@ -270,6 +285,9 @@ func buildAnthropicTools(specs []ToolSpec) []anthropic.ToolUnionParam {
 				Properties: properties,
 				Required:   required,
 			},
+		}
+		if i == len(specs)-1 {
+			tool.CacheControl = anthropic.CacheControlEphemeralParam{}
 		}
 		out = append(out, anthropic.ToolUnionParam{OfTool: &tool})
 	}

@@ -10,10 +10,13 @@
 package tools
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os/exec"
 	"sort"
 	"strings"
 
@@ -51,13 +54,16 @@ type Registry struct {
 }
 
 // Default returns the production registry: read_file, list_tree,
-// search_paths, get_diff. Callers should not mutate the returned
-// registry — it is safe to share across goroutines.
+// search_paths, search_code, outline, get_diff. Callers should not
+// mutate the returned registry — it is safe to share across
+// goroutines.
 func Default() *Registry {
 	r := &Registry{handlers: map[string]Handler{}}
 	r.Register(readFileSpec, handleReadFile)
 	r.Register(listTreeSpec, handleListTree)
 	r.Register(searchPathsSpec, handleSearchPaths)
+	r.Register(searchCodeSpec, handleSearchCode)
+	r.Register(outlineSpec, handleOutline)
 	r.Register(getDiffSpec, handleGetDiff)
 	return r
 }
@@ -95,6 +101,10 @@ const (
 	readFileMaxBytes   = 64 * 1024
 	listTreeMaxEntries = 200
 	searchPathsMaxHits = 50
+	searchCodeMaxHits  = 80
+	searchCodeMaxBytes = 32 * 1024
+	outlineMaxEntries  = 200
+	outlineMaxBytes    = 32 * 1024
 	getDiffMaxBytes    = 32 * 1024
 )
 
@@ -305,6 +315,262 @@ func handleGetDiff(ctx context.Context, entry *repo.Entry, raw json.RawMessage) 
 		return diff[:getDiffMaxBytes] + "\n… (diff truncated — narrow by path or range)", nil
 	}
 	return diff, nil
+}
+
+// ── search_code ─────────────────────────────────────────────────────
+
+var searchCodeSpec = Spec{
+	Name: "search_code",
+	Description: "Search file CONTENTS across the repository using " +
+		"ripgrep with PCRE2. Query is always a regex — metacharacters " +
+		"(. * + ? | ( ) [ ] { }) have their usual meaning. To match a " +
+		"literal string that contains those characters, either escape " +
+		"them with backslash or pass literal=true. Scope with path " +
+		"(directory prefix) or glob (e.g. '**/*.go', '!**/*_test.go'). " +
+		"Returns up to 80 matches as path:line:text; narrow the " +
+		"query if results truncate.",
+	InputSchema: json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"query":          {"type": "string", "description": "PCRE2 regex pattern. Metacharacters are active unless escaped or literal=true."},
+			"path":           {"type": "string", "description": "Optional directory prefix to scope the search."},
+			"glob":           {"type": "string", "description": "Optional glob filter, e.g. '**/*.go' or '!**/*_test.go'."},
+			"literal":        {"type": "boolean", "description": "Treat query as a literal fixed string (disables regex). Default false."},
+			"case_sensitive": {"type": "boolean", "description": "Match case. Default false (smart-case)."}
+		},
+		"required": ["query"]
+	}`),
+}
+
+type searchCodeArgs struct {
+	Query         string `json:"query"`
+	Path          string `json:"path"`
+	Glob          string `json:"glob"`
+	Literal       bool   `json:"literal"`
+	CaseSensitive bool   `json:"case_sensitive"`
+}
+
+func handleSearchCode(ctx context.Context, entry *repo.Entry, raw json.RawMessage) (string, error) {
+	var args searchCodeArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return "", fmt.Errorf("search_code: %w", err)
+	}
+	if args.Query == "" {
+		return "", errors.New("search_code: query is required")
+	}
+	if _, err := exec.LookPath("rg"); err != nil {
+		return "", errors.New("search_code: ripgrep (rg) not installed on this host")
+	}
+	cli := []string{
+		"--no-heading",
+		"--line-number",
+		"--color=never",
+		"--max-columns=240",
+		"--max-count=" + fmt.Sprintf("%d", searchCodeMaxHits),
+		"--pcre2",
+	}
+	if args.Literal {
+		cli = append(cli, "--fixed-strings")
+	}
+	if args.CaseSensitive {
+		cli = append(cli, "--case-sensitive")
+	} else {
+		cli = append(cli, "--smart-case")
+	}
+	if args.Glob != "" {
+		cli = append(cli, "--glob", args.Glob)
+	}
+	cli = append(cli, "--", args.Query)
+	scope := "."
+	if args.Path != "" {
+		scope = args.Path
+	}
+	cli = append(cli, scope)
+
+	cmd := exec.CommandContext(ctx, "rg", cli...)
+	cmd.Dir = entry.Path
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	// rg exits 1 when no matches, 2+ on error. Treat 1 as empty
+	// result rather than a failure.
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return fmt.Sprintf("(no matches for %q)", args.Query), nil
+		}
+		return "", fmt.Errorf("search_code: rg failed: %s", strings.TrimSpace(stderr.String()))
+	}
+
+	// Cap total output bytes so one chatty file doesn't drown the
+	// prompt budget. Count lines for the trailing summary too.
+	var out strings.Builder
+	lines := 0
+	truncatedBytes := false
+	sc := bufio.NewScanner(&stdout)
+	sc.Buffer(make([]byte, 1024*1024), 2*1024*1024)
+	for sc.Scan() {
+		line := sc.Text()
+		if out.Len()+len(line)+1 > searchCodeMaxBytes {
+			truncatedBytes = true
+			break
+		}
+		out.WriteString(line)
+		out.WriteByte('\n')
+		lines++
+	}
+	if lines == 0 {
+		return fmt.Sprintf("(no matches for %q)", args.Query), nil
+	}
+	if truncatedBytes {
+		fmt.Fprintf(&out, "… (output capped at %d bytes — narrow the search)\n", searchCodeMaxBytes)
+	} else if lines >= searchCodeMaxHits {
+		fmt.Fprintf(&out, "… (stopped at %d matches — narrow the search)\n", searchCodeMaxHits)
+	}
+	return out.String(), nil
+}
+
+// ── outline ─────────────────────────────────────────────────────────
+
+var outlineSpec = Spec{
+	Name: "outline",
+	Description: "List the top-level symbols (functions, types, " +
+		"classes, interfaces) in a file or directory using " +
+		"universal-ctags. Much cheaper than read_file when you only " +
+		"need to orient yourself. Accepts either a single file path " +
+		"or a directory; directories recurse. Returns up to 200 " +
+		"entries as `line  kind  scope.name`.",
+	InputSchema: json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"path": {"type": "string", "description": "File or directory, repo-relative. Dirs recurse."}
+		},
+		"required": ["path"]
+	}`),
+}
+
+type outlineArgs struct {
+	Path string `json:"path"`
+}
+
+// ctagsTag mirrors the JSON lines universal-ctags produces with
+// --output-format=json. Only the fields we render are parsed.
+type ctagsTag struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Line      int    `json:"line"`
+	Kind      string `json:"kind"`
+	Scope     string `json:"scope"`
+	ScopeKind string `json:"scopeKind"`
+}
+
+func handleOutline(ctx context.Context, entry *repo.Entry, raw json.RawMessage) (string, error) {
+	var args outlineArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return "", fmt.Errorf("outline: %w", err)
+	}
+	if args.Path == "" {
+		return "", errors.New("outline: path is required")
+	}
+	if _, err := exec.LookPath("ctags"); err != nil {
+		return "", errors.New("outline: ctags not installed (install universal-ctags)")
+	}
+	cli := []string{
+		"--output-format=json",
+		"--fields=+nKs",
+		"--extras=",
+		"--sort=no",
+		"-R",
+		"--languages=Go,TypeScript,JavaScript,Python,Rust,C,C++,Java,Ruby",
+		"-f", "-",
+		args.Path,
+	}
+	cmd := exec.CommandContext(ctx, "ctags", cli...)
+	cmd.Dir = entry.Path
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("outline: ctags failed: %s", strings.TrimSpace(stderr.String()))
+	}
+
+	// Bucket tags by file so long directory outlines stay readable.
+	type entryLine struct {
+		line  int
+		kind  string
+		label string
+	}
+	byFile := map[string][]entryLine{}
+	fileOrder := []string{}
+	total := 0
+	truncated := false
+	sc := bufio.NewScanner(&stdout)
+	sc.Buffer(make([]byte, 1024*1024), 2*1024*1024)
+	for sc.Scan() {
+		if total >= outlineMaxEntries {
+			truncated = true
+			break
+		}
+		line := sc.Bytes()
+		if len(line) == 0 || line[0] != '{' {
+			continue
+		}
+		var t ctagsTag
+		if err := json.Unmarshal(line, &t); err != nil {
+			continue
+		}
+		if !isInterestingKind(t.Kind) {
+			continue
+		}
+		label := t.Name
+		if t.Scope != "" {
+			label = t.Scope + "." + t.Name
+		}
+		if _, ok := byFile[t.Path]; !ok {
+			fileOrder = append(fileOrder, t.Path)
+		}
+		byFile[t.Path] = append(byFile[t.Path], entryLine{
+			line: t.Line, kind: t.Kind, label: label,
+		})
+		total++
+	}
+	if total == 0 {
+		return fmt.Sprintf("(no symbols found in %q)", args.Path), nil
+	}
+
+	var out strings.Builder
+	for _, f := range fileOrder {
+		if out.Len() > outlineMaxBytes {
+			truncated = true
+			break
+		}
+		fmt.Fprintf(&out, "── %s\n", f)
+		rows := byFile[f]
+		sort.Slice(rows, func(i, j int) bool { return rows[i].line < rows[j].line })
+		for _, r := range rows {
+			fmt.Fprintf(&out, "  %4d  %-10s  %s\n", r.line, r.kind, r.label)
+		}
+	}
+	if truncated {
+		fmt.Fprintf(&out, "… (output capped — narrow the path)\n")
+	}
+	return out.String(), nil
+}
+
+// isInterestingKind drops noisy ctags kinds (local vars, parameters,
+// struct fields, imports) that blow up large files without adding
+// navigational value. Keep funcs, methods, types, structs, classes,
+// interfaces, enums, constants, global variables.
+func isInterestingKind(k string) bool {
+	switch k {
+	case "function", "func", "method", "procedure",
+		"type", "struct", "interface", "class", "enum", "enumerator",
+		"constant", "const", "variable", "var",
+		"module", "namespace", "trait":
+		return true
+	}
+	return false
 }
 
 func firstNonEmpty(a, b string) string {

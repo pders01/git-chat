@@ -109,6 +109,22 @@ message ChatMessage {
   // render thumbnails inline without a second round-trip; day-one
   // upload caps keep the payload small.
   repeated Attachment attachments = 9;
+  // Tool invocations the assistant made during this turn, in order.
+  // Only populated on assistant turns. Replayed into the LLM prompt
+  // on follow-up turns so the model sees its own prior tool context.
+  repeated ToolEvent tool_events = 10;
+}
+
+// ToolEvent is a persisted record of one tool_call + tool_result pair
+// from an agentic turn. result_content is empty when the stream died
+// before the result came back; is_error marks handler failures.
+message ToolEvent {
+  string tool_call_id = 1;
+  string name = 2;
+  string args_json = 3;
+  string result_content = 4;
+  bool   is_error = 5;
+  int32  ordinal = 6;
 }
 
 // Attachment carries a user-uploaded file — an image for multimodal

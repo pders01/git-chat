@@ -219,8 +219,7 @@ func TestBaselineContextIncludesTreeAndOverview(t *testing.T) {
 	var sys string
 	for _, m := range rig.LLM.LastRequest.Messages {
 		if m.Role == llm.RoleSystem {
-			sys = m.Content
-			break
+			sys += m.Content + "\n"
 		}
 	}
 	if sys == "" {
@@ -266,8 +265,7 @@ func TestAtFileInjectionShowsContent(t *testing.T) {
 	var sys string
 	for _, m := range rig.LLM.LastRequest.Messages {
 		if m.Role == llm.RoleSystem {
-			sys = m.Content
-			break
+			sys += m.Content + "\n"
 		}
 	}
 	if !strings.Contains(sys, "Files you were shown") {
@@ -299,8 +297,7 @@ func TestAtFileInjectionFuzzyHint(t *testing.T) {
 	var sys string
 	for _, m := range rig.LLM.LastRequest.Messages {
 		if m.Role == llm.RoleSystem {
-			sys = m.Content
-			break
+			sys += m.Content + "\n"
 		}
 	}
 	if !strings.Contains(sys, "NOT FOUND") {
@@ -336,8 +333,7 @@ func TestAtFileInjectionNegativeResult(t *testing.T) {
 	var sys string
 	for _, m := range rig.LLM.LastRequest.Messages {
 		if m.Role == llm.RoleSystem {
-			sys = m.Content
-			break
+			sys += m.Content + "\n"
 		}
 	}
 	if !strings.Contains(sys, "Files you were shown") {

@@ -55,6 +55,21 @@ type AttachmentRow struct {
 	CreatedAt int64
 }
 
+// ToolEventRow is one persisted tool_call + tool_result pair bound to
+// an assistant message. Ordinal preserves emission order when the
+// assistant issued multiple calls in a single turn.
+type ToolEventRow struct {
+	ID            string
+	MessageID     string
+	ToolCallID    string
+	Name          string
+	ArgsJSON      string
+	ResultContent string
+	IsError       bool
+	Ordinal       int
+	CreatedAt     int64
+}
+
 // CreateSession inserts a new chat session and returns it.
 func (d *DB) CreateSession(ctx context.Context, id, principal, repoID, title string) (*SessionRow, error) {
 	now := time.Now().Unix()
@@ -331,6 +346,56 @@ func (d *DB) ListAttachmentsForSession(ctx context.Context, sessionID string) (m
 			return nil, err
 		}
 		out[a.MessageID] = append(out[a.MessageID], a)
+	}
+	return out, rows.Err()
+}
+
+// CreateToolEvent inserts a persisted tool_call+result pair. Caller
+// assigns ID, MessageID, Ordinal.
+func (d *DB) CreateToolEvent(ctx context.Context, e ToolEventRow) error {
+	if e.CreatedAt == 0 {
+		e.CreatedAt = time.Now().Unix()
+	}
+	isErr := 0
+	if e.IsError {
+		isErr = 1
+	}
+	_, err := d.ExecContext(ctx, `
+        INSERT INTO chat_tool_event
+            (id, message_id, tool_call_id, name, args_json,
+             result_content, is_error, ordinal, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.ID, e.MessageID, e.ToolCallID, e.Name, e.ArgsJSON,
+		e.ResultContent, isErr, e.Ordinal, e.CreatedAt)
+	return err
+}
+
+// ListToolEventsForSession returns every persisted tool event in a
+// session keyed by message ID. Lets GetSession and the agentic loop
+// hydrate assistant turns without N+1 queries.
+func (d *DB) ListToolEventsForSession(ctx context.Context, sessionID string) (map[string][]*ToolEventRow, error) {
+	rows, err := d.QueryContext(ctx, `
+        SELECT e.id, e.message_id, e.tool_call_id, e.name, e.args_json,
+               e.result_content, e.is_error, e.ordinal, e.created_at
+        FROM chat_tool_event e
+        JOIN chat_message m ON m.id = e.message_id
+        WHERE m.session_id = ?
+        ORDER BY e.message_id, e.ordinal ASC`,
+		sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]*ToolEventRow{}
+	for rows.Next() {
+		e := &ToolEventRow{}
+		var isErr int
+		if err := rows.Scan(&e.ID, &e.MessageID, &e.ToolCallID, &e.Name, &e.ArgsJSON,
+			&e.ResultContent, &isErr, &e.Ordinal, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		e.IsError = isErr != 0
+		out[e.MessageID] = append(out[e.MessageID], e)
 	}
 	return out, rows.Err()
 }

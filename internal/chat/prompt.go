@@ -110,32 +110,45 @@ func (s *Service) buildPrompt(
 	userText string,
 	currentAttachments []llm.Attachment,
 	historyAttachments map[string][]*storage.AttachmentRow,
+	historyToolEvents map[string][]*storage.ToolEventRow,
 ) []llm.Message {
-	var sb strings.Builder
-	sb.WriteString(s.baseSystemPrompt(repoEntry))
-
+	// Prompt is split into two system messages so providers that
+	// support explicit caching (Anthropic) can pin the stable prefix.
+	// Block A: base rules + repo layout + overview doc — stable across
+	// turns until HEAD or README change, which is still many turns for
+	// most sessions. Block B: HEAD, recent commits, @-mention
+	// resolutions — changes every commit or every turn. Providers
+	// without explicit cache controls also benefit because most
+	// servers hash-match a stable prefix automatically.
+	var stable strings.Builder
+	stable.WriteString(s.baseSystemPromptStable(repoEntry))
 	if tree := baselineTree(repoEntry); tree != "" {
-		sb.WriteString("\n\n## Repository layout (2 levels)\n\n")
-		sb.WriteString(tree)
+		stable.WriteString("\n\n## Repository layout (2 levels)\n\n")
+		stable.WriteString(tree)
 	}
 	if overview, label := overviewDoc(repoEntry); overview != "" {
-		fmt.Fprintf(&sb, "\n\n## Project overview (from `%s`)\n\n```\n%s\n```", label, overview)
+		fmt.Fprintf(&stable, "\n\n## Project overview (from `%s`)\n\n```\n%s\n```", label, overview)
 	}
+
+	var volatile strings.Builder
+	fmt.Fprintf(&volatile, "## Current repo state\n\n- default branch: %s\n- HEAD: %s\n",
+		repoEntry.DefaultBranch, repoEntry.HeadCommit())
 	if recentLog := recentCommits(ctx, repoEntry); recentLog != "" {
-		sb.WriteString("\n\n## Recent commits\n\n")
-		sb.WriteString(recentLog)
+		volatile.WriteString("\n## Recent commits\n\n")
+		volatile.WriteString(recentLog)
 	}
 	if inj := s.resolveMentions(ctx, repoEntry, userText); inj != "" {
-		sb.WriteString("\n\n## Files you were shown\n\n")
-		sb.WriteString(inj)
+		volatile.WriteString("\n\n## Files you were shown\n\n")
+		volatile.WriteString(inj)
 	}
 
 	// Per-turn memoization so repeated references to the same (from,
 	// to, path) tuple in history hit go-git exactly once.
 	diffCache := map[string]string{}
 
-	msgs := make([]llm.Message, 0, len(sessionHistory)+2)
-	msgs = append(msgs, llm.Message{Role: llm.RoleSystem, Content: sb.String()})
+	msgs := make([]llm.Message, 0, len(sessionHistory)+3)
+	msgs = append(msgs, llm.Message{Role: llm.RoleSystem, Content: stable.String()})
+	msgs = append(msgs, llm.Message{Role: llm.RoleSystem, Content: volatile.String()})
 	for _, m := range sessionHistory {
 		content := m.Content
 		if m.Role == "assistant" && diffMarkerPattern.MatchString(content) {
@@ -154,11 +167,38 @@ func (s *Service) buildPrompt(
 				}
 			}
 		}
+		var toolCalls []llm.ToolCall
+		if m.Role == "assistant" {
+			if evs, ok := historyToolEvents[m.ID]; ok {
+				toolCalls = make([]llm.ToolCall, 0, len(evs))
+				for _, e := range evs {
+					toolCalls = append(toolCalls, llm.ToolCall{
+						ID:   e.ToolCallID,
+						Name: e.Name,
+						Args: []byte(e.ArgsJSON),
+					})
+				}
+			}
+		}
 		msgs = append(msgs, llm.Message{
 			Role:        llm.Role(m.Role),
 			Content:     content,
 			Attachments: atts,
+			ToolCalls:   toolCalls,
 		})
+		// After an assistant turn with persisted tool events, emit
+		// tool-role messages carrying each result so the model sees
+		// its own prior tool context on follow-up turns.
+		if m.Role == "assistant" && len(toolCalls) > 0 {
+			evs := historyToolEvents[m.ID]
+			for _, e := range evs {
+				msgs = append(msgs, llm.Message{
+					Role:      llm.RoleTool,
+					ToolUseID: e.ToolCallID,
+					Content:   e.ResultContent,
+				})
+			}
+		}
 	}
 	msgs = append(msgs, llm.Message{
 		Role:        llm.RoleUser,
@@ -234,9 +274,14 @@ func parseMarkerAttrs(attrs string) (from, to, path string) {
 	return
 }
 
-func (s *Service) baseSystemPrompt(r *repo.Entry) string {
+// baseSystemPromptStable returns the cache-friendly portion of the
+// system prompt: the rules, the repository name, but NOT HEAD or
+// recent-state facts. Volatile context (HEAD SHA, recent commits,
+// @-mentions) lives in a second system block so it can change per
+// turn without invalidating the cached prefix.
+func (s *Service) baseSystemPromptStable(r *repo.Entry) string {
 	return fmt.Sprintf(
-		`You are a concise, accurate assistant helping a developer reason about the git repository %q (default branch: %s, HEAD: %s).
+		`You are a concise, accurate assistant helping a developer reason about the git repository %q.
 
 Rules:
 - Prefer short, focused replies. No filler, no restating the question.
@@ -245,6 +290,8 @@ Rules:
 - If the user asks "what is this project" and you have not been shown an overview document, describe only what you can justify from the top-level contents listing. Do not extrapolate from the repository name.
 - When the user mentions a file with @, its resolution result appears in a "Files you were shown" block below. Each entry is either the file's content OR a "NOT FOUND" line. If a path was NOT FOUND, tell the user explicitly that the path does not exist and ask them to double-check — do NOT ask them to re-send the same @-mention.
 - Never invent file paths. Only reference paths you can see in the top-level listing or that have appeared in the conversation already.
+- NEVER cite line numbers, function signatures, or quote code from files you have not actually read in this conversation (either via @-mention or via a tool call). If you have only seen a directory listing or a file name, say "I have not read that file yet" rather than fabricating contents.
+- When using tools, if a search returns no matches or only unrelated files, keep searching with different terms (related concepts, function names, constants, comments) before attempting to answer. Do NOT guess at implementation details. If after several searches you still cannot find what you need, tell the user what you tried and ask for a hint.
 
 ## Showing diffs
 
@@ -296,7 +343,7 @@ Here is the most recent commit:
 - Do NOT put anything else on the same line as the marker. Prose goes on the lines before or after it, never adjacent.
 - Do NOT invent file paths; use real paths from the repository listing.
 - Do NOT emit a diff marker for a diff the user has already seen. If earlier turns in this conversation already contain a fenced `+"`"+`diff`+"`"+` code block covering the same changes the user is asking about, just explain using that content — the user already has the diff on screen. Re-emitting would render a duplicate. You may emit a NEW marker only when the user is asking about different changes than what's already shown.`,
-		r.Label, r.DefaultBranch, r.HeadCommit(),
+		r.Label,
 	)
 }
 

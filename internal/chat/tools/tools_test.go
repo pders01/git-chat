@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -136,6 +137,104 @@ func TestGetDiff(t *testing.T) {
 	}
 	if !strings.Contains(out, "println(42)") {
 		t.Fatalf("expected diff body to contain println(42), got %q", out)
+	}
+}
+
+func TestSearchCodeBasic(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("rg not installed")
+	}
+	e := fixture(t)
+	r := Default()
+	// query uses only word chars; regex interp is inert here.
+	out, err := r.Execute(context.Background(), e, "search_code",
+		json.RawMessage(`{"query":"println"}`))
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(out, "src/main.go") {
+		t.Fatalf("expected src/main.go in output, got %q", out)
+	}
+}
+
+func TestSearchCodeRegex(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("rg not installed")
+	}
+	e := fixture(t)
+	r := Default()
+	out, err := r.Execute(context.Background(), e, "search_code",
+		json.RawMessage(`{"query":"func\\s+main"}`))
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(out, "src/main.go") {
+		t.Fatalf("expected src/main.go match, got %q", out)
+	}
+}
+
+func TestSearchCodeLiteralFlag(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("rg not installed")
+	}
+	e := fixture(t)
+	r := Default()
+	// regex metachars are inert when literal=true
+	out, err := r.Execute(context.Background(), e, "search_code",
+		json.RawMessage(`{"query":"println(42)","literal":true}`))
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(out, "src/main.go") {
+		t.Fatalf("expected literal match, got %q", out)
+	}
+}
+
+func TestSearchCodeNoMatch(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("rg not installed")
+	}
+	e := fixture(t)
+	r := Default()
+	out, err := r.Execute(context.Background(), e, "search_code",
+		json.RawMessage(`{"query":"nonexistent-xyz"}`))
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(out, "no matches") {
+		t.Fatalf("expected empty-result marker, got %q", out)
+	}
+}
+
+func TestOutlineGoFile(t *testing.T) {
+	if _, err := exec.LookPath("ctags"); err != nil {
+		t.Skip("ctags not installed")
+	}
+	e := fixture(t)
+	r := Default()
+	out, err := r.Execute(context.Background(), e, "outline",
+		json.RawMessage(`{"path":"src/main.go"}`))
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(out, "main") || !strings.Contains(out, "src/main.go") {
+		t.Fatalf("expected main func + file header, got %q", out)
+	}
+}
+
+func TestOutlineMissing(t *testing.T) {
+	if _, err := exec.LookPath("ctags"); err != nil {
+		t.Skip("ctags not installed")
+	}
+	e := fixture(t)
+	r := Default()
+	out, err := r.Execute(context.Background(), e, "outline",
+		json.RawMessage(`{"path":"nope.go"}`))
+	if err != nil {
+		return // ctags itself errors; acceptable
+	}
+	if !strings.Contains(out, "no symbols") {
+		t.Fatalf("expected empty marker, got %q", out)
 	}
 }
 

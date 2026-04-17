@@ -118,9 +118,13 @@ func (s *Service) GetSession(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	toolEvents, err := s.DB.ListToolEventsForSession(ctx, sess.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
 	protoMsgs := make([]*gitchatv1.ChatMessage, 0, len(msgs))
 	for _, m := range msgs {
-		protoMsgs = append(protoMsgs, toMessage(m, attachments[m.ID]))
+		protoMsgs = append(protoMsgs, toMessage(m, attachments[m.ID], toolEvents[m.ID]))
 	}
 	return connect.NewResponse(&gitchatv1.GetSessionResponse{
 		Session:  toSession(sess),
@@ -481,7 +485,11 @@ func (s *Service) StreamMessage(
 		currentAttachments = stripImageAttachments(currentAttachments)
 		historyAttachments = stripImageHistory(historyAttachments)
 	}
-	msgs := s.buildPrompt(ctx, repoEntry, history, text, currentAttachments, historyAttachments)
+	historyToolEvents, err := s.DB.ListToolEventsForSession(ctx, sess.ID)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	msgs := s.buildPrompt(ctx, repoEntry, history, text, currentAttachments, historyAttachments, historyToolEvents)
 	var assistant strings.Builder
 	var finalIn, finalOut int
 	var llmErr string
@@ -507,6 +515,8 @@ func (s *Service) StreamMessage(
 	// prompt, and go again. The loop terminates when a round produces
 	// no tool_use (the model has answered), the adapter fails, or the
 	// hard round cap is hit.
+	var persistedEvents []storage.ToolEventRow
+	toolOrdinal := 0
 	roundMsgs := append([]llm.Message(nil), msgs...)
 	for round := 0; round < toolLoopMax; round++ {
 		slog.Debug("agentic round starting", "round", round, "msgs", len(roundMsgs))
@@ -592,6 +602,15 @@ func (s *Service) StreamMessage(
 			}); err != nil {
 				return err
 			}
+			persistedEvents = append(persistedEvents, storage.ToolEventRow{
+				ToolCallID:    tc.ID,
+				Name:          tc.Name,
+				ArgsJSON:      string(tc.Args),
+				ResultContent: output,
+				IsError:       isErr,
+				Ordinal:       toolOrdinal,
+			})
+			toolOrdinal++
 			roundMsgs = append(roundMsgs, llm.Message{
 				Role:      llm.RoleTool,
 				ToolUseID: tc.ID,
@@ -618,6 +637,16 @@ func (s *Service) StreamMessage(
 		TokenCountOut: finalOut,
 	}); err != nil {
 		return connect.NewError(connect.CodeInternal, err)
+	}
+	// Persist every tool call + result from the agentic loop. Errors
+	// are logged but don't fail the turn — tool history is useful for
+	// rehydration but not load-bearing for the answer itself.
+	for _, ev := range persistedEvents {
+		ev.ID = newID()
+		ev.MessageID = assistantID
+		if err := s.DB.CreateToolEvent(ctx, ev); err != nil {
+			slog.Warn("persist tool event failed", "err", err, "tool", ev.Name)
+		}
 	}
 	if err := s.DB.TouchSession(ctx, sess.ID); err != nil {
 		return connect.NewError(connect.CodeInternal, err)
@@ -1011,7 +1040,7 @@ func toSession(r *storage.SessionRow) *gitchatv1.ChatSession {
 	}
 }
 
-func toMessage(r *storage.MessageRow, atts []*storage.AttachmentRow) *gitchatv1.ChatMessage {
+func toMessage(r *storage.MessageRow, atts []*storage.AttachmentRow, events []*storage.ToolEventRow) *gitchatv1.ChatMessage {
 	out := &gitchatv1.ChatMessage{
 		Id:            r.ID,
 		SessionId:     r.SessionID,
@@ -1031,6 +1060,19 @@ func toMessage(r *storage.MessageRow, atts []*storage.AttachmentRow) *gitchatv1.
 				Filename: a.Filename,
 				Size:     a.Size,
 				Data:     a.Data,
+			})
+		}
+	}
+	if len(events) > 0 {
+		out.ToolEvents = make([]*gitchatv1.ToolEvent, 0, len(events))
+		for _, e := range events {
+			out.ToolEvents = append(out.ToolEvents, &gitchatv1.ToolEvent{
+				ToolCallId:    e.ToolCallID,
+				Name:          e.Name,
+				ArgsJson:      e.ArgsJSON,
+				ResultContent: e.ResultContent,
+				IsError:       e.IsError,
+				Ordinal:       int32(e.Ordinal),
 			})
 		}
 	}

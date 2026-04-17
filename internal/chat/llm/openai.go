@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -238,8 +239,15 @@ func nameLooksVisionCapable(model string) bool {
 // buffer per-index and emit one ChunkToolUse per tool once FinishReason
 // lands.
 func (o *OpenAI) Stream(ctx context.Context, req Request) (<-chan Chunk, error) {
-	msgs := make([]openai.ChatCompletionMessage, 0, len(req.Messages))
-	for _, m := range req.Messages {
+	// Collapse consecutive system messages into one: some
+	// OpenAI-compatible servers reject multiple system roles in a
+	// single conversation (llama.cpp, older vLLM). Preserves our
+	// stable-prefix-first ordering — server-side prefix cache
+	// kicks in just as well since the concatenated string remains
+	// identical across turns.
+	normalised := collapseSystemMessages(req.Messages)
+	msgs := make([]openai.ChatCompletionMessage, 0, len(normalised))
+	for _, m := range normalised {
 		msgs = append(msgs, buildOpenAIMessage(m))
 	}
 
@@ -392,8 +400,38 @@ func (o *OpenAI) Stream(ctx context.Context, req Request) (<-chan Chunk, error) 
 				errMsg = err.Error()
 			}
 		}
-		_ = reasoningBuf // reasoning streams live via ChunkReasoning above
-		_ = sawContent
+		// Hermes-style fallback: some OpenAI-compatible servers (notably
+		// LM Studio serving Qwen3.x) route the model's tool invocations
+		// into reasoning_content as <tool_call>…</tool_call> XML blocks
+		// instead of populating the structured tool_calls field, which
+		// breaks the agentic loop. If the stream produced no structured
+		// tool calls and no normal content, look for Hermes XML in the
+		// reasoning buffer and synthesise ChunkToolUse events so the
+		// service layer can still execute them. If no tool calls show
+		// up either, the reasoning text is the actual answer — surface
+		// it as tokens so the user sees something instead of an empty
+		// bubble at the end of the agentic loop.
+		if !sawContent && len(buffers) == 0 && reasoningBuf.Len() > 0 {
+			hermes := parseHermesToolCalls(reasoningBuf.String())
+			for _, tc := range hermes {
+				select {
+				case out <- tc:
+				case <-ctx.Done():
+					if errMsg == "" {
+						errMsg = ctx.Err().Error()
+					}
+				}
+			}
+			if len(hermes) == 0 {
+				select {
+				case out <- Chunk{Kind: ChunkToken, Token: reasoningBuf.String()}:
+				case <-ctx.Done():
+					if errMsg == "" {
+						errMsg = ctx.Err().Error()
+					}
+				}
+			}
+		}
 	done:
 		select {
 		case out <- Chunk{
@@ -407,6 +445,86 @@ func (o *OpenAI) Stream(ctx context.Context, req Request) (<-chan Chunk, error) 
 		}
 	}()
 	return out, nil
+}
+
+// hermesToolCallRE matches one <tool_call>…</tool_call> block. The
+// inner <function=NAME> tag names the tool; <parameter=KEY>VALUE</parameter>
+// pairs describe its args.
+var (
+	hermesToolCallRE   = regexp.MustCompile(`(?s)<tool_call>\s*(.*?)\s*</tool_call>`)
+	hermesFunctionRE   = regexp.MustCompile(`(?s)<function=([^>]+)>\s*(.*?)\s*</function>`)
+	hermesParameterRE  = regexp.MustCompile(`(?s)<parameter=([^>]+)>\s*(.*?)\s*</parameter>`)
+	hermesToolIDPrefix = "call_hermes_"
+)
+
+// parseHermesToolCalls extracts Hermes-style <tool_call> XML blocks
+// from a reasoning buffer and returns synthetic ChunkToolUse events.
+// Each block gets a generated id since Hermes XML never carries one.
+// Silently skips malformed blocks — better to lose a stray fragment
+// than to abort the whole round.
+func parseHermesToolCalls(raw string) []Chunk {
+	var out []Chunk
+	for i, block := range hermesToolCallRE.FindAllStringSubmatch(raw, -1) {
+		body := block[1]
+		fn := hermesFunctionRE.FindStringSubmatch(body)
+		if len(fn) != 3 {
+			continue
+		}
+		name := strings.TrimSpace(fn[1])
+		inner := fn[2]
+		args := map[string]any{}
+		for _, p := range hermesParameterRE.FindAllStringSubmatch(inner, -1) {
+			key := strings.TrimSpace(p[1])
+			val := strings.TrimSpace(p[2])
+			// Try to parse the value as JSON so bools/numbers survive
+			// round-tripping into the real tool spec; fall back to
+			// string on failure (handles raw paths, queries, etc.).
+			var parsed any
+			if err := json.Unmarshal([]byte(val), &parsed); err == nil {
+				args[key] = parsed
+			} else {
+				args[key] = val
+			}
+		}
+		argsJSON, err := json.Marshal(args)
+		if err != nil {
+			continue
+		}
+		out = append(out, Chunk{
+			Kind:      ChunkToolUse,
+			ToolUseID: fmt.Sprintf("%s%d", hermesToolIDPrefix, i),
+			ToolName:  name,
+			ToolArgs:  argsJSON,
+		})
+	}
+	return out
+}
+
+// collapseSystemMessages merges adjacent Role=system entries into a
+// single system message separated by a blank line. Non-system messages
+// and gaps reset the run.
+func collapseSystemMessages(in []Message) []Message {
+	out := make([]Message, 0, len(in))
+	var buf strings.Builder
+	flush := func() {
+		if buf.Len() > 0 {
+			out = append(out, Message{Role: RoleSystem, Content: buf.String()})
+			buf.Reset()
+		}
+	}
+	for _, m := range in {
+		if m.Role == RoleSystem {
+			if buf.Len() > 0 {
+				buf.WriteString("\n\n")
+			}
+			buf.WriteString(m.Content)
+			continue
+		}
+		flush()
+		out = append(out, m)
+	}
+	flush()
+	return out
 }
 
 // buildOpenAITools converts adapter-neutral specs into the OpenAI

@@ -3229,6 +3229,16 @@ function turnFromMessage(m: ChatMessage): Turn {
       m.attachments && m.attachments.length > 0
         ? m.attachments.map(attachmentFromProto)
         : undefined,
+    tools:
+      m.toolEvents && m.toolEvents.length > 0
+        ? m.toolEvents.map((e) => ({
+            id: e.toolCallId,
+            name: e.name,
+            argsJson: e.argsJson,
+            state: e.isError ? ("error" as const) : ("done" as const),
+            content: e.resultContent,
+          }))
+        : undefined,
   };
 }
 
