@@ -14,6 +14,7 @@ import (
 
 	"github.com/pders01/git-chat/internal/auth"
 	"github.com/pders01/git-chat/internal/chat"
+	"github.com/pders01/git-chat/internal/chat/tools"
 	"github.com/pders01/git-chat/internal/config"
 	"github.com/pders01/git-chat/internal/repo"
 	"github.com/pders01/git-chat/internal/rpc"
@@ -103,6 +104,7 @@ func runServe(args []string) error {
 		Temperature: float32(*llmTemp),
 		MaxTokens:   *llmMaxTok,
 		Webhook:     webhook.New(cfg.Get("GITCHAT_WEBHOOK_URL")),
+		Tools:       tools.Default(),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
