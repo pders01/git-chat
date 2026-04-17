@@ -132,6 +132,16 @@ message SendMessageRequest {
   string session_id = 1;
   string repo_id = 2;
   string text = 3;
+  // Edit / regenerate hook. When non-empty, the server deletes this
+  // message and every message after it from the session before
+  // appending `text` as a new user turn. Covers two UX flows:
+  //   - Edit a user message: client sends replace_from_message_id =
+  //     old user id, text = new user text. Old pair gets replaced.
+  //   - Regenerate an assistant response: client sends
+  //     replace_from_message_id = preceding user id, text = same
+  //     preceding user text. The old user+assistant pair is dropped
+  //     and a fresh turn runs against identical input.
+  string replace_from_message_id = 4;
 }
 
 // MessageChunk is the server-streamed response shape. Exactly one chunk
@@ -143,7 +153,18 @@ message MessageChunk {
     // M5: fast-path answer from the knowledge base, bypassing the LLM.
     // Sent as a single chunk before Done when a valid card matches.
     KnowledgeCardHit card_hit = 3;
+    // Sent once, before any tokens, with the canonical ID the server
+    // just assigned to the user turn. Lets the client learn the ID
+    // even when the stream errors before Done, so retry-after-error
+    // can pass it via replace_from_message_id to truncate the
+    // failed pair instead of creating a duplicate.
+    Started started = 4;
   }
+}
+
+message Started {
+  string user_message_id = 1;
+  string session_id = 2;  // non-empty on first turn of a new session
 }
 
 // KnowledgeCardHit carries a cached answer from the knowledge base.

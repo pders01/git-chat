@@ -238,6 +238,26 @@ func (d *DB) ListMessages(ctx context.Context, sessionID string) ([]*MessageRow,
 	return out, rows.Err()
 }
 
+// DeleteMessagesFrom removes the given message and every message that
+// follows it in the session. Used for edit / regenerate flows where
+// the client wants to replace a turn (and everything downstream) with
+// a fresh one. Returns the number of rows removed; a zero return with
+// no error means the ID wasn't in the session (client raced, treat as
+// a no-op).
+func (d *DB) DeleteMessagesFrom(ctx context.Context, sessionID, messageID string) (int64, error) {
+	res, err := d.ExecContext(ctx, `
+        DELETE FROM chat_message
+        WHERE session_id = ?
+          AND (created_at, rowid) >= (
+            SELECT created_at, rowid FROM chat_message WHERE id = ? AND session_id = ?
+          )`,
+		sessionID, messageID, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func nullString(s string) any {
 	if s == "" {
 		return nil

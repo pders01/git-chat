@@ -275,6 +275,18 @@ func (s *Service) SendMessage(
 		sess = created
 	}
 
+	// ── Edit / regenerate: truncate the session at the target message
+	// before appending the new user turn. replace_from_message_id is
+	// expected to be a message already in this session; any mismatch
+	// (wrong session, deleted id) returns zero rows and we proceed as
+	// a normal append, which matches "client raced; the message is
+	// already gone" behaviour.
+	if req.Msg.ReplaceFromMessageId != "" {
+		if _, err := s.DB.DeleteMessagesFrom(ctx, sess.ID, req.Msg.ReplaceFromMessageId); err != nil {
+			return connect.NewError(connect.CodeInternal, err)
+		}
+	}
+
 	// ── Persist the user turn.
 	userMsgID := newID()
 	if err := s.DB.CreateMessage(ctx, storage.MessageRow{
@@ -284,6 +296,27 @@ func (s *Service) SendMessage(
 		Content:   text,
 	}); err != nil {
 		return connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Tell the client the user turn's canonical ID (and the session's,
+	// if we just created one) before we start the LLM stream. Retries
+	// after a mid-stream failure need user_message_id to pass through
+	// replace_from_message_id and truncate the failed pair — without
+	// this the client only learns the ID from Done, which doesn't
+	// arrive on error.
+	startedSessionID := ""
+	if isNew {
+		startedSessionID = sess.ID
+	}
+	if err := stream.Send(&gitchatv1.MessageChunk{
+		Kind: &gitchatv1.MessageChunk_Started{
+			Started: &gitchatv1.Started{
+				UserMessageId: userMsgID,
+				SessionId:     startedSessionID,
+			},
+		},
+	}); err != nil {
+		return err
 	}
 
 	// ── Knowledge-base fast path (M5). If a valid card exists for

@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { chatClient, repoClient } from "../lib/transport.js";
 import { readFocus, writeFocus } from "../lib/focus.js";
+import { copyText } from "../lib/clipboard.js";
 import { type ChatSession, type ChatMessage, MessageRole } from "../gen/gitchat/v1/chat_pb.js";
 import { EntryType } from "../gen/gitchat/v1/repo_pb.js";
 import "./loading-indicator.js";
@@ -40,6 +41,11 @@ type Turn = {
   html?: string;
   tokensIn?: number;
   tokensOut?: number;
+  // Non-empty when the assistant turn errored mid-stream or completed
+  // with Done.error. Surfaces a retry button on that turn and lets
+  // the regenerate path distinguish "rerun a good answer" from
+  // "recover from a failure".
+  error?: string;
 };
 
 // Per-model pricing in dollars per million tokens.
@@ -292,6 +298,10 @@ export class GcChatView extends LitElement {
     }
     this.drawerOpen = false;
     this.state = { ...this.state, selected: sessionId };
+    // Switching sessions resets the scroll anchor — the new
+    // transcript should land at the bottom, not wherever the old
+    // one was.
+    this.scrollPinnedToBottom = true;
     this.sessionTokensIn = 0;
     this.sessionTokensOut = 0;
     try {
@@ -589,8 +599,10 @@ export class GcChatView extends LitElement {
     }
   }
 
-  private async send() {
-    const text = this.input.trim();
+  private async send(opts: { text?: string; replaceFromMessageId?: string } = {}) {
+    // Default to the composer input. opts.text overrides it for
+    // regenerate / edit paths where the source isn't the textarea.
+    const text = (opts.text ?? this.input).trim();
     if (!text || this.sending || this.state.phase !== "ready") return;
 
     const sessionId = this.state.selected ?? "";
@@ -606,24 +618,59 @@ export class GcChatView extends LitElement {
       streaming: true,
     };
     this.turns = [...this.turns, userTurn, assistantTurn];
-    this.input = "";
+    // Sending a message is an explicit "show me the response" — re-
+    // pin to bottom regardless of whether the user had scrolled up.
+    this.scrollPinnedToBottom = true;
+    this.scrollToBottom();
+    // Only clear the composer if this send was driven by it. Regen /
+    // edit paths pass opts.text directly and shouldn't wipe a draft
+    // the user has typed while reading the previous response.
+    if (opts.text === undefined) this.input = "";
     this.sending = true;
     this.error = "";
     this.announce("Sending message");
     // Reset textarea height after clearing input.
     const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
-    if (ta) ta.style.height = "auto";
+    if (ta && opts.text === undefined) ta.style.height = "auto";
 
     const ac = new AbortController();
     this.abortController = ac;
 
     try {
       const stream = chatClient.sendMessage(
-        { sessionId, repoId: this.repoId, text },
+        {
+          sessionId,
+          repoId: this.repoId,
+          text,
+          replaceFromMessageId: opts.replaceFromMessageId ?? "",
+        },
         { signal: ac.signal },
       );
       for await (const chunk of stream) {
-        if (chunk.kind.case === "token") {
+        if (chunk.kind.case === "started") {
+          // Server just persisted the user turn; adopt its canonical
+          // ID so retry-after-error can target it via
+          // replace_from_message_id. Also surface a newly-created
+          // session ID so the next retry in this call's lifetime
+          // skips the create-session branch.
+          const started = chunk.kind.value;
+          if (started.userMessageId) userTurn.id = started.userMessageId;
+          if (started.sessionId && this.state.phase === "ready" && !this.state.selected) {
+            const newId = started.sessionId;
+            this.state = { ...this.state, selected: newId };
+            this._lastRestoredSession = newId;
+            this.dispatchNav({ sessionId: newId });
+            void chatClient
+              .listSessions({ repoId: this.repoId })
+              .then((list) => {
+                if (this.state.phase === "ready") {
+                  this.state = { ...this.state, sessions: list.sessions };
+                }
+              })
+              .catch(() => {});
+          }
+          this.turns = [...this.turns];
+        } else if (chunk.kind.case === "token") {
           assistantTurn.content += chunk.kind.value;
           this.turns = [...this.turns]; // trigger re-render
           this.scrollToBottom();
@@ -659,9 +706,10 @@ export class GcChatView extends LitElement {
           this.sessionTokensOut += tOut;
           if (chunk.kind.value.error) {
             this.error = chunk.kind.value.error;
-            // Surface the error inside the assistant bubble too, not
-            // just in the status line — a silent empty bubble is
-            // worse UX than an explicit failure note.
+            // Attach the error to the turn itself so the retry button
+            // has something to latch onto, and falls back to showing
+            // the error inline when the turn had no partial content.
+            assistantTurn.error = chunk.kind.value.error;
             if (!assistantTurn.content) {
               assistantTurn.content = `⚠ ${chunk.kind.value.error}`;
             }
@@ -697,6 +745,11 @@ export class GcChatView extends LitElement {
     } catch (e) {
       this.error = messageOf(e);
       assistantTurn.streaming = false;
+      assistantTurn.error = this.error;
+      // Surface the error on the turn body too if no partial tokens
+      // arrived — otherwise the bubble is empty and the only signal
+      // is the status bar.
+      if (!assistantTurn.content) assistantTurn.content = `⚠ ${this.error}`;
       this.turns = [...this.turns];
     } finally {
       this.abortController = null;
@@ -714,11 +767,29 @@ export class GcChatView extends LitElement {
   }
 
   private scrollToBottom() {
+    // Respect a user who has scrolled up to read earlier content. If
+    // they're not near the bottom, don't yank them back on every
+    // incoming token — extremely annoying during long streams. Once
+    // they scroll back to the bottom, scrollPinnedToBottom flips
+    // back to true and autoscroll resumes.
+    if (!this.scrollPinnedToBottom) return;
     requestAnimationFrame(() => {
       const pane = this.renderRoot.querySelector(".messages");
       if (pane) pane.scrollTop = pane.scrollHeight;
     });
   }
+
+  // True when the messages pane is scrolled within 64px of its bottom.
+  // Updated on the pane's scroll event; used as a gate for
+  // scrollToBottom so we don't yank the viewport back during a
+  // long stream that the user has scrolled up to re-read.
+  private scrollPinnedToBottom = true;
+  private onMessagesScroll = (e: Event) => {
+    const pane = e.currentTarget as HTMLElement;
+    const nearBottomPx = 64;
+    this.scrollPinnedToBottom =
+      pane.scrollHeight - pane.scrollTop - pane.clientHeight <= nearBottomPx;
+  };
 
   // Screen-reader announcements via an aria-live region. The content
   // is set, read by the SR, then cleared after a tick so subsequent
@@ -901,7 +972,14 @@ export class GcChatView extends LitElement {
               <span class="focus-label"> ${this.focused ? "exit focus" : "focus"} </span>
             </button>
           </div>
-          <div class="messages" role="log" aria-live="polite" aria-label="Chat messages">
+          <div
+            class="messages"
+            role="log"
+            aria-live="polite"
+            aria-label="Chat messages"
+            @click=${this.onMessagesClick}
+            @scroll=${this.onMessagesScroll}
+          >
             <div class="messages-inner">
               ${this.turns.length === 0
                 ? this.renderEmptyState()
@@ -1070,10 +1148,33 @@ export class GcChatView extends LitElement {
     // weight to separate them from assistant prose without hijacking
     // attention. Neither side uses the chat-bubble pattern.
     if (t.role === MessageRole.USER) {
+      const pair = this.editablePair();
+      const isEditable = !!pair && this.turns[pair.userIdx]?.id === t.id;
+      const isEditing = this.editingTurnId === t.id;
       return html`
         <article class="turn user">
           <div class="turn-label">you</div>
-          ${body}
+          <div class="turn-actions">
+            ${isEditable && !isEditing
+              ? html`<button
+                  class="turn-action"
+                  @click=${() => this.beginEditLast()}
+                  aria-label="Edit message and resend"
+                  title="Edit message and resend"
+                >
+                  edit
+                </button>`
+              : nothing}
+            <button
+              class="turn-action"
+              @click=${(e: Event) => this.copyTurn(e, t)}
+              aria-label="Copy message"
+              title="Copy message"
+            >
+              copy
+            </button>
+          </div>
+          ${isEditing ? this.renderEditTurn(t) : body}
         </article>
       `;
     }
@@ -1087,6 +1188,20 @@ export class GcChatView extends LitElement {
             ${estimateCost(t.model ?? "", t.tokensIn ?? 0, t.tokensOut ?? 0)}
           </div>`
         : nothing;
+    const pair = this.editablePair();
+    const isRegeneratable = !!pair && this.turns[pair.assistantIdx]?.id === t.id;
+    // Retry appears on the last assistant turn that errored, even if
+    // editablePair rejects the pair (happens when the stream died
+    // before Started so assistant has a local-id). Retry uses the
+    // preceding user turn's id — which Started gives us even on
+    // catch-path failures.
+    const lastIdx = this.turns.length - 1;
+    const isRetryable =
+      !!t.error &&
+      !t.streaming &&
+      lastIdx > 0 &&
+      this.turns[lastIdx]?.id === t.id &&
+      this.turns[lastIdx - 1]?.role === MessageRole.USER;
     return html`
       <article class="turn ${roleClass}">
         <div class="turn-label">
@@ -1094,10 +1209,195 @@ export class GcChatView extends LitElement {
             ? html`<span class="turn-model">${t.model.toLowerCase()}</span>`
             : nothing}
         </div>
+        ${t.streaming
+          ? nothing
+          : html`<div class="turn-actions">
+              ${isRetryable
+                ? html`<button
+                    class="turn-action primary"
+                    @click=${() => this.retryLast()}
+                    aria-label="Retry"
+                    title="Retry"
+                  >
+                    retry
+                  </button>`
+                : nothing}
+              ${isRegeneratable
+                ? html`<button
+                    class="turn-action"
+                    @click=${() => this.regenerateLast()}
+                    aria-label="Regenerate response"
+                    title="Regenerate response"
+                  >
+                    regenerate
+                  </button>`
+                : nothing}
+              <button
+                class="turn-action"
+                @click=${(e: Event) => this.copyTurn(e, t)}
+                aria-label="Copy message"
+                title="Copy message"
+              >
+                copy
+              </button>
+            </div>`}
         ${body} ${tokenInfo}
       </article>
     `;
   }
+
+  // Retry after a mid-stream failure. Same shape as regenerate: drop
+  // the failed pair from the client view and re-run send with the
+  // preceding user text + replaceFromMessageId, so the server
+  // truncates the errored rows before appending a fresh attempt.
+  private retryLast() {
+    const last = this.turns.length - 1;
+    if (last < 1) return;
+    const assistant = this.turns[last];
+    const user = this.turns[last - 1];
+    if (!assistant?.error || user?.role !== MessageRole.USER) return;
+    // If Started never arrived (network died very early), user.id
+    // is still a local stub. Fall back to a plain re-send without
+    // truncation — user gets a duplicate pair but at least recovers.
+    const replaceId = user.id.startsWith("local-") ? "" : user.id;
+    this.turns = this.turns.slice(0, last - 1);
+    void this.send({ text: user.content, replaceFromMessageId: replaceId });
+  }
+
+  // Inline edit view for a user turn. Enter commits, Esc cancels,
+  // Shift+Enter inserts a newline (same conventions as the main
+  // composer). The textarea autosizes — simplest approach is to
+  // set rows based on the initial content line count and let the
+  // browser's default auto-wrap do the rest.
+  private renderEditTurn(t: Turn) {
+    const rows = Math.max(2, Math.min(12, t.content.split("\n").length));
+    return html`
+      <div class="body edit">
+        <textarea
+          class="edit-input"
+          rows=${rows}
+          .value=${t.content}
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              this.cancelEdit();
+            } else if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              const v = (e.target as HTMLTextAreaElement).value;
+              this.commitEdit(t.id, v);
+            }
+          }}
+          @input=${(e: Event) => {
+            // Live-resize so the textarea grows with content.
+            const ta = e.target as HTMLTextAreaElement;
+            ta.style.height = "auto";
+            ta.style.height = `${ta.scrollHeight}px`;
+          }}
+        ></textarea>
+        <div class="edit-actions">
+          <button class="turn-action" @click=${() => this.cancelEdit()}>cancel</button>
+          <button
+            class="turn-action primary"
+            @click=${(e: Event) => {
+              const ta = (
+                e.currentTarget as HTMLElement
+              ).parentElement?.parentElement?.querySelector<HTMLTextAreaElement>(".edit-input");
+              if (ta) this.commitEdit(t.id, ta.value);
+            }}
+          >
+            send
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Per-turn copy: full text goes to the clipboard regardless of
+  // whether the turn has been promoted to rendered markdown — we
+  // copy the raw source so snippets paste back into an editor as
+  // the user wrote them, not as the rendered HTML.
+  private copyTurn(e: Event, t: Turn) {
+    e.stopPropagation();
+    void copyText(e.currentTarget as HTMLElement, t.content, "Message copied");
+  }
+
+  // Index into this.turns where edit / regenerate are actually
+  // applicable: the last assistant turn (regenerate) and its
+  // preceding user turn (edit). Gated on:
+  //   - nothing is streaming
+  //   - the assistant turn has a non-local id (server-assigned, so
+  //     it's safe to reference in replace_from_message_id)
+  //   - the user turn likewise has a real id
+  // Returns [-1, -1] when the pair isn't available.
+  private editablePair(): { userIdx: number; assistantIdx: number } | null {
+    if (this.sending) return null;
+    const last = this.turns.length - 1;
+    if (last < 1) return null;
+    const a = this.turns[last];
+    const u = this.turns[last - 1];
+    if (!a || !u) return null;
+    if (a.role !== MessageRole.ASSISTANT || u.role !== MessageRole.USER) return null;
+    if (a.streaming) return null;
+    if (a.id.startsWith("local-") || u.id.startsWith("local-")) return null;
+    return { userIdx: last - 1, assistantIdx: last };
+  }
+
+  // Regenerate: drop the last user+assistant pair from the client
+  // view and re-run generation with the same user text. Server
+  // receives replace_from_message_id=<userId>, which truncates that
+  // message plus the assistant reply before appending afresh.
+  private regenerateLast() {
+    const pair = this.editablePair();
+    if (!pair) return;
+    const user = this.turns[pair.userIdx]!;
+    this.turns = this.turns.slice(0, pair.userIdx);
+    void this.send({ text: user.content, replaceFromMessageId: user.id });
+  }
+
+  // Start editing the last user turn in place. The turn renders a
+  // textarea prefilled with its own content; commit swaps in the
+  // new text and truncates on the server, cancel restores the view.
+  @state() private editingTurnId = "";
+
+  private beginEditLast() {
+    const pair = this.editablePair();
+    if (!pair) return;
+    const user = this.turns[pair.userIdx]!;
+    this.editingTurnId = user.id;
+  }
+
+  private cancelEdit() {
+    this.editingTurnId = "";
+  }
+
+  private commitEdit(turnId: string, newText: string) {
+    const trimmed = newText.trim();
+    const idx = this.turns.findIndex((t) => t.id === turnId);
+    if (idx < 0 || trimmed === "" || trimmed === this.turns[idx]?.content) {
+      this.editingTurnId = "";
+      return;
+    }
+    const target = this.turns[idx]!;
+    // Drop the edited turn and everything after it locally; the
+    // server will truncate matching rows when we send.
+    this.turns = this.turns.slice(0, idx);
+    this.editingTurnId = "";
+    void this.send({ text: trimmed, replaceFromMessageId: target.id });
+  }
+
+  // Event delegation: the messages container catches clicks on copy
+  // buttons embedded inside rendered markdown (see markdown.ts). We
+  // find the enclosing .code-block's <pre> and copy its textContent,
+  // which Shiki leaves as the unstyled source text.
+  private onMessagesClick = (e: MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (!target?.classList.contains("copy-code")) return;
+    const block = target.closest(".code-block");
+    const pre = block?.querySelector("pre");
+    const text = pre?.textContent ?? "";
+    if (!text) return;
+    void copyText(target, text, "Code copied");
+  };
 
   static override styles = css`
     /* ── Scroll chain ─────────────────────────────────────────────────
@@ -1474,10 +1774,113 @@ export class GcChatView extends LitElement {
 
     /* ── Turns ───────────────────────────────────────────────────── */
     .turn {
+      position: relative;
       margin-bottom: var(--space-7);
     }
     .turn:last-child {
       margin-bottom: var(--space-2);
+    }
+    /* Hover-only action row, pinned to the turn's top-right corner so
+       it lines up with the turn-label row without crowding the prose. */
+    .turn-actions {
+      position: absolute;
+      top: 0;
+      right: 0;
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+    .turn:hover .turn-actions,
+    .turn-actions:focus-within {
+      opacity: 1;
+    }
+    .turn-action {
+      padding: 2px 8px;
+      background: var(--surface-2);
+      color: var(--text-muted);
+      border: 1px solid var(--surface-4);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+    }
+    .turn-action:hover {
+      background: var(--surface-3);
+      color: var(--text);
+    }
+    .turn-action.primary {
+      background: var(--action-bg);
+      color: var(--text);
+      border-color: var(--surface-4);
+    }
+    .turn-action.primary:hover {
+      background: var(--action-bg-hover);
+    }
+    .turn-action:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
+    }
+    /* Inline edit for a user turn: the body swaps for a textarea
+       that keeps the surrounding turn spacing, plus a small action
+       row below it. */
+    .body.edit {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .edit-input {
+      width: 100%;
+      resize: none;
+      background: var(--surface-0);
+      color: var(--text);
+      border: 1px solid var(--surface-4);
+      border-radius: var(--radius-sm);
+      padding: var(--space-2);
+      font-family: inherit;
+      font-size: inherit;
+      line-height: 1.5;
+    }
+    .edit-input:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
+    }
+    .edit-actions {
+      display: flex;
+      gap: 4px;
+      justify-content: flex-end;
+    }
+    /* Per-code-block copy button. Positioned inside markdown's
+       .code-block wrapper; shows on hover like the per-turn copy. */
+    .md .code-block {
+      position: relative;
+    }
+    .md .copy-code {
+      position: absolute;
+      top: var(--space-2);
+      right: var(--space-2);
+      padding: 2px 8px;
+      background: var(--surface-2);
+      color: var(--text-muted);
+      border: 1px solid var(--surface-4);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+    .md .code-block:hover .copy-code,
+    .md .copy-code:focus-visible {
+      opacity: 1;
+    }
+    .md .copy-code:hover {
+      background: var(--surface-3);
+      color: var(--text);
+    }
+    .md .copy-code:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
     }
     .turn-label {
       display: flex;

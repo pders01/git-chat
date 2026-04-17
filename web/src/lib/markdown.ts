@@ -84,11 +84,18 @@ marked.use({
   renderer: {
     code(token) {
       const t = token as CodeToken;
-      if (t.shikiHtml) return t.shikiHtml;
-      // Defensive fallback: if walkTokens didn't get a chance to run
-      // (shouldn't happen, but better safe), render as plain <pre>.
-      const escaped = escapeHtml(t.text);
-      return `<pre><code>${escaped}</code></pre>`;
+      const inner = t.shikiHtml ?? `<pre><code>${escapeHtml(t.text)}</code></pre>`;
+      // Wrap in a positioned container with a floating copy button.
+      // The button itself does no work — chat-view listens for clicks
+      // on `.copy-code` via event delegation on the message container
+      // and copies the adjacent <pre>'s textContent. Keeps the
+      // markdown pipeline decoupled from Lit / app state.
+      return (
+        `<div class="code-block">` +
+        inner +
+        `<button class="copy-code" title="Copy code">copy</button>` +
+        `</div>`
+      );
     },
   },
 });
@@ -136,6 +143,8 @@ const PURIFY_CONFIG: PurifyConfig = {
     "td",
     "details",
     "summary",
+    "div",
+    "button",
   ],
   ALLOWED_ATTR: ["class", "style", "href", "title", "open"],
   // Links must be http(s) only. No javascript:, no data:, no mailto.
