@@ -60,6 +60,15 @@ export class GcRepoBrowser extends LitElement {
     this.focused = readFocus();
   };
 
+  private toggleDrawer() {
+    this.drawerOpen = !this.drawerOpen;
+    if (this.drawerOpen) {
+      void this.updateComplete.then(() => {
+        this.renderRoot.querySelector<HTMLElement>("aside")?.focus();
+      });
+    }
+  }
+
   private compareFetching = false;
 
   private async toggleCompare() {
@@ -354,15 +363,16 @@ export class GcRepoBrowser extends LitElement {
       >
         <button
           class="drawer-toggle"
-          @click=${() => (this.drawerOpen = !this.drawerOpen)}
+          @click=${() => this.toggleDrawer()}
           aria-label="Toggle file tree"
+          aria-expanded=${this.drawerOpen ? "true" : "false"}
         >
           ☰
         </button>
         ${this.drawerOpen
           ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>`
           : nothing}
-        <aside>
+        <aside aria-label="File tree" tabindex="-1">
           <div class="repo-hd">
             ${this.comparing
               ? html` <select

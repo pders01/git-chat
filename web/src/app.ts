@@ -158,19 +158,46 @@ export class GcApp extends LitElement {
     });
   };
 
+  // Previously-focused element for each overlay, captured when opened
+  // so focus returns to the trigger on close (keyboard / screen-reader
+  // users rely on this to resume navigation in context).
+  private _prevFocusBySource: Record<
+    "settings" | "shortcuts" | "palette" | "search",
+    HTMLElement | null
+  > = { settings: null, shortcuts: null, palette: null, search: null };
+
   // ── Modal focus management ───────────────────────────────────
   override async updated(changed: Map<string, unknown>) {
-    if (changed.has("showSettings") || changed.has("showShortcuts")) {
-      if (this.showSettings || this.showShortcuts) {
-        await this.updateComplete;
-        const modal = this.renderRoot.querySelector(".modal") as HTMLElement | null;
-        const first = modal?.querySelector("button, input, [tabindex]") as HTMLElement | null;
-        (first ?? modal)?.focus();
+    this.handleOverlay(changed, "showSettings", "settings", ".modal");
+    this.handleOverlay(changed, "showShortcuts", "shortcuts", ".modal");
+    this.handleOverlay(changed, "showPalette", "palette", ".palette-input");
+    this.handleOverlay(changed, "showSearch", "search", ".search-input");
+  }
+
+  private handleOverlay(
+    changed: Map<string, unknown>,
+    prop: "showSettings" | "showShortcuts" | "showPalette" | "showSearch",
+    key: "settings" | "shortcuts" | "palette" | "search",
+    focusSelector: string,
+  ) {
+    if (!changed.has(prop)) return;
+    const open = this[prop] as boolean;
+    if (open) {
+      // Capture the current focus BEFORE the overlay steals it.
+      this._prevFocusBySource[key] = (document.activeElement as HTMLElement | null) ?? null;
+      void this.updateComplete.then(() => {
+        const target =
+          this.renderRoot.querySelector<HTMLElement>(focusSelector) ??
+          (this.renderRoot.querySelector(".modal") as HTMLElement | null);
+        target?.focus();
+      });
+    } else {
+      const prev = this._prevFocusBySource[key];
+      this._prevFocusBySource[key] = null;
+      if (prev && document.contains(prev)) {
+        // rAF so restore happens after the overlay is actually gone.
+        requestAnimationFrame(() => prev.focus());
       }
-    }
-    if (changed.has("showPalette") && this.showPalette) {
-      await this.updateComplete;
-      this.renderRoot.querySelector<HTMLInputElement>(".palette-input")?.focus();
     }
   }
 
@@ -827,24 +854,29 @@ export class GcApp extends LitElement {
                         return html`
                           <div class="config-entry">
                             <div class="config-entry-header">
-                              <span class="config-key ${modified ? "config-modified" : ""}"
-                                >${this.humanizeKey(entry.key)}</span
+                              <label
+                                class="config-key ${modified ? "config-modified" : ""}"
+                                for="cfg-${entry.key}"
+                                >${this.humanizeKey(entry.key)}</label
                               >
                               ${modified
                                 ? html`<button
                                     class="config-reset-btn"
                                     @click=${() => this.resetConfigEntry(entry)}
                                     title="Reset to default: ${entry.defaultValue}"
+                                    aria-label="Reset ${this.humanizeKey(entry.key)} to default"
                                   >
                                     reset
                                   </button>`
                                 : nothing}
                             </div>
                             <input
+                              id="cfg-${entry.key}"
                               class="config-input"
                               type=${isSecret ? "password" : "text"}
                               .value=${entry.value}
                               ?readonly=${isSecret}
+                              aria-describedby=${entry.description ? `cfg-desc-${entry.key}` : ""}
                               @input=${(e: Event) => {
                                 if (isSecret) return;
                                 this.updateConfigEntry(
@@ -854,7 +886,9 @@ export class GcApp extends LitElement {
                               }}
                             />
                             ${entry.description
-                              ? html`<span class="config-desc">${entry.description}</span>`
+                              ? html`<span id="cfg-desc-${entry.key}" class="config-desc"
+                                  >${entry.description}</span
+                                >`
                               : nothing}
                           </div>
                         `;
@@ -1223,7 +1257,13 @@ export class GcApp extends LitElement {
           this.paletteQuery = "";
         }}
       ></div>
-      <div class="palette" role="dialog" aria-label="Command palette">
+      <div
+        class="palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        @keydown=${this.trapFocus}
+      >
         <input
           class="palette-input"
           type="text"
@@ -1273,7 +1313,13 @@ export class GcApp extends LitElement {
     };
     return html`
       <div class="search-backdrop" @click=${() => (this.showSearch = false)}></div>
-      <div class="search-palette" role="dialog" aria-label="Search">
+      <div
+        class="search-palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search"
+        @keydown=${this.trapFocus}
+      >
         <input
           class="search-input"
           type="search"

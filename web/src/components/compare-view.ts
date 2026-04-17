@@ -419,6 +419,7 @@ export class GcCompareView extends LitElement {
               ? html`<button
                   class="pane-toggle ${this.threePane ? "active" : ""}"
                   @click=${() => this.toggleThreePane()}
+                  aria-label="Toggle 3-pane diff view (before | diff | after)"
                   aria-pressed=${this.threePane ? "true" : "false"}
                   title="Toggle 3-pane view (before | diff | after)"
                 >

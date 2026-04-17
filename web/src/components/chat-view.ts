@@ -93,6 +93,9 @@ export class GcChatView extends LitElement {
   @state() private focused = readFocus();
   // Mobile drawer state — sidebar slides in as overlay on narrow viewports.
   @state() private drawerOpen = false;
+  // Two-step delete for sessions: session id being armed, or "" if none.
+  @state() private confirmingDeleteSession = "";
+  private confirmResetTimer: ReturnType<typeof setTimeout> | null = null;
   // Cumulative token counts for the current session.
   @state() private sessionTokensIn = 0;
   @state() private sessionTokensOut = 0;
@@ -162,6 +165,10 @@ export class GcChatView extends LitElement {
     this.removeEventListener("gc:select-session", this.onSelectSession as EventListener);
     this.removeEventListener("gc:prefill", this.onPrefill as EventListener);
     this.removeEventListener("keydown", this.onKeydownLocal);
+    if (this.confirmResetTimer) {
+      clearTimeout(this.confirmResetTimer);
+      this.confirmResetTimer = null;
+    }
   }
 
   private onKeydownLocal = (e: KeyboardEvent) => {
@@ -401,7 +408,25 @@ export class GcChatView extends LitElement {
   }
 
   private async deleteSession(sessionId: string) {
-    if (!confirm("Delete this session? This cannot be undone.")) return;
+    // Two-step delete: first click arms and flips the row into a
+    // "confirm" state for a short window; second click within that
+    // window actually deletes. Replaces window.confirm() which
+    // bypassed the app's Esc handling and is blocked / inconsistent
+    // on mobile.
+    if (this.confirmingDeleteSession !== sessionId) {
+      this.confirmingDeleteSession = sessionId;
+      if (this.confirmResetTimer) clearTimeout(this.confirmResetTimer);
+      this.confirmResetTimer = setTimeout(() => {
+        this.confirmingDeleteSession = "";
+        this.confirmResetTimer = null;
+      }, 3000);
+      return;
+    }
+    if (this.confirmResetTimer) {
+      clearTimeout(this.confirmResetTimer);
+      this.confirmResetTimer = null;
+    }
+    this.confirmingDeleteSession = "";
     try {
       await chatClient.deleteSession({ sessionId });
       if (this.state.phase === "ready" && this.state.selected === sessionId) {
@@ -411,6 +436,20 @@ export class GcChatView extends LitElement {
       void this.loadSessions();
     } catch (e) {
       this.error = messageOf(e);
+    }
+  }
+
+  private toggleDrawer() {
+    this.drawerOpen = !this.drawerOpen;
+    if (this.drawerOpen) {
+      // Move focus into the sidebar so keyboard / AT users don't have
+      // to Tab through the whole page from the FAB to reach it.
+      void this.updateComplete.then(() => {
+        const target =
+          this.renderRoot.querySelector<HTMLElement>(".sidebar .new") ??
+          this.renderRoot.querySelector<HTMLElement>(".sidebar");
+        target?.focus();
+      });
     }
   }
 
@@ -716,16 +755,21 @@ export class GcChatView extends LitElement {
       >
         <button
           class="drawer-toggle"
-          @click=${() => (this.drawerOpen = !this.drawerOpen)}
+          @click=${() => this.toggleDrawer()}
           aria-label="Toggle sidebar"
+          aria-expanded=${this.drawerOpen ? "true" : "false"}
         >
           ☰
         </button>
         ${this.drawerOpen
           ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>`
           : nothing}
-        <aside class="sidebar" aria-label="Chat sessions">
-          <button class="new" @click=${() => this.newChat()} aria-label="New chat (⌘K)">
+        <aside class="sidebar" aria-label="Chat sessions" tabindex="-1">
+          <button
+            class="new"
+            @click=${() => this.newChat()}
+            aria-label="New chat (${navigator.platform.includes("Mac") ? "⌘" : "Ctrl+"}K)"
+          >
             <span class="plus" aria-hidden="true">+</span> new chat
           </button>
           <input
@@ -806,15 +850,21 @@ export class GcChatView extends LitElement {
                             ${sess.pinned ? "\u2605" : "\u2606"}
                           </button>
                           <button
-                            class="sess-delete"
+                            class="sess-delete ${this.confirmingDeleteSession === sess.id
+                              ? "confirming"
+                              : ""}"
                             @click=${(e: Event) => {
                               e.stopPropagation();
                               void this.deleteSession(sess.id);
                             }}
-                            aria-label="Delete session"
-                            title="Delete"
+                            aria-label=${this.confirmingDeleteSession === sess.id
+                              ? "Click again to confirm delete"
+                              : "Delete session"}
+                            title=${this.confirmingDeleteSession === sess.id
+                              ? "Click again to confirm"
+                              : "Delete"}
                           >
-                            ×
+                            ${this.confirmingDeleteSession === sess.id ? "?" : "×"}
                           </button>
                         </div>
                       </li>
@@ -1225,6 +1275,11 @@ export class GcChatView extends LitElement {
       opacity: 0.7;
       outline: 2px solid var(--accent-user);
       outline-offset: -2px;
+    }
+    .sess-delete.confirming {
+      opacity: 1 !important;
+      color: var(--danger);
+      background: color-mix(in srgb, var(--danger) 15%, transparent);
     }
     .rename-input {
       width: 100%;

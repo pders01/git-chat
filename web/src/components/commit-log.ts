@@ -121,6 +121,18 @@ export class GcCommitLog extends LitElement {
     this.focused = readFocus();
   };
 
+  private toggleDrawer() {
+    this.drawerOpen = !this.drawerOpen;
+    if (this.drawerOpen) {
+      void this.updateComplete.then(() => {
+        const target =
+          this.renderRoot.querySelector<HTMLElement>(".commit-filter-input") ??
+          this.renderRoot.querySelector<HTMLElement>(".commit-list");
+        target?.focus();
+      });
+    }
+  }
+
   private async rehighlight() {
     if (this.diff.phase !== "ready" || !this.diff.rawDiff) return;
     const raw = this.diff.rawDiff;
@@ -871,8 +883,9 @@ export class GcCommitLog extends LitElement {
       >
         <button
           class="drawer-toggle"
-          @click=${() => (this.drawerOpen = !this.drawerOpen)}
+          @click=${() => this.toggleDrawer()}
           aria-label="Toggle commit list"
+          aria-expanded=${this.drawerOpen ? "true" : "false"}
         >
           ☰
         </button>
@@ -880,7 +893,7 @@ export class GcCommitLog extends LitElement {
           ? html`<div class="drawer-backdrop" @click=${() => (this.drawerOpen = false)}></div>`
           : nothing}
         <!-- Left: commit list sidebar -->
-        <aside class="commit-list" aria-label="Commit history">
+        <aside class="commit-list" aria-label="Commit history" tabindex="-1">
           <div class="list-header">
             <input
               class="commit-filter-input"
@@ -1102,6 +1115,7 @@ export class GcCommitLog extends LitElement {
                     ? html`<button
                         class="split-toggle ${this.threePane ? "active" : ""}"
                         @click=${() => this.toggleThreePane()}
+                        aria-label="Toggle 3-pane diff view (before | diff | after)"
                         aria-pressed=${this.threePane ? "true" : "false"}
                         title="Toggle 3-pane view (before | diff | after)"
                       >

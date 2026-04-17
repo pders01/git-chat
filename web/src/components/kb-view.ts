@@ -40,6 +40,11 @@ export class GcKbView extends LitElement {
   @state() private detailHtml = "";
   @state() private filter = "";
   @state() private loading = false;
+  // Two-step delete: first click arms, second click confirms. Auto-
+  // disarms after a short window so a stray first click doesn't leave
+  // the button primed indefinitely.
+  @state() private confirmingDelete = "";
+  private confirmResetTimer: ReturnType<typeof setTimeout> | null = null;
 
   private onSelectCard = ((e: CustomEvent<{ cardId: string }>) => {
     void this.selectCard(e.detail.cardId);
@@ -56,6 +61,10 @@ export class GcKbView extends LitElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.removeEventListener("gc:select-card", this.onSelectCard);
+    if (this.confirmResetTimer) {
+      clearTimeout(this.confirmResetTimer);
+      this.confirmResetTimer = null;
+    }
   }
 
   private _lastRestoredCard = "";
@@ -133,6 +142,21 @@ export class GcKbView extends LitElement {
   }
 
   private async deleteCard(cardId: string) {
+    // First click arms; second click within the window actually deletes.
+    if (this.confirmingDelete !== cardId) {
+      this.confirmingDelete = cardId;
+      if (this.confirmResetTimer) clearTimeout(this.confirmResetTimer);
+      this.confirmResetTimer = setTimeout(() => {
+        this.confirmingDelete = "";
+        this.confirmResetTimer = null;
+      }, 3000);
+      return;
+    }
+    if (this.confirmResetTimer) {
+      clearTimeout(this.confirmResetTimer);
+      this.confirmResetTimer = null;
+    }
+    this.confirmingDelete = "";
     try {
       await chatClient.deleteCard({ cardId });
       this.cards = this.cards.filter((c) => c.id !== cardId);
@@ -218,6 +242,7 @@ export class GcKbView extends LitElement {
             class="filter"
             type="search"
             placeholder="filter cards..."
+            aria-label="Filter knowledge base cards"
             .value=${this.filter}
             @input=${(e: Event) => {
               this.filter = (e.target as HTMLInputElement).value;
@@ -315,7 +340,13 @@ export class GcKbView extends LitElement {
             `
           : nothing}
         <div class="detail-actions">
-          <button class="action-btn danger" @click=${() => this.deleteCard(d.id)}>delete</button>
+          <button
+            class="action-btn danger ${this.confirmingDelete === d.id ? "confirming" : ""}"
+            @click=${() => this.deleteCard(d.id)}
+            aria-label=${this.confirmingDelete === d.id ? "Confirm delete card" : "Delete card"}
+          >
+            ${this.confirmingDelete === d.id ? "click again to confirm" : "delete"}
+          </button>
           <button class="action-btn" @click=${() => this.askAgain()}>ask again</button>
         </div>
       </div>
