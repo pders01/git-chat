@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -21,6 +22,7 @@ import (
 	"github.com/pders01/git-chat/internal/auth"
 	"github.com/pders01/git-chat/internal/chat/llm"
 	"github.com/pders01/git-chat/internal/chat/tools"
+	"github.com/pders01/git-chat/internal/config"
 	"github.com/pders01/git-chat/internal/repo"
 	"github.com/pders01/git-chat/internal/storage"
 	"github.com/pders01/git-chat/internal/webhook"
@@ -34,8 +36,13 @@ type Service struct {
 	DB    *storage.DB
 	LLM   llm.LLM
 	Repos *repo.Registry
-	// Model is the default LLM model name. Used when the caller has no
-	// preference; callers that do not set a session-level model use this default.
+	// Config, when non-nil, enables dynamic LLM resolution: the
+	// provider, model, and parameters are read from the config
+	// registry on each request instead of using the static struct
+	// fields. When nil, the struct fields below are used directly.
+	Config *config.Registry
+	// Model is the default LLM model name. Used as fallback when
+	// Config is nil or LLM_MODEL is empty in the registry.
 	Model       string
 	Temperature float32
 	MaxTokens   int
@@ -51,9 +58,81 @@ type Service struct {
 	// adapters do not implement tool use yet, or for modes that want
 	// deterministic single-turn behaviour like title generation).
 	Tools *tools.Registry
+
+	// llmMu protects llmSnap and LLM during lazy adapter swaps.
+	llmMu   sync.Mutex
+	llmSnap llmSnapshot
+}
+
+// llmSnapshot tracks the config values used to construct the current
+// LLM adapter. When any value changes, the adapter is reconstructed.
+type llmSnapshot struct {
+	Backend string
+	BaseURL string
+	APIKey  string
 }
 
 var _ gitchatv1connect.ChatServiceHandler = (*Service)(nil)
+
+// resolveLLM returns the current LLM adapter, lazily reconstructing it
+// when the backend, base URL, or API key has changed in the config
+// registry. On construction error the previous adapter is kept and the
+// error is returned so the caller can surface it.
+func (s *Service) resolveLLM(ctx context.Context) (llm.LLM, error) {
+	if s.Config == nil {
+		return s.LLM, nil
+	}
+	backend := s.Config.GetCtx(ctx, "LLM_BACKEND")
+	baseURL := s.Config.GetCtx(ctx, "LLM_BASE_URL")
+	apiKey := s.Config.GetCtx(ctx, "LLM_API_KEY")
+
+	s.llmMu.Lock()
+	defer s.llmMu.Unlock()
+
+	snap := llmSnapshot{Backend: backend, BaseURL: baseURL, APIKey: apiKey}
+	if snap == s.llmSnap && s.LLM != nil {
+		return s.LLM, nil
+	}
+	model := s.Config.GetCtx(ctx, "LLM_MODEL")
+	adapter, err := llm.Build(backend, baseURL, apiKey, &model)
+	if err != nil {
+		if s.LLM != nil {
+			return s.LLM, err
+		}
+		return nil, err
+	}
+	s.LLM = adapter
+	s.llmSnap = snap
+	if model != "" {
+		s.Model = model
+	}
+	return adapter, nil
+}
+
+// llmParams reads the current model, temperature, and max-tokens from
+// the config registry with fallback to the struct fields set at startup.
+func (s *Service) llmParams(ctx context.Context) (model string, temp float32, maxTok int) {
+	model = s.Model
+	temp = s.Temperature
+	maxTok = s.MaxTokens
+	if s.Config == nil {
+		return
+	}
+	if m := s.Config.GetCtx(ctx, "LLM_MODEL"); m != "" {
+		model = m
+	}
+	if v := s.Config.GetCtx(ctx, "LLM_TEMPERATURE"); v != "" {
+		if f, err := strconv.ParseFloat(v, 32); err == nil {
+			temp = float32(f)
+		}
+	}
+	if v := s.Config.GetCtx(ctx, "LLM_MAX_TOKENS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			maxTok = n
+		}
+	}
+	return
+}
 
 // Package-level tunables, configurable via environment variables.
 var (
@@ -356,16 +435,28 @@ func (s *Service) StreamMessage(
 		}
 	}
 
+	// Resolve the LLM adapter and parameters for this request. The
+	// adapter is lazily reconstructed when config changes (e.g. user
+	// switches from openai to anthropic in the settings UI).
+	adapter, err := s.resolveLLM(ctx)
+	if err != nil {
+		slog.Warn("LLM adapter reconstruction failed, using previous", "err", err)
+	}
+	if adapter == nil {
+		return connect.NewError(connect.CodeInternal, errors.New("no LLM adapter available"))
+	}
+	model, temperature, maxTokens := s.llmParams(ctx)
+
 	// Resolve the adapter's capability profile for the active model so
 	// we can strip attachments the model cannot consume before they
 	// reach the LLM. Persisted attachments are untouched — only the
 	// prompt payload is filtered, so the transcript still reflects
 	// what the user actually uploaded.
-	caps := s.LLM.Capabilities(ctx, s.Model)
+	caps := adapter.Capabilities(ctx, model)
 	var warnings []string
 	if !caps.Images && hasImageAttachment(msg.Attachments) {
 		warnings = append(warnings,
-			fmt.Sprintf("images stripped — model %q does not report vision support", s.Model))
+			fmt.Sprintf("images stripped — model %q does not report vision support", model))
 	}
 
 	// Tell the client the user turn's canonical ID (and the session's,
@@ -520,11 +611,11 @@ func (s *Service) StreamMessage(
 	roundMsgs := append([]llm.Message(nil), msgs...)
 	for round := 0; round < toolLoopMax; round++ {
 		slog.Debug("agentic round starting", "round", round, "msgs", len(roundMsgs))
-		llmChunks, err := s.LLM.Stream(ctx, llm.Request{
-			Model:       s.Model,
+		llmChunks, err := adapter.Stream(ctx, llm.Request{
+			Model:       model,
 			Messages:    roundMsgs,
-			Temperature: s.Temperature,
-			MaxTokens:   s.MaxTokens,
+			Temperature: temperature,
+			MaxTokens:   maxTokens,
 			Tools:       toolSpecs,
 		})
 		if err != nil {
@@ -632,7 +723,7 @@ func (s *Service) StreamMessage(
 		SessionID:     sess.ID,
 		Role:          "assistant",
 		Content:       assistantContent,
-		Model:         s.Model,
+		Model:         model,
 		TokenCountIn:  finalIn,
 		TokenCountOut: finalOut,
 	}); err != nil {
@@ -658,7 +749,7 @@ func (s *Service) StreamMessage(
 	// past user messages (via FTS5) before promoting. This prevents
 	// one-off poorly-phrased questions from polluting the KB.
 	if assistantContent != "" && llmErr == "" {
-		go s.maybePromoteCard(repoID, normalizedQ, assistantContent, headCommit, text, repoEntry, principal)
+		go s.maybePromoteCard(model, repoID, normalizedQ, assistantContent, headCommit, text, repoEntry, principal)
 	}
 
 	// Fire-and-forget title generation for new sessions. The user
@@ -668,7 +759,7 @@ func (s *Service) StreamMessage(
 	// (which happens on the Done chunk re-fetch), it picks up the
 	// smart title. Errors are swallowed — a bad title is cosmetic.
 	if isNew && !s.DisableSmartTitle {
-		go s.generateSmartTitle(sess.ID, text, assistantContent)
+		go s.generateSmartTitle(adapter, model, sess.ID, text, assistantContent)
 	}
 
 	// ── Final Done chunk.
@@ -680,7 +771,7 @@ func (s *Service) StreamMessage(
 				AssistantMessageId: assistantID,
 				TokenCountIn:       int32(finalIn),
 				TokenCountOut:      int32(finalOut),
-				Model:              s.Model,
+				Model:              model,
 				Error:              llmErr,
 			},
 		},
@@ -785,11 +876,22 @@ Output exactly TWO sections separated by ---:
 		{Role: llm.RoleUser, Content: "Here are the recent commits:\n\n" + commitLog.String() + "\nSummarize the recent activity and suggest questions."},
 	}
 
+	adapter, err := s.resolveLLM(ctx)
+	if err != nil {
+		slog.Warn("LLM adapter reconstruction failed in SummarizeActivity", "err", err)
+	}
+	if adapter == nil {
+		return connect.NewResponse(&gitchatv1.SummarizeActivityResponse{
+			Summary: "Recent commits:\n" + commitLog.String(),
+		}), nil
+	}
+	model, _, _ := s.llmParams(ctx)
+
 	ctx2, cancel := context.WithTimeout(ctx, titleTimeout)
 	defer cancel()
 
-	chunks, err := s.LLM.Stream(ctx2, llm.Request{
-		Model:    s.Model,
+	chunks, err := adapter.Stream(ctx2, llm.Request{
+		Model:    model,
 		Messages: prompt,
 	})
 	if err != nil {
@@ -849,7 +951,7 @@ func (s *Service) DeleteCard(
 // so the user doesn't wait for it — the fallback (truncated first
 // message) is shown immediately, and the smart title replaces it on
 // the next session-list fetch. Errors are swallowed (cosmetic-only).
-func (s *Service) generateSmartTitle(sessionID, userMsg, assistantMsg string) {
+func (s *Service) generateSmartTitle(adapter llm.LLM, model, sessionID, userMsg, assistantMsg string) {
 	// Use a brief excerpt of the assistant reply — the full content
 	// can be pages long and we only need the gist for a title.
 	assistantExcerpt := assistantMsg
@@ -867,8 +969,8 @@ func (s *Service) generateSmartTitle(sessionID, userMsg, assistantMsg string) {
 	ctx, cancel := context.WithTimeout(context.Background(), titleTimeout)
 	defer cancel()
 
-	chunks, err := s.LLM.Stream(ctx, llm.Request{
-		Model:    s.Model,
+	chunks, err := adapter.Stream(ctx, llm.Request{
+		Model:    model,
 		Messages: prompt,
 	})
 	if err != nil {
@@ -960,7 +1062,7 @@ var cardPromotionThreshold = envIntSvc("GITCHAT_KB_PROMOTION_THRESHOLD", 2)
 // maybePromoteCard checks whether a question has been asked enough
 // times to justify caching, and if so, upserts a knowledge card.
 // Runs in a background goroutine — errors are cosmetic.
-func (s *Service) maybePromoteCard(repoID, normalizedQ, answer, headCommit, userText string, r *repo.Entry, principal string) {
+func (s *Service) maybePromoteCard(model, repoID, normalizedQ, answer, headCommit, userText string, r *repo.Entry, principal string) {
 	ctx, cancel := context.WithTimeout(context.Background(), cardTimeout)
 	defer cancel()
 
@@ -981,7 +1083,7 @@ func (s *Service) maybePromoteCard(repoID, normalizedQ, answer, headCommit, user
 		RepoID:             repoID,
 		QuestionNormalized: normalizedQ,
 		AnswerMD:           answer,
-		Model:              s.Model,
+		Model:              model,
 		CreatedCommit:      headCommit,
 		LastVerifiedCommit: headCommit,
 		CreatedBy:          principal,

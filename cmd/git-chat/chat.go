@@ -75,6 +75,7 @@ func runChat(args []string) error {
 	svc := &chat.Service{
 		DB:                db,
 		LLM:               llmAdapter,
+		Config:            cfg,
 		Repos:             registry,
 		Model:             *llmModel,
 		Temperature:       float32(*llmTemp),

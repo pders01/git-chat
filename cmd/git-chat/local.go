@@ -191,6 +191,7 @@ func runLocal(args []string) error {
 	chatSvc := &chat.Service{
 		DB:          db,
 		LLM:         llmAdapter,
+		Config:      cfg,
 		Repos:       registry,
 		Model:       *llmModel,
 		Temperature: float32(*llmTemp),
