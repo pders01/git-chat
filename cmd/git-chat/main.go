@@ -9,6 +9,7 @@
 //	git chat serve        multi-user, HTTP + SSH pairing
 //	git chat local        explicit solo-local mode
 //	git chat mcp          MCP server mode (stdio)
+//	git chat chat "…"     headless one-shot chat, reply on stdout
 //	git chat add-key      append SSH pubkey from stdin
 package main
 
@@ -49,6 +50,10 @@ func main() {
 		}
 	case "mcp":
 		if err := runMCP(args); err != nil {
+			fail(err)
+		}
+	case "chat":
+		if err := runChat(args); err != nil {
 			fail(err)
 		}
 	case "-h", "--help", "help":

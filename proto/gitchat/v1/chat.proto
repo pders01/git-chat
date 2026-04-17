@@ -178,7 +178,44 @@ message MessageChunk {
     // can pass it via replace_from_message_id to truncate the
     // failed pair instead of creating a duplicate.
     Started started = 4;
+    // Agentic tool use: the model asked the server to invoke a tool
+    // from the repo-tools catalog. Sent as the model finishes
+    // emitting the tool_use block — args_json is already fully
+    // assembled. The server follows up with ToolResult once the
+    // handler has run.
+    ToolCall tool_call = 5;
+    // Result of a prior ToolCall. One ToolResult per ToolCall, in
+    // the same order. Sent on the wire so the UI can render the
+    // call-and-result pair inline without needing a second round-
+    // trip to fetch it.
+    ToolResult tool_result = 6;
+    // Reasoning-model chain-of-thought delta. Streams alongside
+    // normal token chunks for models that emit a separate
+    // thinking / reasoning_content channel (Qwen3, DeepSeek-R1,
+    // Claude with extended thinking, …). The UI surfaces these in a
+    // collapsible "thinking" region above the reply so the trace is
+    // visible but not mixed into the assistant's prose.
+    string thinking = 7;
   }
+}
+
+// ToolCall describes a model-initiated invocation of a server-side
+// tool. id is the provider-assigned identifier that links the call to
+// its ToolResult and survives across history replay.
+message ToolCall {
+  string id = 1;
+  string name = 2;
+  string args_json = 3;  // JSON object matching the tool's input schema
+}
+
+// ToolResult carries a tool handler's output back to the UI (and in
+// history replays, back to the model). is_error indicates the handler
+// raised an error; the content still carries the rendered error
+// message so the model can adapt.
+message ToolResult {
+  string id = 1;           // matches ToolCall.id
+  string content = 2;      // tool output, capped per-tool
+  bool   is_error = 3;
 }
 
 message Started {

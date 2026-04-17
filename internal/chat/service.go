@@ -20,6 +20,7 @@ import (
 	"github.com/pders01/git-chat/gen/go/gitchat/v1/gitchatv1connect"
 	"github.com/pders01/git-chat/internal/auth"
 	"github.com/pders01/git-chat/internal/chat/llm"
+	"github.com/pders01/git-chat/internal/chat/tools"
 	"github.com/pders01/git-chat/internal/repo"
 	"github.com/pders01/git-chat/internal/storage"
 	"github.com/pders01/git-chat/internal/webhook"
@@ -43,6 +44,13 @@ type Service struct {
 	// with the Fake adapter's LastRequest tracking.
 	DisableSmartTitle bool
 	Webhook           *webhook.Sender
+	// Tools, when non-nil, enables the agentic loop: the adapter is
+	// told about the registered tools and the service wraps a
+	// multi-round execute-on-tool-use loop around Stream. Leave nil
+	// to keep the single-shot pipeline (e.g. for providers whose
+	// adapters do not implement tool use yet, or for modes that want
+	// deterministic single-turn behaviour like title generation).
+	Tools *tools.Registry
 }
 
 var _ gitchatv1connect.ChatServiceHandler = (*Service)(nil)
@@ -57,6 +65,7 @@ var (
 	maxAttachmentsPerMsg   = envIntSvc("GITCHAT_MAX_ATTACHMENTS_PER_MESSAGE", 8)
 	maxAttachmentBytes     = envIntSvc("GITCHAT_MAX_ATTACHMENT_BYTES", 10*1024*1024)
 	maxAttachmentTotal     = envIntSvc("GITCHAT_MAX_ATTACHMENTS_TOTAL_BYTES", 20*1024*1024)
+	toolLoopMax            = envIntSvc("GITCHAT_TOOL_LOOP_MAX", 8)
 )
 
 // allowedAttachmentMIMEs restricts uploads to image types Anthropic's
@@ -238,6 +247,17 @@ func (s *Service) DeleteSession(
 
 // ─── SendMessage ────────────────────────────────────────────────────────
 //
+// SendMessage is the RPC binding; the real work lives in StreamMessage.
+func (s *Service) SendMessage(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.SendMessageRequest],
+	stream *connect.ServerStream[gitchatv1.MessageChunk],
+) error {
+	return s.StreamMessage(ctx, req.Msg, stream.Send)
+}
+
+// StreamMessage runs the chat turn and streams chunks via send.
+//
 // Lifecycle of one call:
 //  1. Resolve (or create) the session. Creation pins the session to the
 //     current repo_id; subsequent turns on the session can skip repo_id.
@@ -247,14 +267,14 @@ func (s *Service) DeleteSession(
 //  4. Build the prompt, including @file context injection.
 //  5. Open the LLM stream, forward tokens, accumulate the assistant text.
 //  6. Persist the assistant turn (with final counts), send Done.
-func (s *Service) SendMessage(
+func (s *Service) StreamMessage(
 	ctx context.Context,
-	req *connect.Request[gitchatv1.SendMessageRequest],
-	stream *connect.ServerStream[gitchatv1.MessageChunk],
+	msg *gitchatv1.SendMessageRequest,
+	send func(*gitchatv1.MessageChunk) error,
 ) error {
 	principal, _, _ := auth.PrincipalFromContext(ctx)
-	text := strings.TrimSpace(req.Msg.Text)
-	if text == "" && len(req.Msg.Attachments) == 0 {
+	text := strings.TrimSpace(msg.Text)
+	if text == "" && len(msg.Attachments) == 0 {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("empty message"))
 	}
 	// Cap message length — unbounded input goes to the LLM and SQLite.
@@ -262,16 +282,16 @@ func (s *Service) SendMessage(
 		return connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("message too long (%d bytes, max %d)", len(text), maxMessageBytes))
 	}
-	if err := validateAttachments(req.Msg.Attachments); err != nil {
+	if err := validateAttachments(msg.Attachments); err != nil {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
 	// ── Resolve or create the session.
 	var sess *storage.SessionRow
 	var repoEntry *repo.Entry
-	isNew := req.Msg.SessionId == ""
-	if req.Msg.SessionId != "" {
-		existing, err := s.DB.GetSession(ctx, principal, req.Msg.SessionId)
+	isNew := msg.SessionId == ""
+	if msg.SessionId != "" {
+		existing, err := s.DB.GetSession(ctx, principal, msg.SessionId)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return connect.NewError(connect.CodeNotFound, err)
@@ -285,7 +305,7 @@ func (s *Service) SendMessage(
 				errors.New("session's repo is no longer registered"))
 		}
 	} else {
-		repoEntry = s.Repos.Get(req.Msg.RepoId)
+		repoEntry = s.Repos.Get(msg.RepoId)
 		if repoEntry == nil {
 			return connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 		}
@@ -303,8 +323,8 @@ func (s *Service) SendMessage(
 	// (wrong session, deleted id) returns zero rows and we proceed as
 	// a normal append, which matches "client raced; the message is
 	// already gone" behaviour.
-	if req.Msg.ReplaceFromMessageId != "" {
-		if _, err := s.DB.DeleteMessagesFrom(ctx, sess.ID, req.Msg.ReplaceFromMessageId); err != nil {
+	if msg.ReplaceFromMessageId != "" {
+		if _, err := s.DB.DeleteMessagesFrom(ctx, sess.ID, msg.ReplaceFromMessageId); err != nil {
 			return connect.NewError(connect.CodeInternal, err)
 		}
 	}
@@ -319,7 +339,7 @@ func (s *Service) SendMessage(
 	}); err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
-	for _, a := range req.Msg.Attachments {
+	for _, a := range msg.Attachments {
 		if err := s.DB.CreateAttachment(ctx, storage.AttachmentRow{
 			ID:        newID(),
 			MessageID: userMsgID,
@@ -339,7 +359,7 @@ func (s *Service) SendMessage(
 	// what the user actually uploaded.
 	caps := s.LLM.Capabilities(ctx, s.Model)
 	var warnings []string
-	if !caps.Images && hasImageAttachment(req.Msg.Attachments) {
+	if !caps.Images && hasImageAttachment(msg.Attachments) {
 		warnings = append(warnings,
 			fmt.Sprintf("images stripped — model %q does not report vision support", s.Model))
 	}
@@ -354,7 +374,7 @@ func (s *Service) SendMessage(
 	if isNew {
 		startedSessionID = sess.ID
 	}
-	if err := stream.Send(&gitchatv1.MessageChunk{
+	if err := send(&gitchatv1.MessageChunk{
 		Kind: &gitchatv1.MessageChunk_Started{
 			Started: &gitchatv1.Started{
 				UserMessageId: userMsgID,
@@ -385,7 +405,7 @@ func (s *Service) SendMessage(
 		if card != nil {
 			// Fast path: serve from cache.
 			_ = s.DB.IncrementCardHit(ctx, card.ID)
-			if err := stream.Send(&gitchatv1.MessageChunk{
+			if err := send(&gitchatv1.MessageChunk{
 				Kind: &gitchatv1.MessageChunk_CardHit{
 					CardHit: &gitchatv1.KnowledgeCardHit{
 						CardId:        card.ID,
@@ -412,7 +432,7 @@ func (s *Service) SendMessage(
 			if err := s.DB.TouchSession(ctx, sess.ID); err != nil {
 				slog.Warn("KB cache hit: failed to touch session", "err", err)
 			}
-			return stream.Send(&gitchatv1.MessageChunk{
+			return send(&gitchatv1.MessageChunk{
 				Kind: &gitchatv1.MessageChunk_Done{
 					Done: &gitchatv1.Done{
 						SessionId:          sess.ID,
@@ -456,7 +476,7 @@ func (s *Service) SendMessage(
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
-	currentAttachments := protoToLLMAttachments(req.Msg.Attachments)
+	currentAttachments := protoToLLMAttachments(msg.Attachments)
 	if !caps.Images {
 		currentAttachments = stripImageAttachments(currentAttachments)
 		historyAttachments = stripImageHistory(historyAttachments)
@@ -466,22 +486,70 @@ func (s *Service) SendMessage(
 	var finalIn, finalOut int
 	var llmErr string
 
-	llmChunks, err := s.LLM.Stream(ctx, llm.Request{
-		Model:       s.Model,
-		Messages:    msgs,
-		Temperature: s.Temperature,
-		MaxTokens:   s.MaxTokens,
-	})
-	if err != nil {
-		llmErr = err.Error()
-	} else {
-		// ── Forward token chunks; accumulate assistant content.
+	// Build the tool spec once — the catalog is stable across rounds.
+	var toolSpecs []llm.ToolSpec
+	if s.Tools != nil {
+		for _, sp := range s.Tools.Specs() {
+			toolSpecs = append(toolSpecs, llm.ToolSpec{
+				Name:        sp.Name,
+				Description: sp.Description,
+				InputSchema: sp.InputSchema,
+			})
+		}
+	}
+
+	// ── Agentic loop.
+	//
+	// Each round we stream the LLM's next response, forwarding token
+	// chunks and tool_use chunks to the client as they arrive. If the
+	// round emits any tool_use, we execute each tool via the registry,
+	// append {assistant: tool_calls} + {tool: result} messages to the
+	// prompt, and go again. The loop terminates when a round produces
+	// no tool_use (the model has answered), the adapter fails, or the
+	// hard round cap is hit.
+	roundMsgs := append([]llm.Message(nil), msgs...)
+	for round := 0; round < toolLoopMax; round++ {
+		slog.Debug("agentic round starting", "round", round, "msgs", len(roundMsgs))
+		llmChunks, err := s.LLM.Stream(ctx, llm.Request{
+			Model:       s.Model,
+			Messages:    roundMsgs,
+			Temperature: s.Temperature,
+			MaxTokens:   s.MaxTokens,
+			Tools:       toolSpecs,
+		})
+		if err != nil {
+			llmErr = err.Error()
+			break
+		}
+		var roundText strings.Builder
+		var roundCalls []llm.ToolCall
 		for c := range llmChunks {
 			switch c.Kind {
 			case llm.ChunkToken:
 				assistant.WriteString(c.Token)
-				if err := stream.Send(&gitchatv1.MessageChunk{
+				roundText.WriteString(c.Token)
+				if err := send(&gitchatv1.MessageChunk{
 					Kind: &gitchatv1.MessageChunk_Token{Token: c.Token},
+				}); err != nil {
+					return err
+				}
+			case llm.ChunkReasoning:
+				if err := send(&gitchatv1.MessageChunk{
+					Kind: &gitchatv1.MessageChunk_Thinking{Thinking: c.Reasoning},
+				}); err != nil {
+					return err
+				}
+			case llm.ChunkToolUse:
+				tc := llm.ToolCall{ID: c.ToolUseID, Name: c.ToolName, Args: c.ToolArgs}
+				roundCalls = append(roundCalls, tc)
+				if err := send(&gitchatv1.MessageChunk{
+					Kind: &gitchatv1.MessageChunk_ToolCall{
+						ToolCall: &gitchatv1.ToolCall{
+							Id:       c.ToolUseID,
+							Name:     c.ToolName,
+							ArgsJson: string(c.ToolArgs),
+						},
+					},
 				}); err != nil {
 					return err
 				}
@@ -490,6 +558,50 @@ func (s *Service) SendMessage(
 				finalOut = c.TokenCountOut
 				llmErr = c.Error
 			}
+		}
+		slog.Debug("agentic round finished", "round", round,
+			"text_bytes", roundText.Len(), "calls", len(roundCalls),
+			"llm_err", llmErr)
+		if llmErr != "" || len(roundCalls) == 0 || s.Tools == nil {
+			break
+		}
+		// Replay this round's assistant output into roundMsgs so the
+		// next Stream call sees the tool_use blocks in history.
+		roundMsgs = append(roundMsgs, llm.Message{
+			Role:      llm.RoleAssistant,
+			Content:   roundText.String(),
+			ToolCalls: roundCalls,
+		})
+		// Execute each tool and forward the result both to the client
+		// (for immediate UI rendering) and back into the prompt.
+		for _, tc := range roundCalls {
+			output, execErr := s.Tools.Execute(ctx, repoEntry, tc.Name, tc.Args)
+			isErr := false
+			if execErr != nil {
+				output = execErr.Error()
+				isErr = true
+			}
+			if err := send(&gitchatv1.MessageChunk{
+				Kind: &gitchatv1.MessageChunk_ToolResult{
+					ToolResult: &gitchatv1.ToolResult{
+						Id:      tc.ID,
+						Content: output,
+						IsError: isErr,
+					},
+				},
+			}); err != nil {
+				return err
+			}
+			roundMsgs = append(roundMsgs, llm.Message{
+				Role:      llm.RoleTool,
+				ToolUseID: tc.ID,
+				Content:   output,
+			})
+		}
+		if round == toolLoopMax-1 {
+			// Surface the cap on the next Done chunk so the UI can
+			// tell the user why the assistant stopped short.
+			llmErr = fmt.Sprintf("tool loop cap reached (%d rounds)", toolLoopMax)
 		}
 	}
 
@@ -531,7 +643,7 @@ func (s *Service) SendMessage(
 	}
 
 	// ── Final Done chunk.
-	if err := stream.Send(&gitchatv1.MessageChunk{
+	if err := send(&gitchatv1.MessageChunk{
 		Kind: &gitchatv1.MessageChunk_Done{
 			Done: &gitchatv1.Done{
 				SessionId:          sess.ID,

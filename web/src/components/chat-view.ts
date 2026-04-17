@@ -51,6 +51,27 @@ type Turn = {
   // vision"). Rendered below the user turn so the degradation is
   // visible without blocking the stream.
   warnings?: string[];
+  // Agentic tool invocations the assistant triggered during this
+  // turn, in the order they were emitted. A ToolEvent starts with
+  // state="running" on the ToolCall chunk and flips to "done" on
+  // the matching ToolResult. Rendered as a compact summary block
+  // above the assistant prose; expand to see args + result.
+  tools?: ToolEvent[];
+  // Reasoning-model chain-of-thought accumulated during this turn.
+  // Rendered as a collapsible "thinking" block above the reply.
+  // Kept separate from `content` so the user's clipboard copy of
+  // the assistant turn stays clean.
+  thinking?: string;
+  thinkingExpanded?: boolean;
+};
+
+type ToolEvent = {
+  id: string;
+  name: string;
+  argsJson: string;
+  state: "running" | "done" | "error";
+  content?: string;
+  expanded?: boolean;
 };
 
 // ClientAttachment is the composer/rendering shape for a user-uploaded
@@ -147,6 +168,36 @@ function fmtBytes(n: number): string {
   if (n < 1024) return `${n}B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
   return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
+// fmtToolSummary renders a one-line recap of a tool invocation that
+// still reads at a glance: the top-level string args joined compactly.
+// We prefer this over raw JSON because ~80% of our tools take a single
+// path/query, and users care about "what file/query" far more than
+// "what shape did the JSON have".
+function fmtToolSummary(ev: ToolEvent): string {
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = ev.argsJson ? JSON.parse(ev.argsJson) : {};
+  } catch {
+    return ev.argsJson.slice(0, 80);
+  }
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(parsed)) {
+    if (typeof v === "string" && v.length > 0) parts.push(`${k}=${v}`);
+  }
+  return parts.join(" · ");
+}
+
+// fmtJSON reformats a JSON blob for the expanded tool panel. Falls
+// back to the raw string if the payload isn't valid JSON so we never
+// hide what actually went on the wire.
+function fmtJSON(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
 }
 
 type ViewState =
@@ -908,6 +959,37 @@ export class GcChatView extends LitElement {
           assistantTurn.content += chunk.kind.value;
           this.turns = [...this.turns]; // trigger re-render
           this.scrollToBottom();
+        } else if (chunk.kind.case === "thinking") {
+          assistantTurn.thinking = (assistantTurn.thinking ?? "") + chunk.kind.value;
+          this.turns = [...this.turns];
+        } else if (chunk.kind.case === "toolCall") {
+          const tc = chunk.kind.value;
+          if (!assistantTurn.tools) assistantTurn.tools = [];
+          assistantTurn.tools = [
+            ...assistantTurn.tools,
+            {
+              id: tc.id,
+              name: tc.name,
+              argsJson: tc.argsJson,
+              state: "running",
+            },
+          ];
+          this.turns = [...this.turns];
+          this.scrollToBottom();
+        } else if (chunk.kind.case === "toolResult") {
+          const tr = chunk.kind.value;
+          if (assistantTurn.tools) {
+            assistantTurn.tools = assistantTurn.tools.map((t) =>
+              t.id === tr.id
+                ? {
+                    ...t,
+                    state: tr.isError ? "error" : "done",
+                    content: tr.content,
+                  }
+                : t,
+            );
+            this.turns = [...this.turns];
+          }
         } else if (chunk.kind.case === "cardHit") {
           // M5 fast-path: answer came from the knowledge base,
           // not a fresh LLM call. Populate the assistant turn
@@ -1408,6 +1490,85 @@ export class GcChatView extends LitElement {
     });
   }
 
+  private renderThinking(t: Turn) {
+    if (!t.thinking) return nothing;
+    const label = t.streaming ? "thinking…" : "thinking";
+    return html`<div class="thinking-block ${t.streaming ? "is-streaming" : ""}">
+      <button
+        class="thinking-head"
+        aria-expanded=${t.thinkingExpanded ? "true" : "false"}
+        @click=${() => this.toggleThinking(t.id)}
+      >
+        <span class="thinking-label">${label}</span>
+        <span class="thinking-caret" aria-hidden="true">${t.thinkingExpanded ? "▾" : "▸"}</span>
+      </button>
+      ${t.thinkingExpanded ? html`<pre class="thinking-body">${t.thinking}</pre>` : nothing}
+    </div>`;
+  }
+
+  private toggleThinking(id: string) {
+    this.turns = this.turns.map((t) =>
+      t.id === id ? { ...t, thinkingExpanded: !t.thinkingExpanded } : t,
+    );
+  }
+
+  private renderToolEvents(events: ToolEvent[]) {
+    return html`<div class="tool-events" role="list">
+      ${events.map((ev) => this.renderToolEvent(ev))}
+    </div>`;
+  }
+
+  private renderToolEvent(ev: ToolEvent) {
+    const icon =
+      ev.state === "running"
+        ? html`<span class="tool-dot tool-dot--running" aria-hidden="true"></span>`
+        : ev.state === "error"
+          ? html`<span class="tool-dot tool-dot--error" aria-hidden="true">✗</span>`
+          : html`<span class="tool-dot tool-dot--done" aria-hidden="true">✓</span>`;
+    const summary = fmtToolSummary(ev);
+    const canExpand = ev.state !== "running";
+    return html`<div class="tool-event ${ev.state}" role="listitem">
+      <button
+        class="tool-event-head"
+        ?disabled=${!canExpand}
+        aria-expanded=${ev.expanded ? "true" : "false"}
+        @click=${() => this.toggleToolEvent(ev.id)}
+      >
+        ${icon}
+        <span class="tool-name">${ev.name}</span>
+        <span class="tool-summary">${summary}</span>
+        ${canExpand
+          ? html`<span class="tool-caret" aria-hidden="true">${ev.expanded ? "▾" : "▸"}</span>`
+          : nothing}
+      </button>
+      ${ev.expanded
+        ? html`<div class="tool-body">
+            <div class="tool-body-label">args</div>
+            <pre class="tool-body-pre">${fmtJSON(ev.argsJson)}</pre>
+            ${ev.content !== undefined
+              ? html`<div class="tool-body-label">
+                    result${ev.state === "error" ? " (error)" : ""}
+                  </div>
+                  <pre class="tool-body-pre ${ev.state === "error" ? "is-error" : ""}">
+${ev.content}</pre
+                  >`
+              : nothing}
+          </div>`
+        : nothing}
+    </div>`;
+  }
+
+  private toggleToolEvent(id: string) {
+    this.turns = this.turns.map((t) =>
+      t.tools
+        ? {
+            ...t,
+            tools: t.tools.map((ev) => (ev.id === id ? { ...ev, expanded: !ev.expanded } : ev)),
+          }
+        : t,
+    );
+  }
+
   private renderAttachmentChip(a: ClientAttachment, index: number, removable: boolean) {
     const isImage = a.mimeType.startsWith("image/") && a.url;
     const tooltip = `${a.filename} · ${fmtBytes(a.size)}`;
@@ -1563,7 +1724,9 @@ export class GcChatView extends LitElement {
                 copy
               </button>
             </div>`}
-        ${body} ${tokenInfo}
+        ${this.renderThinking(t)}
+        ${t.tools && t.tools.length > 0 ? this.renderToolEvents(t.tools) : nothing} ${body}
+        ${tokenInfo}
       </article>
     `;
   }
@@ -2596,6 +2759,174 @@ export class GcChatView extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 2px;
+    }
+    .thinking-block {
+      margin: var(--space-2) 0;
+      border: 1px dashed var(--border-default);
+      border-radius: 6px;
+      background: var(--surface-2);
+      font-size: var(--text-xs);
+      opacity: 0.75;
+    }
+    .thinking-block.is-streaming {
+      opacity: 1;
+      border-style: solid;
+      border-color: var(--border-accent, var(--border-default));
+    }
+    .thinking-head {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 4px 8px;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: inherit;
+      text-align: left;
+    }
+    .thinking-head:hover {
+      background: var(--surface-3);
+    }
+    .thinking-label {
+      font-style: italic;
+      flex: 1;
+    }
+    .thinking-block.is-streaming .thinking-label::after {
+      content: "";
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin-left: 0.4rem;
+      border-radius: 50%;
+      background: var(--accent-user);
+      animation: toolPulse 1s ease-in-out infinite;
+      vertical-align: middle;
+    }
+    .thinking-caret {
+      opacity: 0.4;
+      font-size: 10px;
+    }
+    .thinking-body {
+      margin: 0;
+      padding: 6px 10px 8px;
+      max-height: 240px;
+      overflow: auto;
+      font-family: var(--font-mono, monospace);
+      font-size: 0.7rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border-top: 1px solid var(--border-default);
+      opacity: 0.9;
+    }
+    .tool-events {
+      margin: var(--space-2) 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .tool-event {
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--surface-2);
+      font-size: var(--text-xs);
+    }
+    .tool-event-head {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 4px 8px;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: inherit;
+      text-align: left;
+    }
+    .tool-event-head[disabled] {
+      cursor: default;
+      opacity: 0.8;
+    }
+    .tool-event-head:hover:not([disabled]) {
+      background: var(--surface-3);
+    }
+    .tool-dot {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    .tool-dot--running {
+      background: var(--accent-user);
+      opacity: 0.6;
+      animation: toolPulse 1s ease-in-out infinite;
+    }
+    .tool-dot--done {
+      background: var(--accent-assistant, var(--accent-user));
+      color: var(--surface-0);
+    }
+    .tool-dot--error {
+      background: var(--danger, #d34);
+      color: #fff;
+    }
+    @keyframes toolPulse {
+      0%,
+      100% {
+        opacity: 0.3;
+      }
+      50% {
+        opacity: 0.8;
+      }
+    }
+    .tool-name {
+      font-weight: 600;
+      font-family: var(--font-mono, monospace);
+    }
+    .tool-summary {
+      opacity: 0.65;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .tool-caret {
+      opacity: 0.4;
+      font-size: 10px;
+    }
+    .tool-body {
+      padding: 0 8px 8px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .tool-body-label {
+      opacity: 0.5;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .tool-body-pre {
+      margin: 0;
+      padding: 6px 8px;
+      background: var(--surface-3);
+      border-radius: 4px;
+      max-height: 240px;
+      overflow: auto;
+      font-family: var(--font-mono, monospace);
+      font-size: 0.7rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .tool-body-pre.is-error {
+      color: var(--danger, #d34);
     }
     .turn-warning {
       font-size: 0.7rem;

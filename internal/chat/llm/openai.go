@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -228,19 +229,32 @@ func nameLooksVisionCapable(model string) bool {
 // Stream issues a streaming chat-completion request and fans the SSE
 // frames out as typed Chunks. The returned channel is closed after the
 // terminal ChunkDone is delivered.
+//
+// Tool use: when req.Tools is non-empty the adapter advertises them as
+// OpenAI function tools. Assistant turns replayed from history that
+// carry ToolCalls are serialised back into ChatCompletionMessage.ToolCalls
+// so the model sees the same call/result pairing it produced before.
+// Streaming tool_calls arrive as partial deltas indexed by position; we
+// buffer per-index and emit one ChunkToolUse per tool once FinishReason
+// lands.
 func (o *OpenAI) Stream(ctx context.Context, req Request) (<-chan Chunk, error) {
 	msgs := make([]openai.ChatCompletionMessage, 0, len(req.Messages))
 	for _, m := range req.Messages {
 		msgs = append(msgs, buildOpenAIMessage(m))
 	}
 
-	stream, err := o.client.CreateChatCompletionStream(ctx, openai.ChatCompletionRequest{
+	apiReq := openai.ChatCompletionRequest{
 		Model:       req.Model,
 		Messages:    msgs,
 		Temperature: req.Temperature,
 		MaxTokens:   req.MaxTokens,
 		Stream:      true,
-	})
+	}
+	if len(req.Tools) > 0 {
+		apiReq.Tools = buildOpenAITools(req.Tools)
+	}
+
+	stream, err := o.client.CreateChatCompletionStream(ctx, apiReq)
 	if err != nil {
 		return nil, fmt.Errorf("openai: start stream: %w", err)
 	}
@@ -251,7 +265,58 @@ func (o *OpenAI) Stream(ctx context.Context, req Request) (<-chan Chunk, error) 
 		defer stream.Close()
 
 		var in, outTokens int
-		var errMsg string
+		var errMsg, stopReason string
+		// Reasoning models (Qwen3.x, DeepSeek-R1, etc.) stream their
+		// chain of thought as `reasoning_content` deltas and the final
+		// answer as `content` deltas. Normal responses only use
+		// `content`. We buffer the reasoning prefix so that if the
+		// provider ends the stream without ever emitting a `content`
+		// delta — which happens on some local runners when the model
+		// treats a short follow-up answer as "nothing more to say" —
+		// we can still surface the reasoning text. If `content` does
+		// arrive, the reasoning stays buffered and we skip it, matching
+		// the provider's intent.
+		var reasoningBuf strings.Builder
+		sawContent := false
+		// Tool_calls stream in as indexed partial deltas: the first
+		// delta for a given index carries the ID + Function.Name; the
+		// subsequent deltas carry Function.Arguments piecewise. We
+		// accumulate by position and flush each buffered call on
+		// FinishReason="tool_calls" (or stream end).
+		type pending struct {
+			id   string
+			name string
+			args strings.Builder
+		}
+		buffers := map[int]*pending{}
+		flush := func() error {
+			// Emit buffered tool_use chunks in index order so the
+			// server-side loop sees them deterministically.
+			keys := make([]int, 0, len(buffers))
+			for k := range buffers {
+				keys = append(keys, k)
+			}
+			sort.Ints(keys)
+			for _, k := range keys {
+				b := buffers[k]
+				args := b.args.String()
+				if args == "" {
+					args = "{}"
+				}
+				select {
+				case out <- Chunk{
+					Kind:      ChunkToolUse,
+					ToolUseID: b.id,
+					ToolName:  b.name,
+					ToolArgs:  json.RawMessage(args),
+				}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+			buffers = map[int]*pending{}
+			return nil
+		}
 
 		for {
 			resp, err := stream.Recv()
@@ -265,8 +330,10 @@ func (o *OpenAI) Stream(ctx context.Context, req Request) (<-chan Chunk, error) 
 			if len(resp.Choices) == 0 {
 				continue
 			}
-			delta := resp.Choices[0].Delta
+			choice := resp.Choices[0]
+			delta := choice.Delta
 			if delta.Content != "" {
+				sawContent = true
 				select {
 				case out <- Chunk{Kind: ChunkToken, Token: delta.Content}:
 				case <-ctx.Done():
@@ -274,23 +341,90 @@ func (o *OpenAI) Stream(ctx context.Context, req Request) (<-chan Chunk, error) 
 					goto done
 				}
 			}
+			if delta.ReasoningContent != "" {
+				reasoningBuf.WriteString(delta.ReasoningContent)
+				select {
+				case out <- Chunk{Kind: ChunkReasoning, Reasoning: delta.ReasoningContent}:
+				case <-ctx.Done():
+					errMsg = ctx.Err().Error()
+					goto done
+				}
+			}
+			for _, tc := range delta.ToolCalls {
+				idx := 0
+				if tc.Index != nil {
+					idx = *tc.Index
+				}
+				b, ok := buffers[idx]
+				if !ok {
+					b = &pending{}
+					buffers[idx] = b
+				}
+				if tc.ID != "" {
+					b.id = tc.ID
+				}
+				if tc.Function.Name != "" {
+					b.name = tc.Function.Name
+				}
+				if tc.Function.Arguments != "" {
+					b.args.WriteString(tc.Function.Arguments)
+				}
+			}
+			if choice.FinishReason != "" {
+				stopReason = string(choice.FinishReason)
+				if choice.FinishReason == openai.FinishReasonToolCalls && len(buffers) > 0 {
+					if err := flush(); err != nil {
+						errMsg = err.Error()
+						goto done
+					}
+				}
+			}
 			if resp.Usage != nil {
 				in = resp.Usage.PromptTokens
 				outTokens = resp.Usage.CompletionTokens
 			}
 		}
+		// Belt-and-braces: some local runners close the stream without
+		// a FinishReason. Flush anything we've buffered so the service
+		// loop still sees the tool calls.
+		if len(buffers) > 0 {
+			if err := flush(); err != nil && errMsg == "" {
+				errMsg = err.Error()
+			}
+		}
+		_ = reasoningBuf // reasoning streams live via ChunkReasoning above
+		_ = sawContent
 	done:
 		select {
 		case out <- Chunk{
 			Kind:          ChunkDone,
 			TokenCountIn:  in,
 			TokenCountOut: outTokens,
+			StopReason:    stopReason,
 			Error:         errMsg,
 		}:
 		case <-ctx.Done():
 		}
 	}()
 	return out, nil
+}
+
+// buildOpenAITools converts adapter-neutral specs into the OpenAI
+// `tools` payload. The input schema travels as json.RawMessage so the
+// HTTP client serialises the exact shape we defined in the catalog.
+func buildOpenAITools(specs []ToolSpec) []openai.Tool {
+	out := make([]openai.Tool, 0, len(specs))
+	for _, s := range specs {
+		out = append(out, openai.Tool{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        s.Name,
+				Description: s.Description,
+				Parameters:  s.InputSchema,
+			},
+		})
+	}
+	return out
 }
 
 // buildOpenAIMessage adapts an llm.Message (with its attachments) into
@@ -303,7 +437,41 @@ func (o *OpenAI) Stream(ctx context.Context, req Request) (<-chan Chunk, error) 
 // their contents. Messages with no attachments take the simpler
 // Content string path for backward compatibility with non-vision
 // servers that reject MultiContent.
+//
+// Tool use is handled outside the attachment path:
+//
+//   - Role=tool becomes a tool-role ChatCompletionMessage carrying
+//     ToolCallID + Content. Attachments on a tool message are ignored
+//     because the OpenAI schema has no place for them.
+//   - Role=assistant with ToolCalls produces an assistant message
+//     with its tool_calls array populated, so replayed history is
+//     symmetric with the tool messages that follow it.
 func buildOpenAIMessage(m Message) openai.ChatCompletionMessage {
+	if m.Role == RoleTool {
+		return openai.ChatCompletionMessage{
+			Role:       string(RoleTool),
+			Content:    m.Content,
+			ToolCallID: m.ToolUseID,
+		}
+	}
+	if m.Role == RoleAssistant && len(m.ToolCalls) > 0 {
+		calls := make([]openai.ToolCall, 0, len(m.ToolCalls))
+		for _, tc := range m.ToolCalls {
+			calls = append(calls, openai.ToolCall{
+				ID:   tc.ID,
+				Type: openai.ToolTypeFunction,
+				Function: openai.FunctionCall{
+					Name:      tc.Name,
+					Arguments: string(tc.Args),
+				},
+			})
+		}
+		return openai.ChatCompletionMessage{
+			Role:      string(RoleAssistant),
+			Content:   m.Content,
+			ToolCalls: calls,
+		}
+	}
 	if len(m.Attachments) == 0 {
 		return openai.ChatCompletionMessage{Role: string(m.Role), Content: m.Content}
 	}

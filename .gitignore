@@ -32,3 +32,4 @@ host_ed25519*
 .idea/
 .vscode/
 HANDOFF.md
+.claude/settings.local.json
