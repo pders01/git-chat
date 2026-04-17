@@ -8,6 +8,7 @@ import { copyText } from "../lib/clipboard.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
 import "./loading-indicator.js";
 import "./three-pane-view.js";
+import { readFocus } from "../lib/focus.js";
 
 // Lazy-load highlight for diff rendering.
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
@@ -57,6 +58,7 @@ export class GcCommitLog extends LitElement {
   @state() private state: LogState = { phase: "loading" };
   @state() private selectedSha = "";
   @state() private drawerOpen = false;
+  @state() private focused = readFocus();
   @state() private graphMode = false;
   @state() private files: ChangedFile[] = [];
   @state() private selectedFile = ""; // "" = all files
@@ -99,6 +101,7 @@ export class GcCommitLog extends LitElement {
     super.connectedCallback();
     this.addEventListener("gc:select-commit", this.onSelectCommit);
     this.addEventListener("gc:set-filter-path", this.onSetFilterPath);
+    this.addEventListener("gc:toggle-focus", this.onSyncFocus);
     this.unsubSettings = onSettingsChange(() => void this.rehighlight());
     if (this.repoId) void this.load(0);
   }
@@ -107,11 +110,16 @@ export class GcCommitLog extends LitElement {
     super.disconnectedCallback();
     this.removeEventListener("gc:select-commit", this.onSelectCommit);
     this.removeEventListener("gc:set-filter-path", this.onSetFilterPath);
+    this.removeEventListener("gc:toggle-focus", this.onSyncFocus);
     this.unsubSettings?.();
     this.unsubSettings = null;
     this.renameAbort?.abort();
     this.renameAbort = null;
   }
+
+  private onSyncFocus = () => {
+    this.focused = readFocus();
+  };
 
   private async rehighlight() {
     if (this.diff.phase !== "ready" || !this.diff.rawDiff) return;
@@ -259,6 +267,7 @@ export class GcCommitLog extends LitElement {
       this.diff = { phase: "empty" };
       this.sideFiles = { phase: "idle" };
       this.fullDiff = null;
+      this.threePane = false;
       return;
     }
     const requestedSha = sha;
@@ -853,7 +862,7 @@ export class GcCommitLog extends LitElement {
     const sel = this.selectedCommit();
     return html`
       <div
-        class="layout ${this.drawerOpen ? "drawer-open" : ""}"
+        class="layout ${this.drawerOpen ? "drawer-open" : ""} ${this.focused ? "focused" : ""}"
         @keydown=${(e: KeyboardEvent) => {
           if (e.key === "Escape" && this.drawerOpen) {
             this.drawerOpen = false;
@@ -1089,17 +1098,16 @@ export class GcCommitLog extends LitElement {
                   >
                     ${this.splitView ? "unified" : "split"}
                   </button>
-                  <button
-                    class="split-toggle ${this.threePane ? "active" : ""}"
-                    @click=${() => this.toggleThreePane()}
-                    ?disabled=${!this.selectedFile}
-                    aria-pressed=${this.threePane ? "true" : "false"}
-                    title=${this.selectedFile
-                      ? "Toggle 3-pane view (before | diff | after)"
-                      : "Select a file to enable the 3-pane view"}
-                  >
-                    3-pane
-                  </button>
+                  ${this.selectedFile
+                    ? html`<button
+                        class="split-toggle ${this.threePane ? "active" : ""}"
+                        @click=${() => this.toggleThreePane()}
+                        aria-pressed=${this.threePane ? "true" : "false"}
+                        title="Toggle 3-pane view (before | diff | after)"
+                      >
+                        3-pane
+                      </button>`
+                    : nothing}
                 </div>
                 <div class="diff-body">${this.renderDiffPane()}</div>`
             : html`<div class="empty-detail">
@@ -1155,6 +1163,16 @@ export class GcCommitLog extends LitElement {
       flex: 1;
       min-height: 0;
       min-width: 0;
+    }
+    /* Focus mode (⌘\): hide commit list and metadata pane so the
+       diff area — whether unified, split, or 3-pane — gets the full
+       viewport width for reviewing one file at a time. */
+    .layout.focused {
+      grid-template-columns: 1fr;
+    }
+    .layout.focused .commit-list,
+    .layout.focused .info-pane {
+      display: none;
     }
 
     /* ── Left: commit list ───────────────────────────────────── */

@@ -274,7 +274,9 @@ export class GcApp extends LitElement {
     const next = !readFocus();
     writeFocus(next);
     // Notify all focus-aware components to re-read the shared state.
-    for (const sel of ["gc-chat-view", "gc-repo-browser"] as const) {
+    // gc-compare-view lives inside gc-repo-browser's shadow root and
+    // is handled by repo-browser itself forwarding the event.
+    for (const sel of ["gc-chat-view", "gc-repo-browser", "gc-commit-log"] as const) {
       const el = this.renderRoot.querySelector(sel);
       el?.dispatchEvent(new CustomEvent("gc:toggle-focus", { bubbles: false }));
     }

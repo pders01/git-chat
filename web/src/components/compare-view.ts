@@ -135,6 +135,7 @@ export class GcCompareView extends LitElement {
     this.diff = { phase: "loading" };
     this.sideFiles = { phase: "idle" };
     this.fullDiff = null;
+    this.threePane = false;
 
     try {
       const [cmp, diff] = await Promise.all([
@@ -414,17 +415,16 @@ export class GcCompareView extends LitElement {
                         <span class="dels">-${totalDeletions}</span>
                       </span>`
                     : nothing}`}
-            <button
-              class="pane-toggle ${this.threePane ? "active" : ""}"
-              @click=${() => this.toggleThreePane()}
-              ?disabled=${!this.selectedFile}
-              aria-pressed=${this.threePane ? "true" : "false"}
-              title=${this.selectedFile
-                ? "Toggle 3-pane view (before | diff | after)"
-                : "Select a file to enable the 3-pane view"}
-            >
-              3-pane
-            </button>
+            ${this.selectedFile
+              ? html`<button
+                  class="pane-toggle ${this.threePane ? "active" : ""}"
+                  @click=${() => this.toggleThreePane()}
+                  aria-pressed=${this.threePane ? "true" : "false"}
+                  title="Toggle 3-pane view (before | diff | after)"
+                >
+                  3-pane
+                </button>`
+              : nothing}
           </div>
           <div class="diff-body">${this.renderDiffPane()}</div>
         </section>
