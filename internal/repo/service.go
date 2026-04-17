@@ -211,11 +211,23 @@ func (s *Service) GetFileChurnMap(
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	files, err := entry.GetFileChurnMap(ctx, req.Msg.Ref, req.Msg.SinceTimestamp, req.Msg.UntilTimestamp)
+	result, err := entry.GetFileChurnMap(ctx, req.Msg.Ref, req.Msg.SinceTimestamp, req.Msg.UntilTimestamp, int(req.Msg.MaxCommits))
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return connect.NewResponse(&gitchatv1.GetFileChurnMapResponse{Files: files}), nil
+	// Outer bounds for the client's time-range controls. Non-fatal: if
+	// this fails we just return 0/0 and the client falls back to the
+	// window it can infer from file.last_modified.
+	first, last, _ := entry.GetCommitTimeRange(ctx, req.Msg.Ref)
+	return connect.NewResponse(&gitchatv1.GetFileChurnMapResponse{
+		Files:                   result.Files,
+		FirstCommitTimestamp:    first,
+		LastCommitTimestamp:     last,
+		CommitsScanned:          result.CommitsScanned,
+		CapReached:              result.CapReached,
+		MaxCommitsScanned:       result.MaxCommitsScanned,
+		EffectiveSinceTimestamp: result.EffectiveSinceTimestamp,
+	}), nil
 }
 
 func (s *Service) GetConfig(

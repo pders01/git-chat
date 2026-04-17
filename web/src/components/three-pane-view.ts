@@ -395,11 +395,11 @@ export class GcThreePaneView extends LitElement {
        spacer row and shouldn't look highlighted). */
     .col-right .row.addition .code,
     .col-middle .row.addition .code {
-      background: color-mix(in srgb, var(--success, #2ea043) 18%, transparent);
+      background: color-mix(in srgb, var(--success) 18%, transparent);
     }
     .col-left .row.deletion .code,
     .col-middle .row.deletion .code {
-      background: color-mix(in srgb, var(--danger, #f85149) 18%, transparent);
+      background: color-mix(in srgb, var(--danger) 18%, transparent);
     }
     .col-right .row.addition .num,
     .col-middle .row.addition .num,

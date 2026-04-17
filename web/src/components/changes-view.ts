@@ -358,7 +358,7 @@ export class GcChangesView extends LitElement {
       color: var(--danger);
     }
     .file-status.renamed {
-      color: var(--warning, #e0a040);
+      color: var(--warning);
     }
     .file-path {
       flex: 1;

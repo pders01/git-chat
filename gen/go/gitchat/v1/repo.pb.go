@@ -2049,8 +2049,15 @@ type GetFileChurnMapRequest struct {
 	Ref            string                 `protobuf:"bytes,2,opt,name=ref,proto3" json:"ref,omitempty"`
 	SinceTimestamp int64                  `protobuf:"varint,3,opt,name=since_timestamp,json=sinceTimestamp,proto3" json:"since_timestamp,omitempty"`
 	UntilTimestamp int64                  `protobuf:"varint,4,opt,name=until_timestamp,json=untilTimestamp,proto3" json:"until_timestamp,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Per-request override for the commit scan cap. Zero means "use the
+	// server default" (GITCHAT_MAX_CHURN_COMMITS). Non-zero is clamped
+	// against a hard safety ceiling on the server so a misbehaving
+	// client can't ask for a trillion commits. The frontend sends a
+	// large value when the user explicitly picks "all history" so those
+	// stats aren't capped at 5k on a 60k-commit repo.
+	MaxCommits    int32 `protobuf:"varint,5,opt,name=max_commits,json=maxCommits,proto3" json:"max_commits,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetFileChurnMapRequest) Reset() {
@@ -2107,6 +2114,13 @@ func (x *GetFileChurnMapRequest) GetSinceTimestamp() int64 {
 func (x *GetFileChurnMapRequest) GetUntilTimestamp() int64 {
 	if x != nil {
 		return x.UntilTimestamp
+	}
+	return 0
+}
+
+func (x *GetFileChurnMapRequest) GetMaxCommits() int32 {
+	if x != nil {
+		return x.MaxCommits
 	}
 	return 0
 }
@@ -2196,10 +2210,31 @@ func (x *FileChurn) GetSize() int64 {
 }
 
 type GetFileChurnMapResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Files         []*FileChurn           `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Files []*FileChurn           `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
+	// Oldest commit reachable from ref (first_commit_timestamp) and
+	// newest (last_commit_timestamp). The client uses these as the
+	// slider's outer bounds so "all history" spans from the repo's
+	// initial commit — file.last_modified alone would clip the range
+	// to the oldest surviving file's last touch.
+	FirstCommitTimestamp int64 `protobuf:"varint,2,opt,name=first_commit_timestamp,json=firstCommitTimestamp,proto3" json:"first_commit_timestamp,omitempty"`
+	LastCommitTimestamp  int64 `protobuf:"varint,3,opt,name=last_commit_timestamp,json=lastCommitTimestamp,proto3" json:"last_commit_timestamp,omitempty"`
+	// Number of commits actually aggregated for this response, and
+	// whether the server's per-request cap was hit (meaning older
+	// commits in the requested window were skipped). Surfaced so the
+	// client can label the stats as "showing last N commits" instead
+	// of presenting partial sums as the repo's total truth.
+	CommitsScanned    int32 `protobuf:"varint,4,opt,name=commits_scanned,json=commitsScanned,proto3" json:"commits_scanned,omitempty"`
+	CapReached        bool  `protobuf:"varint,5,opt,name=cap_reached,json=capReached,proto3" json:"cap_reached,omitempty"`
+	MaxCommitsScanned int32 `protobuf:"varint,6,opt,name=max_commits_scanned,json=maxCommitsScanned,proto3" json:"max_commits_scanned,omitempty"`
+	// Actual timestamp of the oldest commit the server walked for this
+	// response. On a capped scan this is newer than since_timestamp in
+	// the request; the client uses it to position the slider / since
+	// date at the true data boundary so "slider at left" never lies
+	// about showing all history while the server silently truncated.
+	EffectiveSinceTimestamp int64 `protobuf:"varint,7,opt,name=effective_since_timestamp,json=effectiveSinceTimestamp,proto3" json:"effective_since_timestamp,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *GetFileChurnMapResponse) Reset() {
@@ -2237,6 +2272,48 @@ func (x *GetFileChurnMapResponse) GetFiles() []*FileChurn {
 		return x.Files
 	}
 	return nil
+}
+
+func (x *GetFileChurnMapResponse) GetFirstCommitTimestamp() int64 {
+	if x != nil {
+		return x.FirstCommitTimestamp
+	}
+	return 0
+}
+
+func (x *GetFileChurnMapResponse) GetLastCommitTimestamp() int64 {
+	if x != nil {
+		return x.LastCommitTimestamp
+	}
+	return 0
+}
+
+func (x *GetFileChurnMapResponse) GetCommitsScanned() int32 {
+	if x != nil {
+		return x.CommitsScanned
+	}
+	return 0
+}
+
+func (x *GetFileChurnMapResponse) GetCapReached() bool {
+	if x != nil {
+		return x.CapReached
+	}
+	return false
+}
+
+func (x *GetFileChurnMapResponse) GetMaxCommitsScanned() int32 {
+	if x != nil {
+		return x.MaxCommitsScanned
+	}
+	return 0
+}
+
+func (x *GetFileChurnMapResponse) GetEffectiveSinceTimestamp() int64 {
+	if x != nil {
+		return x.EffectiveSinceTimestamp
+	}
+	return 0
 }
 
 var File_gitchat_v1_repo_proto protoreflect.FileDescriptor
@@ -2384,21 +2461,30 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x13UpdateConfigRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\"\x16\n" +
-	"\x14UpdateConfigResponse\"\x95\x01\n" +
+	"\x14UpdateConfigResponse\"\xb6\x01\n" +
 	"\x16GetFileChurnMapRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x10\n" +
 	"\x03ref\x18\x02 \x01(\tR\x03ref\x12'\n" +
 	"\x0fsince_timestamp\x18\x03 \x01(\x03R\x0esinceTimestamp\x12'\n" +
-	"\x0funtil_timestamp\x18\x04 \x01(\x03R\x0euntilTimestamp\"\xcd\x01\n" +
+	"\x0funtil_timestamp\x18\x04 \x01(\x03R\x0euntilTimestamp\x12\x1f\n" +
+	"\vmax_commits\x18\x05 \x01(\x05R\n" +
+	"maxCommits\"\xcd\x01\n" +
 	"\tFileChurn\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12!\n" +
 	"\fcommit_count\x18\x02 \x01(\x05R\vcommitCount\x12'\n" +
 	"\x0ftotal_additions\x18\x03 \x01(\x03R\x0etotalAdditions\x12'\n" +
 	"\x0ftotal_deletions\x18\x04 \x01(\x03R\x0etotalDeletions\x12#\n" +
 	"\rlast_modified\x18\x05 \x01(\x03R\flastModified\x12\x12\n" +
-	"\x04size\x18\x06 \x01(\x03R\x04size\"F\n" +
+	"\x04size\x18\x06 \x01(\x03R\x04size\"\xe6\x02\n" +
 	"\x17GetFileChurnMapResponse\x12+\n" +
-	"\x05files\x18\x01 \x03(\v2\x15.gitchat.v1.FileChurnR\x05files*\x82\x01\n" +
+	"\x05files\x18\x01 \x03(\v2\x15.gitchat.v1.FileChurnR\x05files\x124\n" +
+	"\x16first_commit_timestamp\x18\x02 \x01(\x03R\x14firstCommitTimestamp\x122\n" +
+	"\x15last_commit_timestamp\x18\x03 \x01(\x03R\x13lastCommitTimestamp\x12'\n" +
+	"\x0fcommits_scanned\x18\x04 \x01(\x05R\x0ecommitsScanned\x12\x1f\n" +
+	"\vcap_reached\x18\x05 \x01(\bR\n" +
+	"capReached\x12.\n" +
+	"\x13max_commits_scanned\x18\x06 \x01(\x05R\x11maxCommitsScanned\x12:\n" +
+	"\x19effective_since_timestamp\x18\a \x01(\x03R\x17effectiveSinceTimestamp*\x82\x01\n" +
 	"\tEntryType\x12\x1a\n" +
 	"\x16ENTRY_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fENTRY_TYPE_FILE\x10\x01\x12\x12\n" +

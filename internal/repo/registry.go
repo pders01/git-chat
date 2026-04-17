@@ -8,6 +8,7 @@
 package repo
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -28,6 +29,13 @@ import (
 // blameCache holds per-(commitSHA, path) blame results. Blame is
 // deterministic for a given commit, so entries never need invalidation;
 // we just cap the total entry count to bound memory.
+//
+// churnCache holds per-(tipSHA, since, until, maxCommits) churn map
+// results. The full walk on a 60k-commit repo takes minutes, and the
+// tip SHA changes only when the repo's HEAD moves — so caching gives
+// us an instant second click for the same ref + window combination.
+// Eviction strategy matches blameCache: bounded by count, random-half
+// drop when full.
 type Entry struct {
 	ID            string
 	Label         string
@@ -36,6 +44,7 @@ type Entry struct {
 	mu            sync.Mutex
 	repo          *git.Repository
 	blameCache    map[string]any // key: commitSHA + "\x00" + path → []*gitchatv1.BlameLine (declared as any to keep this file free of gen/ imports)
+	churnCache    map[string]any // key: tipSHA|since|until|maxCommits → *ChurnMapResult (any keeps this file free of gen/ imports)
 }
 
 // Registry holds every repository the server exposes. Thread-safe for
@@ -101,7 +110,26 @@ func (r *Registry) addInternal(path string, skipDuplicates bool) (*Entry, error)
 	}
 	r.byID[id] = entry
 	r.order = append(r.order, id)
+	if prewarmChurn {
+		// Kick off the full-history churn walk in the background so the
+		// user's first "all" click returns instantly. Opt-in via
+		// GITCHAT_PREWARM_CHURN because the walk pegs a CPU for minutes
+		// on large repos and would surprise laptop / battery users.
+		go entry.prewarmChurnAll(context.Background())
+	}
 	return entry, nil
+}
+
+// prewarmChurn is resolved once at package init from the environment
+// so we don't re-parse the flag on every repo registration.
+var prewarmChurn = os.Getenv("GITCHAT_PREWARM_CHURN") == "1"
+
+// prewarmChurnAll runs GetFileChurnMap with an uncapped window on the
+// repo's HEAD, populating the churnCache for the "all history" click.
+// Errors are swallowed — the user still gets a working scan on demand
+// if the prewarm fails for any reason.
+func (e *Entry) prewarmChurnAll(ctx context.Context) {
+	_, _ = e.GetFileChurnMap(ctx, "HEAD", 0, 0, churnHardCap)
 }
 
 // ScanResult holds the outcome of scanning a directory for repos.

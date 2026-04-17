@@ -450,7 +450,39 @@ func commitDiffStats(ctx context.Context, c *object.Commit) *diffStats {
 // Primary path is a single `git log --numstat` subprocess that replaces
 // the ~5000 Tree.Diff + Patch calls go-git made per page (~1.3s on Koha).
 // Falls back to the go-git walk on exec error.
-func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until int64) ([]*gitchatv1.FileChurn, error) {
+// ChurnMapResult bundles a churn map with metadata about the scan so
+// callers can tell whether the server's per-request cap was hit and
+// the sums represent a partial walk of the requested window.
+type ChurnMapResult struct {
+	Files                   []*gitchatv1.FileChurn
+	CommitsScanned          int32
+	CapReached              bool
+	MaxCommitsScanned       int32
+	EffectiveSinceTimestamp int64
+}
+
+// churnHardCap bounds the commit scan even when a client explicitly
+// opts out of the default cap via MaxCommits. Keeps a misbehaving
+// client from asking for a trillion commits and locking up the repo.
+const churnHardCap = 500000
+
+// churnCacheCap bounds how many (tipSHA, since, until, maxCommits)
+// churn map results we keep per-Entry. Each entry holds the full file
+// list (tens of thousands of FileChurn records for a deep scan), so
+// this stays small — we're trading memory for "instant second click
+// on the same query". Same random-half-drop eviction as blameCache:
+// cheap, effectively LRU-ish for bursty browsing.
+const churnCacheCap = 32
+
+// churnCacheKey composes the cache lookup string. Tip SHA ensures the
+// cache invalidates naturally when the repo's HEAD moves; the other
+// three bound the data subset. since==0 + until==0 + maxCommits==0 is
+// the "server default" — distinct key from an explicit zero window.
+func churnCacheKey(tipSHA string, since, until int64, maxCommits int) string {
+	return fmt.Sprintf("%s|%d|%d|%d", tipSHA, since, until, maxCommits)
+}
+
+func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until int64, maxCommitsOverride int) (*ChurnMapResult, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -460,9 +492,31 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 		since = until - int64(churnTimeWindowDays*24*3600)
 	}
 
-	commit, _, err := e.resolveCommit(ref)
+	// Resolve the effective cap: 0 = server default; non-zero = client
+	// override clamped to churnHardCap. Kept separate from the package
+	// var so tests and the default path aren't disturbed.
+	effCap := maxChurnCommits
+	if maxCommitsOverride > 0 {
+		effCap = maxCommitsOverride
+		if effCap > churnHardCap {
+			effCap = churnHardCap
+		}
+	}
+
+	commit, resolvedTip, err := e.resolveCommit(ref)
 	if err != nil {
 		return nil, err
+	}
+
+	// Cache lookup — tip-SHA-keyed, so refs that haven't moved return
+	// instantly. The walk itself can take minutes on large repos, so
+	// even a small cache pays for itself the first time the user
+	// re-plays the same query (slider bounce, tab return, etc.).
+	cacheKey := churnCacheKey(resolvedTip, since, until, effCap)
+	if e.churnCache != nil {
+		if cached, ok := e.churnCache[cacheKey]; ok {
+			return cached.(*ChurnMapResult), nil
+		}
 	}
 
 	type churnAcc struct {
@@ -472,12 +526,32 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 		lastMod   int64
 	}
 	m := map[string]*churnAcc{}
+	var commitsScanned int
+	var capReached bool
+	// Smallest author timestamp seen during the scan. Becomes the
+	// "effective since" we hand back to the client so its slider can
+	// anchor at the true boundary of the returned data instead of the
+	// user-requested since, which the cap may have silently narrowed.
+	var oldestScannedTs int64
 
 	// ── Primary: git log --numstat subprocess ────────────────────────
-	entries, gitErr := gitLogChurn(ctx, e.Path, ref, since, until, maxChurnCommits)
+	//
+	// Request cap+1 so we can disambiguate "exactly cap commits in the
+	// window" (complete data) from "more than cap, we truncated"
+	// (partial data). If git returns cap+1, flag the cap and drop the
+	// extra entry before processing.
+	entries, gitErr := gitLogChurn(ctx, e.Path, ref, since, until, effCap+1)
 	if gitErr == nil {
+		if len(entries) > effCap {
+			capReached = true
+			entries = entries[:effCap]
+		}
+		commitsScanned = len(entries)
 		for _, entry := range entries {
 			ts := entry.authorTime
+			if ts > 0 && (oldestScannedTs == 0 || ts < oldestScannedTs) {
+				oldestScannedTs = ts
+			}
 			for _, row := range entry.rows {
 				acc, ok := m[row.path]
 				if !ok {
@@ -504,14 +578,20 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 
 		commitsProcessed := 0
 		for {
-			if commitsProcessed >= maxChurnCommits {
-				break
-			}
 			c, err := iter.Next()
 			if err != nil {
 				break
 			}
 			commitsProcessed++
+			// Walk one beyond the cap so we can distinguish "exactly
+			// cap commits walked" from "more than cap walked" — same
+			// rationale as the +1 in the primary path. Detect here,
+			// before processing the extra commit, so commitsScanned
+			// stays bounded by the cap.
+			if commitsProcessed > effCap {
+				capReached = true
+				break
+			}
 
 			ts := c.Author.When.Unix()
 			if filterTime {
@@ -521,6 +601,13 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 				if until > 0 && ts > until {
 					continue
 				}
+			}
+			// Only count commits that actually contribute to the
+			// churn map — otherwise "N commits in selected window"
+			// would include ones skipped by the time filter.
+			commitsScanned++
+			if ts > 0 && (oldestScannedTs == 0 || ts < oldestScannedTs) {
+				oldestScannedTs = ts
 			}
 
 			cTree, err := c.Tree()
@@ -620,7 +707,84 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 		return out[i].Path < out[j].Path
 	})
 
-	return out, nil
+	result := &ChurnMapResult{
+		Files:                   out,
+		CommitsScanned:          int32(commitsScanned),
+		CapReached:              capReached,
+		MaxCommitsScanned:       int32(effCap),
+		EffectiveSinceTimestamp: oldestScannedTs,
+	}
+	// Populate the cache. Half-drop random entries when full — matches
+	// blameCache's eviction style and keeps the bookkeeping simple.
+	if e.churnCache == nil {
+		e.churnCache = make(map[string]any, churnCacheCap)
+	}
+	if len(e.churnCache) >= churnCacheCap {
+		drop := churnCacheCap / 2
+		for k := range e.churnCache {
+			delete(e.churnCache, k)
+			drop--
+			if drop <= 0 {
+				break
+			}
+		}
+	}
+	e.churnCache[cacheKey] = result
+	return result, nil
+}
+
+// GetCommitTimeRange returns the committer time of the ref's root
+// commit (first) and tip commit (last). Used by the frontend's
+// code-city time slider to show "all history" as the repo's true
+// inception date rather than the oldest surviving file's last
+// modification.
+//
+// Two cheap git calls:
+//   - first: git log ref --max-parents=0 --format=%ct -1
+//     (root commits; most repos have one, we take the oldest if several)
+//   - last:  git log ref -1 --format=%ct
+func (e *Entry) GetCommitTimeRange(ctx context.Context, ref string) (int64, int64, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	target := ref
+	if target == "" {
+		target = "HEAD"
+	}
+	// Tip commit time.
+	tipOut, tipErr := (&gitCmd{
+		repoDir: e.Path,
+		args:    []string{"log", target, "-1", "--format=%ct"},
+	}).run(ctx)
+	if tipErr != nil {
+		return 0, 0, tipErr
+	}
+	last, _ := strconv.ParseInt(strings.TrimSpace(string(tipOut)), 10, 64)
+	// Root commit time. With --max-parents=0 we get all parentless
+	// commits; take the smallest ct so merged-in unrelated histories
+	// don't pick a later root.
+	rootOut, rootErr := (&gitCmd{
+		repoDir: e.Path,
+		args:    []string{"log", target, "--max-parents=0", "--format=%ct"},
+	}).run(ctx)
+	if rootErr != nil {
+		// Shallow clone / missing root / other failure: return
+		// last as first so the client's slider spans a zero-width
+		// range rather than from epoch 0. Better than signalling
+		// "no root" with 0, which the client falls through to a
+		// file.last_modified heuristic that defeats the feature.
+		return last, last, nil
+	}
+	var first int64
+	for _, line := range strings.Split(strings.TrimSpace(string(rootOut)), "\n") {
+		v, perr := strconv.ParseInt(strings.TrimSpace(line), 10, 64)
+		if perr != nil {
+			continue
+		}
+		if first == 0 || v < first {
+			first = v
+		}
+	}
+	return first, last, nil
 }
 
 // CompareBranches returns the files changed between two refs with

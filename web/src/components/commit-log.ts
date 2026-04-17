@@ -1550,7 +1550,7 @@ export class GcCommitLog extends LitElement {
       color: var(--danger);
     }
     .file-status.renamed {
-      color: var(--warning, #e0a040);
+      color: var(--warning);
     }
     .file-status.all {
       color: var(--text);

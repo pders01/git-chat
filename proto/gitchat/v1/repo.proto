@@ -302,6 +302,13 @@ message GetFileChurnMapRequest {
   string ref = 2;
   int64 since_timestamp = 3;
   int64 until_timestamp = 4;
+  // Per-request override for the commit scan cap. Zero means "use the
+  // server default" (GITCHAT_MAX_CHURN_COMMITS). Non-zero is clamped
+  // against a hard safety ceiling on the server so a misbehaving
+  // client can't ask for a trillion commits. The frontend sends a
+  // large value when the user explicitly picks "all history" so those
+  // stats aren't capped at 5k on a 60k-commit repo.
+  int32 max_commits = 5;
 }
 
 message FileChurn {
@@ -315,5 +322,26 @@ message FileChurn {
 
 message GetFileChurnMapResponse {
   repeated FileChurn files = 1;
+  // Oldest commit reachable from ref (first_commit_timestamp) and
+  // newest (last_commit_timestamp). The client uses these as the
+  // slider's outer bounds so "all history" spans from the repo's
+  // initial commit — file.last_modified alone would clip the range
+  // to the oldest surviving file's last touch.
+  int64 first_commit_timestamp = 2;
+  int64 last_commit_timestamp = 3;
+  // Number of commits actually aggregated for this response, and
+  // whether the server's per-request cap was hit (meaning older
+  // commits in the requested window were skipped). Surfaced so the
+  // client can label the stats as "showing last N commits" instead
+  // of presenting partial sums as the repo's total truth.
+  int32 commits_scanned = 4;
+  bool cap_reached = 5;
+  int32 max_commits_scanned = 6;
+  // Actual timestamp of the oldest commit the server walked for this
+  // response. On a capped scan this is newer than since_timestamp in
+  // the request; the client uses it to position the slider / since
+  // date at the true data boundary so "slider at left" never lies
+  // about showing all history while the server silently truncated.
+  int64 effective_since_timestamp = 7;
 }
 

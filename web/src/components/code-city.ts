@@ -360,6 +360,20 @@ export class GcCodeCity extends LitElement {
   @state() private sliderValue = 0;
   private globalTimeRange: [number, number] | null = null; // Fixed bounds from initial load
   private currentSince = 0;
+  // Upper bound of the current window. 0 = "now" (the default).
+  // Set by the Until date input or quick-range buttons; lets users pin
+  // a non-current end date, e.g. "how did the city look a year ago".
+  @state() private currentUntil = 0;
+  // Cap metadata surfaced from the last churn response so the stats
+  // panel can label sums as "over the last N commits" instead of
+  // implying they represent total repo history.
+  @state() private commitsScanned = 0;
+  @state() private capReached = false;
+  @state() private maxCommitsScanned = 0;
+  // Request-time override for the server cap. 0 means "use server
+  // default"; set to a large value when the user explicitly picks
+  // "all" so the full history isn't silently truncated at 5k.
+  private currentMaxCommits = 0;
   @state() private colorMode: ColorMode = "churn";
   @state() private heightMode: HeightMode = "commits";
   @state() private showStats = true;
@@ -391,6 +405,7 @@ export class GcCodeCity extends LitElement {
 
   override async connectedCallback() {
     super.connectedCallback();
+    window.addEventListener("keydown", this.onKeydown);
     await this.fetchAndBuild();
   }
 
@@ -399,12 +414,26 @@ export class GcCodeCity extends LitElement {
     const canvas = this.renderRoot.querySelector<HTMLCanvasElement>(".city-canvas");
     canvas?.removeEventListener("click", this.onClick);
     canvas?.removeEventListener("mousemove", this.onHover);
+    canvas?.removeEventListener("mouseleave", this.onCanvasLeave);
+    window.removeEventListener("keydown", this.onKeydown);
     this._resizeObserver?.disconnect();
     this.controls?.dispose();
     this.renderer?.dispose();
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
     if (this.sliderTimer) clearTimeout(this.sliderTimer);
+    this.churnAbort?.abort();
+    this.churnAbort = null;
   }
+
+  // Esc closes the click-detail dialog. Scoped to fire only when a
+  // file is actually selected so it doesn't compete with other Esc
+  // handlers elsewhere (overlays, drawers, etc.).
+  private onKeydown = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && this.selectedFile) {
+      e.stopPropagation();
+      this.selectedFile = null;
+    }
+  };
 
   override updated(changed: Map<string, unknown>) {
     if ((changed.has("repoId") || changed.has("branch")) && this.repoId) {
@@ -417,18 +446,38 @@ export class GcCodeCity extends LitElement {
 
   /* ---- data fetching ---- */
 
-  private async fetchAndBuild(sinceTimestamp?: number) {
+  // AbortController for the in-flight churn fetch. A rapid slider drag
+  // can queue many requests; without cancellation the last to *resolve*
+  // would win, not the last to *fire*, causing the city to jump back
+  // to an earlier window after the user has settled on a later one.
+  private churnAbort: AbortController | null = null;
+
+  private async fetchAndBuild(
+    sinceTimestamp?: number,
+    untilTimestamp?: number,
+    maxCommits?: number,
+  ) {
     if (!this.repoId) return;
+    this.churnAbort?.abort();
+    const abort = new AbortController();
+    this.churnAbort = abort;
     this.loading = true;
     this.error = "";
 
     try {
-      const resp = await (repoClient as any).getFileChurnMap({
-        repoId: this.repoId,
-        ref: this.branch || "",
-        sinceTimestamp: String(sinceTimestamp ?? 0),
-        untilTimestamp: "0",
-      });
+      const resp = await (repoClient as any).getFileChurnMap(
+        {
+          repoId: this.repoId,
+          ref: this.branch || "",
+          sinceTimestamp: String(sinceTimestamp ?? 0),
+          untilTimestamp: String(untilTimestamp ?? 0),
+          maxCommits: maxCommits ?? 0,
+        },
+        { signal: abort.signal },
+      );
+      // A later fetch may have superseded this one. If the controller
+      // no longer matches, bail before touching any state.
+      if (this.churnAbort !== abort) return;
       const files: FileNode[] = (resp.files ?? []).map((f: any) => ({
         path: f.path ?? "",
         name: (f.path ?? "").split("/").pop() ?? "",
@@ -442,21 +491,46 @@ export class GcCodeCity extends LitElement {
 
       this.allFiles = files;
       this.stats = computeStats(files);
+      this.commitsScanned = Number(resp.commitsScanned ?? 0);
+      this.capReached = Boolean(resp.capReached ?? false);
+      this.maxCommitsScanned = Number(resp.maxCommitsScanned ?? 0);
 
-      // Only update global time bounds on initial load (not on slider changes)
-      if (!sinceTimestamp && files.length > 0) {
-        let oldest = Infinity;
-        for (const f of files) {
-          if (f.lastModified > 0 && f.lastModified < oldest) oldest = f.lastModified;
-        }
-        if (oldest < Infinity) {
-          const now = Math.floor(Date.now() / 1000);
-          this.globalTimeRange = [oldest, now];
-          this.currentSince = oldest;
-          this.sliderValue = 0;
+      // Only update global time bounds on initial load (not on slider changes).
+      // Prefer the server-provided first/last commit timestamps (true
+      // repo inception + tip) over min(file.last_modified), which
+      // clips the range to the oldest surviving file's most recent
+      // touch — drastically wrong on long-lived repos where early
+      // files have been continually modified (Koha: initial commit
+      // Dec 2000, but oldest last_modified is ~2022).
+      if (!sinceTimestamp) {
+        const firstTs = Number(resp.firstCommitTimestamp ?? 0);
+        const lastTs = Number(resp.lastCommitTimestamp ?? 0);
+        const effectiveSince = Number(resp.effectiveSinceTimestamp ?? 0);
+        if (firstTs > 0 && lastTs > 0) {
+          this.globalTimeRange = [firstTs, lastTs];
+          // Anchor the slider at the true boundary of the returned
+          // data. On a capped initial scan (default 5k commits on a
+          // 60k-commit repo), effectiveSince is newer than firstTs —
+          // parking the slider at that point means "slider at left"
+          // matches what the stats actually describe instead of
+          // implying full history was walked.
+          this.currentSince = effectiveSince > 0 ? effectiveSince : firstTs;
+          this.sliderValue = this.sliderFromSince(this.currentSince);
+        } else if (files.length > 0) {
+          // Fallback: derive from file.lastModified if server didn't
+          // supply bounds for some reason.
+          let oldest = Infinity;
+          for (const f of files) {
+            if (f.lastModified > 0 && f.lastModified < oldest) oldest = f.lastModified;
+          }
+          if (oldest < Infinity) {
+            const now = Math.floor(Date.now() / 1000);
+            this.globalTimeRange = [oldest, now];
+            this.currentSince = oldest;
+            this.sliderValue = 0;
+          }
         }
       } else if (files.length === 0 && sinceTimestamp) {
-        // Empty result from slider - don't update bounds, just show empty state
         this.error = "No activity in selected time window";
       }
 
@@ -492,8 +566,15 @@ export class GcCodeCity extends LitElement {
       await this.initScene();
       this.buildCity();
     } catch (e) {
+      // AbortError is expected when a newer fetch superseded this one;
+      // don't surface it as an error or clobber the loading state the
+      // newer fetch just set to true.
+      if (e instanceof Error && e.name === "AbortError") return;
+      if (this.churnAbort !== abort) return;
       this.loading = false;
       this.error = e instanceof Error ? e.message : String(e);
+    } finally {
+      if (this.churnAbort === abort) this.churnAbort = null;
     }
   }
 
@@ -557,6 +638,7 @@ export class GcCodeCity extends LitElement {
 
     canvas.addEventListener("click", this.onClick);
     canvas.addEventListener("mousemove", this.onHover);
+    canvas.addEventListener("mouseleave", this.onCanvasLeave);
 
     this._resizeObserver = new ResizeObserver(() => {
       const { width: w, height: h } = container.getBoundingClientRect();
@@ -735,6 +817,13 @@ export class GcCodeCity extends LitElement {
 
   private onHover = (event: MouseEvent) => {
     if (!this.raycaster || !this.mouse || !this.camera || !this.scene) return;
+    // Suppress the hover tooltip while a click-detail dialog is open;
+    // two overlapping "what am I looking at" panels is confusing, and
+    // the click-detail is the explicit / sticky one.
+    if (this.selectedFile) {
+      if (this.tooltipText) this.tooltipText = "";
+      return;
+    }
     const canvas = event.target as HTMLCanvasElement;
     const rect = canvas.getBoundingClientRect();
     this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -752,6 +841,13 @@ export class GcCodeCity extends LitElement {
       this.tooltipText = "";
       canvas.style.cursor = "default";
     }
+  };
+
+  // Clear the hover tooltip the moment the pointer leaves the canvas.
+  // Without this the last-computed tooltip lingered while the user
+  // hovered other UI (the time slider, date inputs, etc.).
+  private onCanvasLeave = () => {
+    this.tooltipText = "";
   };
 
   private renderTooltipContent(f: FileNode): string {
@@ -791,18 +887,111 @@ export class GcCodeCity extends LitElement {
     }
   };
 
-  /* ---- time slider ---- */
+  /* ---- time range controls ----
+   *
+   * The time window is [currentSince, currentUntil]. currentUntil=0
+   * means "now". Three UIs control these values and stay in sync:
+   *
+   *   - Slider: scrubs currentSince across the repo's full history
+   *     while pinning until to now. Max=10000 for fine-grained control
+   *     on long-lived repos (Koha has ~25 years → ~1 day per step).
+   *   - Date inputs: let the user type an exact YYYY-MM-DD for either
+   *     bound. Typing clears the "until=now" pin if they set until.
+   *   - Quick-range buttons: set both bounds at once (last 7d, 30d,
+   *     etc.) for common queries.
+   *
+   * Each path sets currentSince / currentUntil, then debounces a
+   * fetchAndBuild call.
+   */
 
-  private onTimeChange = (e: Event) => {
+  private static readonly SLIDER_MAX = 10000;
+
+  // Slider input (fires continuously during drag) updates display
+  // state only: the window label, the date inputs' displayed value.
+  // Kicking off a fetch on every @input event would issue N fetches
+  // per drag, each racing the previous; instead we wait for @change
+  // (fires once on mouseup / touchend / keyboard commit).
+  private onSliderInput = (e: Event) => {
     const val = Number((e.target as HTMLInputElement).value);
     this.sliderValue = val;
     this.updateSinceFromSlider(val);
+    this.currentUntil = 0;
+    // Slider drags always go back to the default cap — only the
+    // explicit "all" preset opts into the uncapped walk.
+    this.currentMaxCommits = 0;
+  };
 
+  private onSliderCommit = () => {
+    // sliderValue / currentSince already updated by onSliderInput.
+    this.scheduleRefetch();
+  };
+
+  private scheduleRefetch() {
     clearTimeout(this.sliderTimer);
     this.sliderTimer = window.setTimeout(() => {
-      void this.fetchAndBuild(this.currentSince);
-    }, 300);
+      void this.fetchAndBuild(this.currentSince, this.currentUntil, this.currentMaxCommits);
+    }, 200);
+  }
+
+  private onSinceDateInput = (e: Event) => {
+    const raw = (e.target as HTMLInputElement).value;
+    if (!raw) return;
+    const ts = Math.floor(new Date(raw + "T00:00:00").getTime() / 1000);
+    if (Number.isNaN(ts)) return;
+    this.currentSince = ts;
+    this.sliderValue = this.sliderFromSince(ts);
+    this.currentMaxCommits = 0;
+    this.scheduleRefetch();
   };
+
+  private onUntilDateInput = (e: Event) => {
+    const raw = (e.target as HTMLInputElement).value;
+    if (!raw) return;
+    const ts = Math.floor(new Date(raw + "T23:59:59").getTime() / 1000);
+    if (Number.isNaN(ts)) return;
+    // If they picked today or later, treat as "now" (currentUntil=0)
+    // so the window follows new commits as they land.
+    const now = Math.floor(Date.now() / 1000);
+    this.currentUntil = ts >= now ? 0 : ts;
+    this.currentMaxCommits = 0;
+    this.scheduleRefetch();
+  };
+
+  private setQuickRange(days: number | "all") {
+    if (!this.globalTimeRange) return;
+    const [oldest, now] = this.globalTimeRange;
+    if (days === "all") {
+      this.currentSince = oldest;
+      // Explicit "all" → opt into a much larger scan. Server clamps
+      // against its hard ceiling, so passing a big number is safe.
+      this.currentMaxCommits = 200000;
+    } else {
+      this.currentSince = Math.max(oldest, now - days * 86400);
+      this.currentMaxCommits = 0;
+    }
+    this.currentUntil = 0;
+    this.sliderValue = this.sliderFromSince(this.currentSince);
+    this.scheduleRefetch();
+  }
+
+  // The full-history walk requires git to diff every commit against
+  // its parent — on a 60k-commit repo like Koha that's several
+  // minutes. Warn before firing so users who click "all" by accident
+  // aren't stuck staring at a loading banner.
+  private onClickAll() {
+    if (!this.globalTimeRange) return;
+    const [oldest, now] = this.globalTimeRange;
+    const years = (now - oldest) / (365 * 86400);
+    const shouldWarn = years > 5 && this.capReached;
+    if (shouldWarn) {
+      const ok = window.confirm(
+        `Walking the entire ${years.toFixed(0)}-year history can take several minutes ` +
+          `on large repos — git diffs every commit against its parent. Continue?`,
+      );
+      if (!ok) return;
+    }
+    this.setQuickRange("all");
+  }
 
   private updateSinceFromSlider(val: number) {
     if (!this.globalTimeRange) return;
@@ -811,13 +1000,23 @@ export class GcCodeCity extends LitElement {
       this.currentSince = oldest;
       return;
     }
-    // Slider 0 = all history (since = oldest)
-    // Slider 100 = recent window (since = now - 1 day minimum to avoid empty)
     const timeSpan = now - oldest;
-    const minWindow = 86400; // Always show at least 24h of data at max slider
+    const minWindow = 86400;
     const maxSince = now - minWindow;
-    const rawSince = oldest + (val / 100) * timeSpan;
+    const frac = val / GcCodeCity.SLIDER_MAX;
+    const rawSince = oldest + frac * timeSpan;
     this.currentSince = Math.min(Math.floor(rawSince), maxSince);
+  }
+
+  // Invert updateSinceFromSlider — given a since timestamp, what slider
+  // value would produce it. Used to keep the slider in sync when the
+  // user picks a since via date input or quick button.
+  private sliderFromSince(since: number): number {
+    if (!this.globalTimeRange) return 0;
+    const [oldest, now] = this.globalTimeRange;
+    if (now <= oldest) return 0;
+    const frac = (since - oldest) / (now - oldest);
+    return Math.max(0, Math.min(GcCodeCity.SLIDER_MAX, Math.round(frac * GcCodeCity.SLIDER_MAX)));
   }
 
   private getSliderLabel(): string {
@@ -825,17 +1024,23 @@ export class GcCodeCity extends LitElement {
     const [globalOldest, now] = this.globalTimeRange;
     if (now <= globalOldest) return "all history";
 
-    const currentSpan = now - this.currentSince;
+    const effectiveUntil = this.currentUntil || now;
+    const currentSpan = effectiveUntil - this.currentSince;
     const totalSpan = now - globalOldest;
     const percentage = (currentSpan / totalSpan) * 100;
 
-    // Show relative time window
-    if (percentage > 95) return "all history";
+    if (!this.currentUntil && percentage > 95) return "all history";
     if (currentSpan < 86400) return "last 24 hours";
-    if (currentSpan < 7 * 86400) return `last ${Math.round(currentSpan / 86400)} days`;
-    if (currentSpan < 30 * 86400) return `last ${Math.round(currentSpan / (7 * 86400))} weeks`;
-    if (currentSpan < 365 * 86400) return `last ${Math.round(currentSpan / (30 * 86400))} months`;
-    return `last ${(currentSpan / (365 * 86400)).toFixed(1)} years`;
+    if (currentSpan < 7 * 86400) return `${Math.round(currentSpan / 86400)} days`;
+    if (currentSpan < 30 * 86400) return `${Math.round(currentSpan / (7 * 86400))} weeks`;
+    if (currentSpan < 365 * 86400) return `${Math.round(currentSpan / (30 * 86400))} months`;
+    return `${(currentSpan / (365 * 86400)).toFixed(1)} years`;
+  }
+
+  // YYYY-MM-DD value for an <input type="date"> bound field.
+  private dateInputValue(ts: number): string {
+    if (!ts) return "";
+    return new Date(ts * 1000).toISOString().slice(0, 10);
   }
 
   /* ---- render ---- */
@@ -849,8 +1054,10 @@ export class GcCodeCity extends LitElement {
     // Code velocity: what % of activity is net new code vs churn
     const velocityPct =
       totalActivity > 0 ? ((s.totalAdditions / totalActivity) * 100).toFixed(0) : "0";
-    // Churn rate: lines changed per commit
-    const churnRate = s.totalCommits > 0 ? Math.round(totalActivity / s.totalCommits) : 0;
+    // Churn rate: lines changed per real commit (not per file-touch,
+    // which would inflate the denominator when commits touch many files).
+    const realCommits = this.commitsScanned || s.totalCommits;
+    const churnRate = realCommits > 0 ? Math.round(totalActivity / realCommits) : 0;
 
     return html`
       <div class="stats-panel" ?hidden=${!this.showStats}>
@@ -858,15 +1065,33 @@ export class GcCodeCity extends LitElement {
           <span class="stats-title">Repository Stats</span>
           <button class="stats-close" @click=${() => (this.showStats = false)}>×</button>
         </div>
+        ${this.capReached
+          ? html`<div
+              class="cap-banner"
+              title="The server capped this scan at ${formatNumber(
+                this.maxCommitsScanned,
+              )} commits to keep the request responsive. Sums below reflect the most recent commits in the selected window, not the window's full contents."
+            >
+              showing most recent ${formatNumber(this.commitsScanned)} commits in window (older
+              commits omitted)
+            </div>`
+          : this.commitsScanned > 0
+            ? html`<div class="cap-banner subtle">
+                ${formatNumber(this.commitsScanned)} commits in selected window
+              </div>`
+            : nothing}
 
         <div class="stats-grid">
           <div class="stat-item">
             <span class="stat-value">${formatNumber(s.totalFiles)}</span>
             <span class="stat-label">files</span>
           </div>
-          <div class="stat-item">
+          <div
+            class="stat-item"
+            title="Sum of per-file commits — each commit that touches N files contributes N"
+          >
             <span class="stat-value">${formatNumber(s.totalCommits)}</span>
-            <span class="stat-label">commits</span>
+            <span class="stat-label">file touches</span>
           </div>
           <div class="stat-item">
             <span class="stat-value">+${formatNumber(s.totalAdditions)}</span>
@@ -986,15 +1211,30 @@ export class GcCodeCity extends LitElement {
             <span class="net-value">${netChange >= 0 ? "+" : ""}${formatNumber(netChange)}</span>
           </div>
           ${activity > 0
-            ? html`
-                <div class="ratio-bar">
-                  <span class="ratio-label">Ratio</span>
-                  <div class="ratio-visual">
-                    <div class="ratio-add" style="width: ${(f.additions / activity) * 100}%"></div>
-                    <div class="ratio-del" style="width: ${(f.deletions / activity) * 100}%"></div>
+            ? (() => {
+                const addPct = Math.round((f.additions / activity) * 100);
+                const delPct = 100 - addPct;
+                return html`
+                  <div class="ratio-bar">
+                    <span class="ratio-label">Ratio</span>
+                    <div class="ratio-visual" aria-hidden="true">
+                      <div
+                        class="ratio-add"
+                        style="width: ${(f.additions / activity) * 100}%"
+                      ></div>
+                      <div
+                        class="ratio-del"
+                        style="width: ${(f.deletions / activity) * 100}%"
+                      ></div>
+                    </div>
+                    <span
+                      class="ratio-text"
+                      aria-label="${addPct} percent added, ${delPct} percent deleted"
+                      >${addPct}% added · ${delPct}% deleted</span
+                    >
                   </div>
-                </div>
-              `
+                `;
+              })()
             : nothing}
         </div>
 
@@ -1022,21 +1262,21 @@ export class GcCodeCity extends LitElement {
 
   private renderLegend() {
     const modes: { value: ColorMode; label: string; desc: string }[] = [
-      { value: "churn", label: "Churn", desc: "Commit frequency (hot = many commits)" },
-      { value: "activity", label: "Activity", desc: "Total changes (additions + deletions)" },
+      { value: "churn", label: "Churn", desc: "Hot = many commits touch this file" },
+      { value: "activity", label: "Activity", desc: "Total lines added + deleted" },
       {
         value: "velocity",
         label: "Velocity",
-        desc: "Green = more additions, Red = more deletions",
+        desc: "Green = more additions, red = more deletions",
       },
-      { value: "recency", label: "Recency", desc: "How recently modified" },
+      { value: "recency", label: "Recency", desc: "Newer files brighter" },
       { value: "size", label: "Size", desc: "File size in bytes" },
     ];
 
-    const heights: { value: HeightMode; label: string }[] = [
-      { value: "commits", label: "Commits" },
-      { value: "activity", label: "Activity" },
-      { value: "size", label: "Size" },
+    const heights: { value: HeightMode; label: string; desc: string }[] = [
+      { value: "commits", label: "Commits", desc: "Tall = file was committed to many times" },
+      { value: "activity", label: "Activity", desc: "Tall = many lines added + deleted" },
+      { value: "size", label: "Size", desc: "Tall = large file" },
     ];
 
     return html`
@@ -1071,7 +1311,14 @@ export class GcCodeCity extends LitElement {
             )}
           </select>
         </div>
-        <div class="legend-desc">${modes.find((m) => m.value === this.colorMode)?.desc}</div>
+        <div class="legend-desc">
+          <span class="legend-desc-row"
+            ><b>Color:</b> ${modes.find((m) => m.value === this.colorMode)?.desc}</span
+          >
+          <span class="legend-desc-row"
+            ><b>Height:</b> ${heights.find((h) => h.value === this.heightMode)?.desc}</span
+          >
+        </div>
         ${!this.showStats
           ? html`
               <button class="show-stats-btn" @click=${() => (this.showStats = true)}>
@@ -1103,7 +1350,16 @@ export class GcCodeCity extends LitElement {
         ${this.loading
           ? html`<div class="city-loading">
               <gc-spinner></gc-spinner>
-              updating…
+              ${this.currentMaxCommits > 0
+                ? "walking all commits… (may take minutes on large repos)"
+                : "updating…"}
+              <button
+                class="cancel-btn"
+                @click=${() => this.churnAbort?.abort()}
+                title="Cancel this fetch"
+              >
+                cancel
+              </button>
             </div>`
           : nothing}
         ${this.tooltipText
@@ -1117,24 +1373,65 @@ export class GcCodeCity extends LitElement {
         ${this.renderStatsPanel()} ${this.renderLegend()} ${this.renderFileDetail()}
 
         <div class="city-controls">
-          <span class="time-label start"
-            >${this.globalTimeRange ? formatDate(this.globalTimeRange[0]) : "..."}</span
-          >
-          <div class="slider-wrapper">
+          <div class="slider-row">
+            <span class="time-label start"
+              >${this.globalTimeRange ? formatDate(this.globalTimeRange[0]) : "..."}</span
+            >
             <input
               type="range"
               class="time-slider"
-              aria-label="Time window slider — drag to adjust how much history to display"
+              aria-label="Time window slider — drag to adjust the since date"
               min="0"
-              max="100"
+              max=${String(GcCodeCity.SLIDER_MAX)}
+              step="1"
               .value=${String(this.sliderValue)}
-              @input=${this.onTimeChange}
+              @input=${this.onSliderInput}
+              @change=${this.onSliderCommit}
             />
-            <span class="slider-label">${this.getSliderLabel()}</span>
+            <span class="time-label end"
+              >${this.globalTimeRange ? formatDate(this.globalTimeRange[1]) : "..."}</span
+            >
           </div>
-          <span class="time-label end"
-            >${this.globalTimeRange ? formatDate(this.globalTimeRange[1]) : "..."}</span
-          >
+          <div class="slider-caption">${this.getSliderLabel()}</div>
+          <div class="range-inputs" role="group" aria-label="Date range">
+            <label class="range-field">
+              <span class="range-field-label">since</span>
+              <input
+                type="date"
+                class="date-input"
+                .value=${this.dateInputValue(this.currentSince)}
+                min=${this.globalTimeRange ? this.dateInputValue(this.globalTimeRange[0]) : ""}
+                max=${this.globalTimeRange ? this.dateInputValue(this.globalTimeRange[1]) : ""}
+                @change=${this.onSinceDateInput}
+                aria-label="Start date"
+              />
+            </label>
+            <label class="range-field">
+              <span class="range-field-label">until</span>
+              <input
+                type="date"
+                class="date-input"
+                .value=${this.dateInputValue(this.currentUntil || (this.globalTimeRange?.[1] ?? 0))}
+                min=${this.globalTimeRange ? this.dateInputValue(this.globalTimeRange[0]) : ""}
+                max=${this.globalTimeRange ? this.dateInputValue(this.globalTimeRange[1]) : ""}
+                @change=${this.onUntilDateInput}
+                aria-label="End date"
+              />
+            </label>
+            <div class="range-presets" role="group" aria-label="Quick range">
+              <button class="preset-btn" @click=${() => this.setQuickRange(7)}>7d</button>
+              <button class="preset-btn" @click=${() => this.setQuickRange(30)}>30d</button>
+              <button class="preset-btn" @click=${() => this.setQuickRange(90)}>90d</button>
+              <button class="preset-btn" @click=${() => this.setQuickRange(365)}>1y</button>
+              <button
+                class="preset-btn preset-all"
+                @click=${() => this.onClickAll()}
+                title="Walk the entire repo history (uncapped). On large repos this can take minutes — git has to compute a diff for every commit."
+              >
+                all
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -1161,13 +1458,31 @@ export class GcCodeCity extends LitElement {
     }
     .city-loading {
       position: absolute;
-      top: var(--space-2);
-      right: var(--space-3);
+      top: var(--space-3);
+      left: 50%;
+      transform: translateX(-50%);
+      padding: var(--space-1) var(--space-3);
+      background: var(--surface-2);
+      border: 1px solid var(--surface-4);
+      border-radius: 999px;
       font-size: var(--text-xs);
-      opacity: 0.5;
+      color: var(--text);
       display: inline-flex;
       align-items: center;
-      gap: var(--space-1);
+      gap: var(--space-2);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      z-index: 50;
+      animation: city-loading-fade-in 120ms ease-out;
+    }
+    @keyframes city-loading-fade-in {
+      from {
+        opacity: 0;
+        transform: translate(-50%, -4px);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
     }
     .city-tooltip {
       position: absolute;
@@ -1178,7 +1493,6 @@ export class GcCodeCity extends LitElement {
       border-radius: var(--radius-sm);
       font-size: var(--text-xs);
       pointer-events: none;
-      white-space: nowrap;
       z-index: 100;
       max-width: 400px;
     }
@@ -1186,17 +1500,106 @@ export class GcCodeCity extends LitElement {
       margin: 0;
       font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
       line-height: 1.4;
+      /* Wrap long paths / lines so the tooltip respects its max-width
+         instead of growing to fit a single no-wrap line and blowing
+         off the viewport. word-break: break-all so deeply-nested
+         slash-delimited paths actually break (break-word wouldn't
+         split a path without spaces). pre-wrap preserves the
+         intentional line breaks the tooltip already emits between
+         metadata rows. */
+      white-space: pre-wrap;
+      word-break: break-all;
     }
     .city-controls {
       display: flex;
-      align-items: center;
-      gap: var(--space-3);
+      flex-direction: column;
+      gap: var(--space-2);
       padding: var(--space-2) var(--space-4);
       border-top: 1px solid var(--surface-4);
       background: var(--surface-1);
     }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    .slider-caption {
+      text-align: center;
+      font-size: var(--text-xs);
+      font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+      color: var(--accent-user);
+      min-height: 1em;
+    }
+    .range-inputs {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+    .range-field {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-xs);
+    }
+    .range-field-label {
+      color: var(--text-muted);
+      font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+    }
+    .date-input {
+      background: var(--surface-0);
+      color: var(--text);
+      border: 1px solid var(--surface-4);
+      border-radius: var(--radius-sm);
+      padding: 2px 6px;
+      font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+      font-size: var(--text-xs);
+    }
+    .date-input:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
+    }
+    .range-presets {
+      display: flex;
+      gap: 2px;
+      margin-left: auto;
+    }
+    .preset-btn {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--surface-4);
+      padding: 2px 8px;
+      font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+      font-size: var(--text-xs);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+    }
+    .preset-btn:hover {
+      background: var(--surface-3);
+    }
+    .preset-btn:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: 1px;
+    }
+    .cancel-btn {
+      margin-left: var(--space-2);
+      background: var(--surface-3);
+      color: var(--text);
+      border: 1px solid var(--surface-4);
+      border-radius: var(--radius-sm);
+      padding: 0 var(--space-2);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+    }
+    .cancel-btn:hover {
+      background: var(--surface-4);
+    }
     .time-slider {
+      /* Fills the remaining row width after the start/end date
+         labels so the slider is easy to scrub on wide viewports. */
       flex: 1;
+      min-width: 0;
       accent-color: var(--accent-user);
     }
     .time-label {
@@ -1210,19 +1613,6 @@ export class GcCodeCity extends LitElement {
     }
     .time-label.end {
       text-align: right;
-    }
-    .slider-wrapper {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
-    }
-    .slider-label {
-      font-size: var(--text-xs);
-      font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
-      color: var(--accent-user);
-      height: 16px;
     }
     .hint,
     .err {
@@ -1265,6 +1655,23 @@ export class GcCodeCity extends LitElement {
     .stats-title {
       font-weight: 600;
       font-size: var(--text-sm);
+    }
+    .cap-banner {
+      font-size: var(--text-xs);
+      color: var(--warning);
+      background: color-mix(in srgb, var(--warning) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+      border-radius: var(--radius-sm);
+      padding: var(--space-1) var(--space-2);
+      margin-bottom: var(--space-3);
+      line-height: 1.3;
+      cursor: help;
+    }
+    .cap-banner.subtle {
+      color: var(--text-muted);
+      background: transparent;
+      border-color: var(--surface-4);
+      cursor: default;
     }
     .stats-close {
       background: none;
@@ -1321,12 +1728,12 @@ export class GcCodeCity extends LitElement {
       font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
     }
     .growth-badge.positive {
-      background: rgba(74, 222, 128, 0.2);
-      color: #4ade80;
+      background: color-mix(in srgb, var(--success) 20%, transparent);
+      color: var(--success);
     }
     .growth-badge.negative {
-      background: rgba(248, 113, 113, 0.2);
-      color: #f87171;
+      background: color-mix(in srgb, var(--danger) 20%, transparent);
+      color: var(--danger);
     }
     .velocity-badge,
     .churn-badge {
@@ -1428,11 +1835,19 @@ export class GcCodeCity extends LitElement {
     }
     .legend-desc {
       font-size: var(--text-xs);
-      opacity: 0.6;
+      opacity: 0.75;
       margin-top: var(--space-2);
       padding-top: var(--space-2);
       border-top: 1px solid var(--surface-4);
       line-height: 1.4;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .legend-desc-row b {
+      color: var(--text);
+      opacity: 0.9;
+      font-weight: 600;
     }
     .show-stats-btn {
       width: 100%;
@@ -1450,18 +1865,24 @@ export class GcCodeCity extends LitElement {
     }
 
     /* File Detail Panel */
+    /* Dock at the right edge instead of floating over the middle of
+       the canvas. This keeps the clicked cube visible and groups the
+       detail with the other right-side controls (color/height legend
+       above). Fills vertically below the legend but stops short of
+       the time controls so it never overlaps the slider row. */
     .file-detail {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 320px;
+      top: calc(var(--space-3) + 200px);
+      right: var(--space-3);
+      width: 280px;
+      max-height: calc(100% - 260px);
+      overflow-y: auto;
       background: var(--surface-1);
       border: 1px solid var(--surface-4);
       border-radius: var(--radius-md);
-      padding: var(--space-4);
-      z-index: 100;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      padding: var(--space-3);
+      z-index: 60;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     .detail-header {
       display: flex;
@@ -1550,25 +1971,35 @@ export class GcCodeCity extends LitElement {
       font-weight: 600;
     }
     .net-bar.positive .net-value {
-      color: #4ade80;
+      color: var(--success);
     }
     .net-bar.negative .net-value {
-      color: #f87171;
+      color: var(--danger);
+    }
+    .ratio-bar {
+      gap: var(--space-2);
     }
     .ratio-visual {
       display: flex;
-      width: 60px;
+      flex: 1;
       height: 6px;
+      min-width: 40px;
       border-radius: 3px;
       overflow: hidden;
     }
     .ratio-add {
-      background: #4ade80;
+      background: var(--success);
       height: 100%;
     }
     .ratio-del {
-      background: #f87171;
+      background: var(--danger);
       height: 100%;
+    }
+    .ratio-text {
+      font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      white-space: nowrap;
     }
     .detail-actions {
       display: flex;
