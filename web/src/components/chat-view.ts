@@ -1043,17 +1043,20 @@ export class GcChatView extends LitElement {
               this.turns = [...this.turns];
             });
           // If this was a new session, re-fetch the session list so the
-          // sidebar reflects the newly-created entry.
+          // sidebar reflects the newly-created entry. Fire-and-forget
+          // so a slow/failing listSessions doesn't block the stream
+          // handler and freeze the UI.
           if (!sessionId && chunk.kind.value.sessionId) {
             const newId = chunk.kind.value.sessionId;
-            const list = await chatClient.listSessions({ repoId: this.repoId });
-            this.state = {
-              phase: "ready",
-              sessions: list.sessions,
-              selected: newId,
-            };
-            this._lastRestoredSession = newId;
-            this.dispatchNav({ sessionId: newId });
+            chatClient.listSessions({ repoId: this.repoId }).then((list) => {
+              this.state = {
+                phase: "ready",
+                sessions: list.sessions,
+                selected: newId,
+              };
+              this._lastRestoredSession = newId;
+              this.dispatchNav({ sessionId: newId });
+            }).catch(() => {/* sidebar refresh failed — cosmetic only */});
           }
           this.turns = [...this.turns];
         }
