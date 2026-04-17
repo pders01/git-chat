@@ -45,7 +45,7 @@ func TestSendDeliversPayload(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	sender := New(srv.URL)
+	sender := newUnsafe(srv.URL)
 	sender.Send(context.Background(), Event{
 		Type:     "card_invalidated",
 		RepoID:   "git-chat",
@@ -86,7 +86,7 @@ func TestSendCustomText(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	sender := New(srv.URL)
+	sender := newUnsafe(srv.URL)
 	sender.Send(context.Background(), Event{
 		Type:   "custom",
 		RepoID: "r",
