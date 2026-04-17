@@ -778,9 +778,8 @@ export class GcApp extends LitElement {
       .replace(/_/g, " ");
   }
 
-  private isApiKeyEntry(key: string): boolean {
-    const k = key.toUpperCase();
-    return k.includes("API_KEY") || k.includes("SECRET") || k.includes("TOKEN");
+  private isSecretEntry(entry: any): boolean {
+    return !!entry.secret;
   }
 
   private static readonly SETTINGS_SECTIONS = [
@@ -811,7 +810,7 @@ export class GcApp extends LitElement {
     return html`
       <div class="config-group-body">
         ${entries.map((entry: any) => {
-          const isSecret = this.isApiKeyEntry(entry.key);
+          const isSecret = this.isSecretEntry(entry);
           const modified = entry.value !== entry.defaultValue;
           return html`
             <div class="config-entry">
@@ -825,7 +824,7 @@ export class GcApp extends LitElement {
                   ? html`<button
                       class="config-reset-btn"
                       @click=${() => this.resetConfigEntry(entry)}
-                      title="Reset to default: ${entry.defaultValue}"
+                      title="Reset to default"
                       aria-label="Reset ${this.humanizeKey(entry.key)} to default"
                     >
                       reset
@@ -837,11 +836,23 @@ export class GcApp extends LitElement {
                 class="config-input"
                 type=${isSecret ? "password" : "text"}
                 autocomplete="off"
-                .value=${entry.value}
+                placeholder=${isSecret ? entry.value || "not set" : ""}
+                .value=${isSecret ? "" : entry.value}
                 aria-describedby=${entry.description ? `cfg-desc-${entry.key}` : ""}
-                @input=${(e: Event) => {
-                  this.updateConfigEntry(entry.key, (e.target as HTMLInputElement).value);
-                }}
+                @change=${isSecret
+                  ? (e: Event) => {
+                      const v = (e.target as HTMLInputElement).value;
+                      if (v) this.updateConfigEntry(entry.key, v);
+                    }
+                  : nothing}
+                @input=${isSecret
+                  ? nothing
+                  : (e: Event) => {
+                      this.updateConfigEntry(
+                        entry.key,
+                        (e.target as HTMLInputElement).value,
+                      );
+                    }}
               />
               ${entry.description
                 ? html`<span id="cfg-desc-${entry.key}" class="config-desc"

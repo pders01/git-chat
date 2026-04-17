@@ -283,6 +283,7 @@ message ConfigEntry {
   string default_value = 3;
   string description = 4;
   string group = 5;
+  bool   secret = 6;
 }
 
 message GetConfigResponse {

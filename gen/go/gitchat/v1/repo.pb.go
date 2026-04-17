@@ -1841,6 +1841,7 @@ type ConfigEntry struct {
 	DefaultValue  string                 `protobuf:"bytes,3,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"`
 	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	Group         string                 `protobuf:"bytes,5,opt,name=group,proto3" json:"group,omitempty"`
+	Secret        bool                   `protobuf:"varint,6,opt,name=secret,proto3" json:"secret,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1908,6 +1909,13 @@ func (x *ConfigEntry) GetGroup() string {
 		return x.Group
 	}
 	return ""
+}
+
+func (x *ConfigEntry) GetSecret() bool {
+	if x != nil {
+		return x.Secret
+	}
+	return false
 }
 
 type GetConfigResponse struct {
@@ -2449,13 +2457,14 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x1aGetWorkingTreeDiffResponse\x12!\n" +
 	"\funified_diff\x18\x01 \x01(\tR\vunifiedDiff\x12\x14\n" +
 	"\x05empty\x18\x02 \x01(\bR\x05empty\"\x12\n" +
-	"\x10GetConfigRequest\"\x92\x01\n" +
+	"\x10GetConfigRequest\"\xaa\x01\n" +
 	"\vConfigEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\x12#\n" +
 	"\rdefault_value\x18\x03 \x01(\tR\fdefaultValue\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x14\n" +
-	"\x05group\x18\x05 \x01(\tR\x05group\"F\n" +
+	"\x05group\x18\x05 \x01(\tR\x05group\x12\x16\n" +
+	"\x06secret\x18\x06 \x01(\bR\x06secret\"F\n" +
 	"\x11GetConfigResponse\x121\n" +
 	"\aentries\x18\x01 \x03(\v2\x17.gitchat.v1.ConfigEntryR\aentries\"=\n" +
 	"\x13UpdateConfigRequest\x12\x10\n" +

@@ -7,8 +7,11 @@ package config
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +26,7 @@ type Registry struct {
 	entries []Entry
 	byKey   map[string]*Entry
 	db      storage.ConfigStore
+	encKey  []byte // AES-256 key for secret entries; nil = no encryption
 }
 
 // Entry describes a single configuration knob.
@@ -31,6 +35,7 @@ type Entry struct {
 	Default     string
 	Description string
 	Group       string // "llm", "chat", "repo", "session"
+	Secret      bool   // true for API keys / tokens — encrypted at rest, masked in API
 }
 
 // New creates a Registry backed by the given ConfigStore.
@@ -41,9 +46,32 @@ func New(db storage.ConfigStore) *Registry {
 	}
 }
 
+// InitEncryption loads (or creates) the AES-256 key for encrypting
+// secret config values. dbPath is the SQLite database path — the key
+// file is stored alongside it. Must be called before any Get/Set of
+// secret entries; safe to skip if no secrets are registered.
+func (r *Registry) InitEncryption(dbPath string) error {
+	key, err := loadOrCreateKey(dbPath)
+	if err != nil {
+		return err
+	}
+	r.encKey = key
+	return nil
+}
+
 // Register adds a config entry to the registry. Duplicate keys are
 // silently ignored (first registration wins).
 func (r *Registry) Register(key, defaultVal, desc, group string) {
+	r.register(key, defaultVal, desc, group, false)
+}
+
+// RegisterSecret is like Register but marks the entry as a secret.
+// Secret values are encrypted at rest and masked when returned via All().
+func (r *Registry) RegisterSecret(key, defaultVal, desc, group string) {
+	r.register(key, defaultVal, desc, group, true)
+}
+
+func (r *Registry) register(key, defaultVal, desc, group string, secret bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.byKey[key]; ok {
@@ -54,6 +82,7 @@ func (r *Registry) Register(key, defaultVal, desc, group string) {
 		Default:     defaultVal,
 		Description: desc,
 		Group:       group,
+		Secret:      secret,
 	}
 	r.entries = append(r.entries, e)
 	r.byKey[key] = &r.entries[len(r.entries)-1]
@@ -67,12 +96,21 @@ func (r *Registry) Get(key string) string {
 
 // GetCtx is like Get but propagates the caller's context, allowing
 // cancellation to abort a slow DB lookup instead of blocking up to 5s.
+// Secret values stored with encryption are transparently decrypted.
 func (r *Registry) GetCtx(ctx context.Context, key string) string {
 	// Check DB override first (with timeout to prevent hanging on slow DB).
 	if r.db != nil {
 		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		if v, ok, err := r.db.GetConfigOverride(dbCtx, key); err == nil && ok {
+			// Transparently decrypt if the value was encrypted.
+			if isEncrypted(v) && r.encKey != nil {
+				if plain, err := decrypt(r.encKey, strings.TrimPrefix(v, encPrefix)); err == nil {
+					return plain
+				}
+				slog.Warn("failed to decrypt config value", "key", key)
+				return "" // unreadable → treat as unset
+			}
 			return v
 		}
 	}
@@ -106,8 +144,21 @@ func (r *Registry) GetInt64(key string) int64 {
 }
 
 // Set writes (or overwrites) a config override in SQLite.
+// Secret entries are encrypted before writing.
 func (r *Registry) Set(ctx context.Context, key, value string) error {
-	return r.db.SetConfigOverride(ctx, key, value)
+	r.mu.RLock()
+	entry, isKnown := r.byKey[key]
+	r.mu.RUnlock()
+
+	storeVal := value
+	if isKnown && entry.Secret && r.encKey != nil && value != "" {
+		enc, err := encrypt(r.encKey, value)
+		if err != nil {
+			return fmt.Errorf("encrypt config value: %w", err)
+		}
+		storeVal = enc
+	}
+	return r.db.SetConfigOverride(ctx, key, storeVal)
 }
 
 // Delete removes a config override, reverting to env/default.
@@ -136,14 +187,29 @@ func (r *Registry) All(ctx context.Context) []*gitchatv1.ConfigEntry {
 			value = v
 		}
 		if v, ok := overrides[e.Key]; ok {
-			value = v
+			// Decrypt secret overrides so we can mask them below.
+			if e.Secret && isEncrypted(v) && r.encKey != nil {
+				if plain, err := decrypt(r.encKey, strings.TrimPrefix(v, encPrefix)); err == nil {
+					value = plain
+				} else {
+					value = "" // undecryptable → treat as unset
+				}
+			} else {
+				value = v
+			}
+		}
+		// Mask secret values — the API should never return plaintext secrets.
+		displayValue := value
+		if e.Secret {
+			displayValue = maskSecret(value)
 		}
 		out = append(out, &gitchatv1.ConfigEntry{
 			Key:          e.Key,
-			Value:        value,
+			Value:        displayValue,
 			DefaultValue: e.Default,
 			Description:  e.Description,
 			Group:        e.Group,
+			Secret:       e.Secret,
 		})
 	}
 	return out

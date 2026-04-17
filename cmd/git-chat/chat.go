@@ -66,6 +66,9 @@ func runChat(args []string) error {
 
 	cfg := config.New(db)
 	config.RegisterDefaults(cfg)
+	if err := cfg.InitEncryption(db.Path); err != nil {
+		return fmt.Errorf("init config encryption: %w", err)
+	}
 
 	llmAdapter, err := buildLLM(*llmBackend, *llmBase, *llmKey, llmModel)
 	if err != nil {
