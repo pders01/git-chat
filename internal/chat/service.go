@@ -57,15 +57,15 @@ var _ gitchatv1connect.ChatServiceHandler = (*Service)(nil)
 
 // Package-level tunables, configurable via environment variables.
 var (
-	maxMessageBytes        = envIntSvc("GITCHAT_MAX_MESSAGE_BYTES", 32*1024)
-	maxHistoryTurns        = envIntSvc("GITCHAT_MAX_HISTORY_TURNS", 20)
-	maxTitleLen            = envIntSvc("GITCHAT_TITLE_MAX_LEN", 48)
-	titleTimeout           = envDurSvc("GITCHAT_TITLE_TIMEOUT", 15*time.Second)
-	cardTimeout            = envDurSvc("GITCHAT_CARD_TIMEOUT", 10*time.Second)
-	maxAttachmentsPerMsg   = envIntSvc("GITCHAT_MAX_ATTACHMENTS_PER_MESSAGE", 8)
-	maxAttachmentBytes     = envIntSvc("GITCHAT_MAX_ATTACHMENT_BYTES", 10*1024*1024)
-	maxAttachmentTotal     = envIntSvc("GITCHAT_MAX_ATTACHMENTS_TOTAL_BYTES", 20*1024*1024)
-	toolLoopMax            = envIntSvc("GITCHAT_TOOL_LOOP_MAX", 8)
+	maxMessageBytes      = envIntSvc("GITCHAT_MAX_MESSAGE_BYTES", 32*1024)
+	maxHistoryTurns      = envIntSvc("GITCHAT_MAX_HISTORY_TURNS", 20)
+	maxTitleLen          = envIntSvc("GITCHAT_TITLE_MAX_LEN", 48)
+	titleTimeout         = envDurSvc("GITCHAT_TITLE_TIMEOUT", 15*time.Second)
+	cardTimeout          = envDurSvc("GITCHAT_CARD_TIMEOUT", 10*time.Second)
+	maxAttachmentsPerMsg = envIntSvc("GITCHAT_MAX_ATTACHMENTS_PER_MESSAGE", 8)
+	maxAttachmentBytes   = envIntSvc("GITCHAT_MAX_ATTACHMENT_BYTES", 10*1024*1024)
+	maxAttachmentTotal   = envIntSvc("GITCHAT_MAX_ATTACHMENTS_TOTAL_BYTES", 20*1024*1024)
+	toolLoopMax          = envIntSvc("GITCHAT_TOOL_LOOP_MAX", 8)
 )
 
 // allowedAttachmentMIMEs restricts uploads to image types Anthropic's
@@ -977,14 +977,14 @@ func (s *Service) maybePromoteCard(repoID, normalizedQ, answer, headCommit, user
 	}
 
 	cardID, err := s.DB.UpsertCard(ctx, storage.CardRow{
-		ID:                   newID(),
-		RepoID:               repoID,
-		QuestionNormalized:   normalizedQ,
-		AnswerMD:             answer,
-		Model:                s.Model,
-		CreatedCommit:        headCommit,
-		LastVerifiedCommit:   headCommit,
-		CreatedBy:            principal,
+		ID:                 newID(),
+		RepoID:             repoID,
+		QuestionNormalized: normalizedQ,
+		AnswerMD:           answer,
+		Model:              s.Model,
+		CreatedCommit:      headCommit,
+		LastVerifiedCommit: headCommit,
+		CreatedBy:          principal,
 	})
 	if err != nil {
 		slog.Debug("card upsert failed", "err", err)

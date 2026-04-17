@@ -172,4 +172,3 @@ func truncForCLI(s string, n int) string {
 func dimText(s string) string {
 	return "\x1b[2m" + s + "\x1b[0m"
 }
-

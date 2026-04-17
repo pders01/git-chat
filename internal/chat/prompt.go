@@ -22,10 +22,11 @@ import (
 // conservative.
 //
 // Env vars:
-//   GITCHAT_MAX_FILE_BYTES      — per @-file injection cap (default 4096)
-//   GITCHAT_MAX_TOTAL_INJECT    — total @-file budget per turn (default 12288)
-//   GITCHAT_MAX_BASELINE_BYTES  — overview doc cap (default 4096)
-//   GITCHAT_MAX_HISTORY_DIFF    — per-diff in history expansion (default 4096)
+//
+//	GITCHAT_MAX_FILE_BYTES      — per @-file injection cap (default 4096)
+//	GITCHAT_MAX_TOTAL_INJECT    — total @-file budget per turn (default 12288)
+//	GITCHAT_MAX_BASELINE_BYTES  — overview doc cap (default 4096)
+//	GITCHAT_MAX_HISTORY_DIFF    — per-diff in history expansion (default 4096)
 var (
 	maxInjectedFileBytes    = envInt("GITCHAT_MAX_FILE_BYTES", 4*1024)
 	maxTotalInjectedBytes   = envInt("GITCHAT_MAX_TOTAL_INJECT", 12*1024)

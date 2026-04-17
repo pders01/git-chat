@@ -180,13 +180,123 @@ Both adapters implement a single internal `LLM` interface:
 
 ```go
 type LLM interface {
-    Stream(ctx context.Context, req CompletionRequest) (<-chan Chunk, error)
+    Stream(ctx context.Context, req Request) (<-chan Chunk, error)
+    Capabilities(ctx context.Context, model string) Capabilities
 }
 ```
 
 - **OpenAI-compatible** via `sashabaranov/go-openai` -- configurable `BaseURL`
   speaks to LM Studio, Ollama, vLLM, OpenAI, Groq, DeepSeek, Together, etc.
-- **Anthropic** via `anthropics/anthropic-sdk-go` -- native adapter for production.
+- **Anthropic** via `anthropics/anthropic-sdk-go` -- native adapter for
+  production.
+
+`Chunk` carries one of: text token, reasoning/thinking delta, tool_use
+(fully-assembled args), or terminal done. `Request` carries messages,
+a tool spec catalog, temperature, max tokens. `Message` supports
+system/user/assistant/tool roles with optional attachments and
+`ToolCalls` on assistant turns.
+
+#### Capability probe
+
+`Capabilities(ctx, model)` reports what an adapter/model combination
+supports (today: image input). Results cached per-process per-model.
+
+- **Anthropic**: name-table — every Claude 3, 3.5, 3.7, 4 family model
+  ships with vision; retired Claude 2 / Instant do not.
+- **OpenAI-compatible**: resolves in order — `GITCHAT_VISION_MODELS`
+  env allowlist → Ollama `/api/show` (looks for CLIP / mllama families)
+  → LM Studio `/api/v0/models` (`vision` boolean) → name heuristic
+  (gpt-4o, llava, qwen-vl, gemma3, pixtral, …).
+
+Service uses the capability answer to strip incompatible attachments
+before they hit the model, emitting a warning on the `Started` chunk
+so the UI can surface the degradation.
+
+#### Reasoning-model support
+
+Chain-of-thought from reasoning models (Qwen3.x, DeepSeek-R1, Claude
+extended thinking) streams as `ChunkReasoning` rather than being
+folded into the assistant's reply. Anthropic reads `thinking_delta`
+events; OpenAI reads `reasoning_content` deltas. The web UI renders
+reasoning as a collapsible "thinking" block above the answer; the CLI
+dims it to stderr in verbose mode.
+
+Two Qwen-specific fallbacks in the OpenAI adapter:
+
+- **Hermes XML tool calls**: some local runners route Qwen tool calls
+  into `reasoning_content` as `<tool_call><function=…><parameter=k>v`
+  `</parameter></function></tool_call>` blocks instead of populating
+  the structured `tool_calls` array. `parseHermesToolCalls`
+  synthesises `ChunkToolUse` events from the XML so the loop keeps
+  moving.
+- **Reasoning-as-answer fallback**: if a round yields no content, no
+  tool calls, and no parseable Hermes XML, the reasoning buffer is
+  surfaced as the final answer tokens. Better than an empty bubble.
+
+### Agentic tool loop
+
+When `Service.Tools` is non-nil (a `tools.Registry`), the
+`SendMessage` pipeline wraps a bounded multi-round loop around
+`LLM.Stream`:
+
+1. Build prompt (see *Prompt structure* below) and open the stream.
+2. Forward `Token` / `Thinking` chunks to the client as they arrive.
+3. Collect `ToolUse` chunks in a per-round slice.
+4. On stream end, if no tool_use: break. Otherwise execute each tool
+   via `Registry.Execute(ctx, entry, name, args)`, stream
+   `ToolResult` chunks to the client, append
+   `assistant(ToolCalls)` + `tool(result)` messages to the prompt,
+   loop.
+5. Hard cap: `GITCHAT_TOOL_LOOP_MAX` (default 8). Cap-reached surfaces
+   as an error on the final `Done` chunk.
+
+Tools are read-only and scoped to the session's `repo.Entry`:
+
+| Tool | Description |
+|------|-------------|
+| `read_file(path, ref?)` | File contents. 64KB cap; binary files return a placeholder. |
+| `list_tree(path, ref?)` | Direct children of a directory. 200-entry cap. |
+| `search_paths(query)` | Filename substring search. 50-match cap. |
+| `search_code(query, path?, glob?, literal?, case_sensitive?)` | Ripgrep with PCRE2. Regex by default; `literal=true` opts into fixed-string. 80-match / 32KB cap. |
+| `outline(path)` | Universal-ctags symbol list. 200-entry cap. |
+| `get_diff(from?, to?, path?)` | Unified diff for a ref range. 32KB cap. |
+
+`search_code` shells to `rg`, `outline` shells to `ctags`. Tools error
+clearly if the binary isn't on `PATH` so the model knows to fall back.
+
+#### Persisted tool events
+
+Each tool_call + result pair is persisted to `chat_tool_event` (one
+row per pair, FK to the assistant message, ordinal preserves emission
+order). On session resume, `GetSession` hydrates them into
+`ChatMessage.tool_events` so the UI shows the same inline call/result
+blocks. On a follow-up turn against the same session, `buildPrompt`
+replays them as `assistant(ToolCalls)` + `tool(result)` messages so
+the model sees its own prior tool context.
+
+### Prompt structure
+
+`buildPrompt` emits two `system` messages in sequence to maximise
+cache hit rate:
+
+1. **Stable prefix** — base rules, repository layout (2-level tree),
+   overview doc (README / ARCHITECTURE.md). Changes only when the
+   tree or README change.
+2. **Volatile tail** — HEAD SHA, recent commits, `@file` mention
+   resolutions. Changes every commit / every turn.
+
+Then session history (with persisted attachments and tool events
+replayed), then the current user turn. Providers without explicit
+cache controls still benefit because prefix hashing kicks in on a
+stable ordered prompt.
+
+Anthropic adapter stamps `cache_control: ephemeral` on the first
+system block and on the last tool spec, pinning the entire stable
+prefix into the 5-minute cache window. Tool specs are stable across
+turns so pinning them is free after the first call.
+
+OpenAI-compatible adapter collapses consecutive system messages into
+one (some servers reject multi-system turns), preserving order.
 
 ### Syntax highlighting
 
@@ -332,7 +442,33 @@ CREATE TABLE kb_card_provenance (
 CREATE TABLE config_override (
   key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE chat_attachment (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL REFERENCES chat_message(id) ON DELETE CASCADE,
+  mime_type TEXT NOT NULL, filename TEXT NOT NULL,
+  size INTEGER NOT NULL, data BLOB NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE chat_tool_event (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL REFERENCES chat_message(id) ON DELETE CASCADE,
+  tool_call_id TEXT NOT NULL, name TEXT NOT NULL, args_json TEXT NOT NULL,
+  result_content TEXT NOT NULL DEFAULT '', is_error INTEGER NOT NULL DEFAULT 0,
+  ordinal INTEGER NOT NULL, created_at INTEGER NOT NULL
+);
 ```
+
+`chat_attachment` holds images and text files the user uploaded.
+`data` is the raw bytes; capped at 10MB per file, 20MB per message.
+Hydrated on `GetSession` so the UI can render thumbnails inline
+without a second round-trip.
+
+`chat_tool_event` holds persisted agentic tool_call + result pairs,
+one row per pair, FK cascade from `chat_message`. `ordinal` preserves
+emission order within a turn. Replayed into the LLM prompt on
+follow-up turns so the model sees its own prior tool context.
 
 ---
 
@@ -506,7 +642,13 @@ git-chat/
 ├── cmd/
 │   └── git-chat/
 │       ├── main.go              # binary entrypoint, flag parsing
-│       └── subcommands.go       # serve, local, mcp, add-key
+│       ├── serve.go              # multi-user HTTP + SSH pairing
+│       ├── local.go              # solo-local HTTP + browser
+│       ├── mcp.go                # MCP stdio server
+│       ├── chat.go               # headless CLI chat (one-shot)
+│       ├── addkey.go             # append ssh pubkey
+│       ├── shared.go             # cross-subcommand LLM/DB setup
+│       └── ui.go                 # CLI styling (banners, logging)
 ├── internal/
 │   ├── auth/                    # wish SSH server, pairing state, sessions
 │   │   ├── ssh.go
@@ -515,14 +657,20 @@ git-chat/
 │   │   ├── middleware.go         # session middleware (rotation, context injection)
 │   │   ├── service.go           # Connect handlers (pairing, claim, logout)
 │   │   └── context.go           # principal + token context helpers
-│   ├── chat/                    # ChatService: streaming LLM, KB, prompt builder
-│   │   ├── service.go           # Connect handler impls (SendMessage, Search, KB mgmt)
-│   │   ├── prompt.go            # System prompt builder (@-mention injection, context)
-│   │   ├── stream.go            # token stream fan-out
-│   │   └── llm/
-│   │       ├── anthropic.go
-│   │       ├── openai.go        # openai-compatible adapter
-│   │       └── fake.go          # test double
+│   ├── chat/                    # ChatService: streaming LLM, KB, agentic loop
+│   │   ├── service.go           # Connect handlers, StreamMessage + agentic loop
+│   │   ├── prompt.go            # System prompt builder (stable + volatile split)
+│   │   ├── agentic_test.go      # end-to-end tool-use loop test via Fake
+│   │   ├── llm/
+│   │   │   ├── llm.go           # Interface, Chunk, Message, Tool shapes
+│   │   │   ├── anthropic.go     # native adapter, cache_control, thinking
+│   │   │   ├── openai.go        # openai-compatible, hermes xml fallback
+│   │   │   ├── hermes_test.go
+│   │   │   ├── capabilities_test.go
+│   │   │   └── fake.go          # scripted test double
+│   │   └── tools/               # read-only repo tool catalog
+│   │       ├── tools.go         # read_file, list_tree, search_paths, …
+│   │       └── tools_test.go
 │   ├── config/                  # runtime config registry
 │   │   ├── config.go            # Registry: 3-tier resolution (DB > env > default)
 │   │   ├── config_test.go
