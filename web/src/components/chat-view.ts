@@ -176,6 +176,11 @@ export class GcChatView extends LitElement {
   @state() private mentionIdx = -1;
   /** Cache of directory path → full entry paths (dirs suffixed with /). */
   private dirCache = new Map<string, string[]>();
+  /** Sequence counter so an in-flight checkMention ignored once a newer
+   * keystroke has started a fresh invocation. Prevents stale dropdown
+   * flicker and, more importantly, prevents Enter from completing
+   * against results that don't match the current input. */
+  private checkMentionSeq = 0;
   private abortController: AbortController | null = null;
   // Focus mode hides the session sidebar and removes the messages
   // reader-width cap so the whole main area is chat content. Persisted
@@ -276,11 +281,16 @@ export class GcChatView extends LitElement {
       ta?.focus();
       return;
     }
-    // Escape blurs the composer.
+    // Escape blurs the composer textarea. Explicitly scope to the
+    // main composer input so Escape inside the edit-turn textarea
+    // (which has its own cancel handler that swaps the element out)
+    // doesn't also fire a blur on an element the edit handler is
+    // already tearing down.
     if (e.key === "Escape") {
       const root = this.renderRoot as ShadowRoot;
-      if (root.activeElement instanceof HTMLTextAreaElement) {
-        root.activeElement.blur();
+      const active = root.activeElement;
+      if (active instanceof HTMLTextAreaElement && !active.classList.contains("edit-input")) {
+        active.blur();
       }
     }
 
@@ -570,6 +580,7 @@ export class GcChatView extends LitElement {
   }
 
   private async checkMention() {
+    const seq = ++this.checkMentionSeq;
     const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
     if (!ta) return;
     const pos = ta.selectionStart;
@@ -577,6 +588,7 @@ export class GcChatView extends LitElement {
     const atMatch = before.match(/@([\w\-./]*)$/);
     if (!atMatch) {
       this.showMentions = false;
+      this.mentionResults = [];
       return;
     }
     const query = atMatch[1];
@@ -586,8 +598,12 @@ export class GcChatView extends LitElement {
     const lastSlash = query.lastIndexOf("/");
     const dirPath = lastSlash >= 0 ? query.slice(0, lastSlash) : "";
     const filterPart = (lastSlash >= 0 ? query.slice(lastSlash + 1) : query).toLowerCase();
-    // Lazy-load directory entries with caching.
+    // Lazy-load directory entries with caching. If we'd have to fetch,
+    // eagerly clear the stale results so Enter mid-flight can't
+    // complete against a leftover match from the previous keystroke.
     if (!this.dirCache.has(dirPath)) {
+      this.mentionResults = [];
+      this.showMentions = false;
       try {
         const resp = await repoClient.listTree({ repoId: this.repoId, path: dirPath });
         const prefix = dirPath ? dirPath + "/" : "";
@@ -598,6 +614,10 @@ export class GcChatView extends LitElement {
       } catch {
         this.dirCache.set(dirPath, []);
       }
+      // A newer keystroke may have replaced us while we were awaiting —
+      // drop this resolution so we don't flash stale matches against
+      // the user's current query.
+      if (seq !== this.checkMentionSeq) return;
     }
     this.mentionResults = (this.dirCache.get(dirPath) || [])
       .filter((p) => {
@@ -729,7 +749,25 @@ export class GcChatView extends LitElement {
     const before = this.input.slice(0, pos);
     const after = this.input.slice(pos);
     const atIdx = before.lastIndexOf("@");
-    this.input = before.slice(0, atIdx) + "@" + path + " " + after;
+    // Directories end in `/` in the candidate list. Leave them open
+    // for further narrowing — appending a space would break the
+    // autocomplete regex and force the user to backspace before they
+    // could keep drilling in. File picks get the trailing space so
+    // typing the rest of the sentence feels natural.
+    const isDirectory = path.endsWith("/");
+    const suffix = isDirectory ? "" : " ";
+    this.input = before.slice(0, atIdx) + "@" + path + suffix + after;
+    if (isDirectory) {
+      // Keep the dropdown open — we're about to refetch for the new
+      // dir prefix on the next checkMention tick.
+      requestAnimationFrame(() => {
+        ta.focus();
+        const newPos = atIdx + path.length + 1;
+        ta.setSelectionRange(newPos, newPos);
+        void this.checkMention();
+      });
+      return;
+    }
     this.showMentions = false;
     requestAnimationFrame(() => {
       ta.focus();
@@ -752,9 +790,14 @@ export class GcChatView extends LitElement {
           this.mentionIdx <= 0 ? this.mentionResults.length - 1 : this.mentionIdx - 1;
         return;
       }
-      if ((e.key === "Enter" || e.key === "Tab") && this.mentionIdx >= 0) {
+      if (e.key === "Enter" || e.key === "Tab") {
+        // Fall back to the first candidate when nothing is arrow-
+        // selected — matches how every other autocomplete UI behaves
+        // and stops Enter from leaking through to the submit handler
+        // below with "@partial" in the buffer.
         e.preventDefault();
-        this.insertMention(this.mentionResults[this.mentionIdx]);
+        const idx = this.mentionIdx >= 0 ? this.mentionIdx : 0;
+        this.insertMention(this.mentionResults[idx]);
         return;
       }
       if (e.key === "Escape") {
