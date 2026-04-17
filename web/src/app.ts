@@ -65,7 +65,7 @@ export class GcApp extends LitElement {
   // Server config state
   @state() private configEntries: any[] = [];
   @state() private configLoading = false;
-  @state() private expandedGroups: Set<string> = new Set();
+  @state() private settingsSection = "appearance";
   private configDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   override async connectedCallback() {
@@ -771,13 +771,6 @@ export class GcApp extends LitElement {
     this.updateConfigEntry(entry.key, entry.defaultValue);
   }
 
-  private toggleGroup(group: string) {
-    const next = new Set(this.expandedGroups);
-    if (next.has(group)) next.delete(group);
-    else next.add(group);
-    this.expandedGroups = next;
-  }
-
   private humanizeKey(key: string): string {
     return key
       .replace(/^GITCHAT_/, "")
@@ -790,111 +783,70 @@ export class GcApp extends LitElement {
     return k.includes("API_KEY") || k.includes("SECRET") || k.includes("TOKEN");
   }
 
-  private renderServerConfig() {
-    const GROUP_ORDER = ["llm", "chat", "repo", "session"];
-    const GROUP_LABELS: Record<string, string> = {
-      llm: "LLM",
-      chat: "Chat",
-      repo: "Repository",
-      session: "Session",
-    };
+  private static readonly SETTINGS_SECTIONS = [
+    { id: "appearance", label: "Appearance" },
+    { id: "llm", label: "LLM" },
+    { id: "chat", label: "Chat" },
+    { id: "repo", label: "Repository" },
+    { id: "session", label: "Session" },
+    { id: "webhook", label: "Webhook" },
+  ] as const;
 
+  private configGroupEntries(group: string): any[] {
+    return this.configEntries.filter((e: any) => (e.group || "other") === group);
+  }
+
+  private configGroupModifiedCount(group: string): number {
+    return this.configGroupEntries(group).filter((e: any) => e.value !== e.defaultValue).length;
+  }
+
+  private renderConfigGroup(group: string) {
+    const entries = this.configGroupEntries(group);
     if (this.configLoading) {
-      return html`<div class="config-section">
-        <gc-spinner></gc-spinner>
-        <span>loading server config…</span>
-      </div>`;
+      return html`<gc-spinner></gc-spinner><span>loading…</span>`;
     }
-    if (this.configEntries.length === 0) {
-      return nothing;
+    if (entries.length === 0) {
+      return html`<p class="config-empty">no entries</p>`;
     }
-
-    // Group entries
-    const grouped = new Map<string, any[]>();
-    for (const entry of this.configEntries) {
-      const g = entry.group || "other";
-      if (!grouped.has(g)) grouped.set(g, []);
-      grouped.get(g)!.push(entry);
-    }
-
-    // Sort groups by defined order, unknown groups last
-    const sortedGroups = [...grouped.keys()].sort((a, b) => {
-      const ai = GROUP_ORDER.indexOf(a);
-      const bi = GROUP_ORDER.indexOf(b);
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-    });
-
     return html`
-      <div class="config-section">
-        <h3 class="config-title">Server Config</h3>
-        ${sortedGroups.map((group) => {
-          const entries = grouped.get(group)!;
-          const expanded = this.expandedGroups.has(group);
-          const label = GROUP_LABELS[group] ?? group;
-          const modifiedCount = entries.filter((e: any) => e.value !== e.defaultValue).length;
+      <div class="config-group-body">
+        ${entries.map((entry: any) => {
+          const isSecret = this.isApiKeyEntry(entry.key);
+          const modified = entry.value !== entry.defaultValue;
           return html`
-            <div class="config-group">
-              <button
-                class="config-group-header"
-                @click=${() => this.toggleGroup(group)}
-                aria-expanded=${expanded ? "true" : "false"}
-              >
-                <span class="config-chevron">${expanded ? "\u25BE" : "\u25B8"}</span>
-                <span>${label}</span>
-                ${modifiedCount > 0
-                  ? html`<span class="config-modified-badge">${modifiedCount} modified</span>`
+            <div class="config-entry">
+              <div class="config-entry-header">
+                <label
+                  class="config-key ${modified ? "config-modified" : ""}"
+                  for="cfg-${entry.key}"
+                  >${this.humanizeKey(entry.key)}</label
+                >
+                ${modified
+                  ? html`<button
+                      class="config-reset-btn"
+                      @click=${() => this.resetConfigEntry(entry)}
+                      title="Reset to default: ${entry.defaultValue}"
+                      aria-label="Reset ${this.humanizeKey(entry.key)} to default"
+                    >
+                      reset
+                    </button>`
                   : nothing}
-              </button>
-              ${expanded
-                ? html`
-                    <div class="config-group-body">
-                      ${entries.map((entry: any) => {
-                        const isSecret = this.isApiKeyEntry(entry.key);
-                        const modified = entry.value !== entry.defaultValue;
-                        return html`
-                          <div class="config-entry">
-                            <div class="config-entry-header">
-                              <label
-                                class="config-key ${modified ? "config-modified" : ""}"
-                                for="cfg-${entry.key}"
-                                >${this.humanizeKey(entry.key)}</label
-                              >
-                              ${modified
-                                ? html`<button
-                                    class="config-reset-btn"
-                                    @click=${() => this.resetConfigEntry(entry)}
-                                    title="Reset to default: ${entry.defaultValue}"
-                                    aria-label="Reset ${this.humanizeKey(entry.key)} to default"
-                                  >
-                                    reset
-                                  </button>`
-                                : nothing}
-                            </div>
-                            <input
-                              id="cfg-${entry.key}"
-                              class="config-input"
-                              type=${isSecret ? "password" : "text"}
-                              .value=${entry.value}
-                              ?readonly=${isSecret}
-                              aria-describedby=${entry.description ? `cfg-desc-${entry.key}` : ""}
-                              @input=${(e: Event) => {
-                                if (isSecret) return;
-                                this.updateConfigEntry(
-                                  entry.key,
-                                  (e.target as HTMLInputElement).value,
-                                );
-                              }}
-                            />
-                            ${entry.description
-                              ? html`<span id="cfg-desc-${entry.key}" class="config-desc"
-                                  >${entry.description}</span
-                                >`
-                              : nothing}
-                          </div>
-                        `;
-                      })}
-                    </div>
-                  `
+              </div>
+              <input
+                id="cfg-${entry.key}"
+                class="config-input"
+                type=${isSecret ? "password" : "text"}
+                autocomplete="off"
+                .value=${entry.value}
+                aria-describedby=${entry.description ? `cfg-desc-${entry.key}` : ""}
+                @input=${(e: Event) => {
+                  this.updateConfigEntry(entry.key, (e.target as HTMLInputElement).value);
+                }}
+              />
+              ${entry.description
+                ? html`<span id="cfg-desc-${entry.key}" class="config-desc"
+                    >${entry.description}</span
+                  >`
                 : nothing}
             </div>
           `;
@@ -903,119 +855,154 @@ export class GcApp extends LitElement {
     `;
   }
 
-  private renderSettingsModal() {
+  private renderAppearance() {
     const sidebarW = parseInt(settings.get("sidebar-width"));
     const contentW = parseInt(settings.get("content-max-width"));
     const fontSize = parseFloat(settings.get("font-size")) * 100;
     const theme = settings.getTheme();
     return html`
+      <div class="setting-row">
+        <span class="setting-label">Theme</span>
+        <div class="theme-picker">
+          ${(["system", "light", "dark"] as const).map(
+            (t) => html`
+              <button
+                class="theme-btn ${theme === t ? "active" : ""}"
+                @click=${() => {
+                  settings.setTheme(t);
+                  this.requestUpdate();
+                }}
+              >
+                ${t}
+              </button>
+            `,
+          )}
+        </div>
+      </div>
+
+      <label class="setting-row">
+        <span class="setting-label">Sidebar width</span>
+        <div class="setting-control">
+          <input
+            type="range"
+            min="180"
+            max="450"
+            .value=${String(sidebarW)}
+            @input=${(e: Event) => {
+              const v = (e.target as HTMLInputElement).value;
+              settings.set("sidebar-width", v + "px");
+              this.requestUpdate();
+            }}
+          />
+          <span class="setting-value">${sidebarW}px</span>
+        </div>
+      </label>
+
+      <label class="setting-row">
+        <span class="setting-label">Content max width</span>
+        <div class="setting-control">
+          <input
+            type="range"
+            min="600"
+            max="1400"
+            step="20"
+            .value=${String(contentW)}
+            @input=${(e: Event) => {
+              const v = (e.target as HTMLInputElement).value;
+              settings.set("content-max-width", v + "px");
+              this.requestUpdate();
+            }}
+          />
+          <span class="setting-value">${contentW}px</span>
+        </div>
+      </label>
+
+      <label class="setting-row">
+        <span class="setting-label">Font size</span>
+        <div class="setting-control">
+          <input
+            type="range"
+            min="60"
+            max="120"
+            .value=${String(Math.round(fontSize))}
+            @input=${(e: Event) => {
+              const v = parseInt((e.target as HTMLInputElement).value);
+              settings.set("font-size", (v / 100).toFixed(2) + "rem");
+              this.requestUpdate();
+            }}
+          />
+          <span class="setting-value">${Math.round(fontSize)}%</span>
+        </div>
+      </label>
+    `;
+  }
+
+  private renderSettingsSection() {
+    const section = this.settingsSection;
+    if (section === "appearance") return this.renderAppearance();
+    return this.renderConfigGroup(section);
+  }
+
+  private settingsSectionLabel(id: string): string {
+    const sections = (this.constructor as typeof GcApp).SETTINGS_SECTIONS;
+    return sections.find((s) => s.id === id)?.label ?? id;
+  }
+
+  private renderSettingsModal() {
+    const sections = (this.constructor as typeof GcApp).SETTINGS_SECTIONS;
+    return html`
       <div class="modal-backdrop" @click=${() => (this.showSettings = false)}>
         <div
-          class="modal"
+          class="modal settings-modal"
           role="dialog"
           aria-modal="true"
           aria-label="Settings"
           @click=${(e: Event) => e.stopPropagation()}
           @keydown=${this.trapFocus}
         >
-          <h2 class="modal-title">Settings</h2>
-
-          <div class="setting-row">
-            <span class="setting-label">Theme</span>
-            <div class="theme-picker">
-              ${(["system", "light", "dark"] as const).map(
-                (t) => html`
-                  <button
-                    class="theme-btn ${theme === t ? "active" : ""}"
-                    @click=${() => {
-                      settings.setTheme(t);
-                      this.requestUpdate();
-                    }}
-                  >
-                    ${t}
-                  </button>
-                `,
-              )}
-            </div>
-          </div>
-
-          <label class="setting-row">
-            <span class="setting-label">Sidebar width</span>
-            <div class="setting-control">
-              <input
-                type="range"
-                min="180"
-                max="450"
-                .value=${String(sidebarW)}
-                @input=${(e: Event) => {
-                  const v = (e.target as HTMLInputElement).value;
-                  settings.set("sidebar-width", v + "px");
-                  this.requestUpdate();
-                }}
-              />
-              <span class="setting-value">${sidebarW}px</span>
-            </div>
-          </label>
-
-          <label class="setting-row">
-            <span class="setting-label">Content max width</span>
-            <div class="setting-control">
-              <input
-                type="range"
-                min="600"
-                max="1400"
-                step="20"
-                .value=${String(contentW)}
-                @input=${(e: Event) => {
-                  const v = (e.target as HTMLInputElement).value;
-                  settings.set("content-max-width", v + "px");
-                  this.requestUpdate();
-                }}
-              />
-              <span class="setting-value">${contentW}px</span>
-            </div>
-          </label>
-
-          <label class="setting-row">
-            <span class="setting-label">Font size</span>
-            <div class="setting-control">
-              <input
-                type="range"
-                min="60"
-                max="120"
-                .value=${String(Math.round(fontSize))}
-                @input=${(e: Event) => {
-                  const v = parseInt((e.target as HTMLInputElement).value);
-                  settings.set("font-size", (v / 100).toFixed(2) + "rem");
-                  this.requestUpdate();
-                }}
-              />
-              <span class="setting-value">${Math.round(fontSize)}%</span>
-            </div>
-          </label>
-
-          ${this.renderServerConfig()}
-
-          <div class="setting-actions">
-            <button
-              class="action-btn"
-              @click=${async () => {
-                for (const k of settings.allKeys()) settings.reset(k);
-                settings.setTheme("system");
-                // Reset modified server config entries to defaults
-                for (const entry of this.configEntries) {
-                  if ((entry as any).value !== (entry as any).defaultValue) {
-                    await this.resetConfigEntry(entry);
+          <nav class="settings-sidebar">
+            <h2 class="settings-title">Settings</h2>
+            ${sections.map((s) => {
+              const mod = s.id !== "appearance" ? this.configGroupModifiedCount(s.id) : 0;
+              return html`
+                <button
+                  class="settings-nav-item ${this.settingsSection === s.id ? "active" : ""}"
+                  @click=${() => {
+                    this.settingsSection = s.id;
+                  }}
+                >
+                  ${s.label}
+                  ${mod > 0
+                    ? html`<span class="config-modified-badge">${mod}</span>`
+                    : nothing}
+                </button>
+              `;
+            })}
+            <div class="settings-sidebar-footer">
+              <button
+                class="action-btn"
+                @click=${async () => {
+                  for (const k of settings.allKeys()) settings.reset(k);
+                  settings.setTheme("system");
+                  for (const entry of this.configEntries) {
+                    if ((entry as any).value !== (entry as any).defaultValue) {
+                      await this.resetConfigEntry(entry);
+                    }
                   }
-                }
-                this.requestUpdate();
-              }}
-            >
-              reset defaults
-            </button>
+                  this.requestUpdate();
+                }}
+              >
+                reset defaults
+              </button>
+            </div>
+          </nav>
+          <div class="settings-content">
+            <h3 class="settings-section-title">
+              ${this.settingsSectionLabel(this.settingsSection)}
+            </h3>
+            ${this.renderSettingsSection()}
+            <p class="modal-hint">changes apply immediately and persist across sessions</p>
           </div>
-
-          <p class="modal-hint">changes apply immediately and persist across sessions</p>
         </div>
       </div>
     `;
@@ -1837,7 +1824,86 @@ export class GcApp extends LitElement {
       }
     }
 
-    /* ── Settings modal ───────────────────────────────────────── */
+    /* ── Settings modal (sidebar layout) ───────────────────────── */
+    .settings-modal {
+      max-width: 900px;
+      display: flex;
+      padding: 0;
+      overflow: hidden;
+    }
+    .settings-sidebar {
+      width: 200px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border-default);
+      padding: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+    .settings-title {
+      margin: 0 0 var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      font-size: var(--text-lg);
+      font-weight: 500;
+    }
+    .settings-nav-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      text-align: left;
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-md);
+      background: none;
+      border: none;
+      color: var(--text);
+      font-family: inherit;
+      font-size: var(--text-sm);
+      cursor: pointer;
+      opacity: 0.65;
+      transition: opacity 0.1s ease, background 0.1s ease;
+    }
+    .settings-nav-item:hover {
+      opacity: 1;
+      background: var(--surface-3);
+    }
+    .settings-nav-item.active {
+      opacity: 1;
+      background: var(--surface-3);
+    }
+    .settings-sidebar-footer {
+      margin-top: auto;
+      padding-top: var(--space-3);
+    }
+    .settings-content {
+      flex: 1;
+      min-width: 0;
+      padding: var(--space-6) var(--space-7);
+      overflow-y: auto;
+      max-height: calc(100vh - 120px);
+    }
+    .settings-section-title {
+      margin: 0 0 var(--space-4);
+      font-size: var(--text-base);
+      font-weight: 500;
+    }
+    @media (max-width: 640px) {
+      .settings-modal { flex-direction: column; }
+      .settings-sidebar {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        border-right: none;
+        border-bottom: 1px solid var(--border-default);
+        gap: var(--space-1);
+        padding: var(--space-3);
+      }
+      .settings-title { display: none; }
+      .settings-sidebar-footer { display: none; }
+      .settings-content { max-height: calc(100vh - 220px); }
+    }
+
+    /* ── Appearance settings ──────────────────────────────────── */
     .setting-row {
       display: flex;
       justify-content: space-between;
@@ -1891,73 +1957,27 @@ export class GcApp extends LitElement {
       background: var(--surface-3);
       border-color: var(--accent-assistant);
     }
-    .setting-actions {
-      margin-top: var(--space-4);
-      display: flex;
-      justify-content: flex-end;
-    }
 
-    /* ── Server config section ────────────────────────────────── */
-    .config-section {
-      margin-top: var(--space-4);
-      padding-top: var(--space-4);
-      border-top: 1px solid var(--surface-4);
-    }
-    .config-title {
-      margin: 0 0 var(--space-3);
-      font-size: var(--text-sm);
-      font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      opacity: 0.5;
-    }
-    .config-group {
-      margin-bottom: var(--space-2);
-    }
-    .config-group-header {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      width: 100%;
-      padding: var(--space-2) 0;
-      background: transparent;
-      color: var(--text);
-      border: none;
-      border-bottom: 1px solid var(--surface-4);
-      font-family: inherit;
-      font-size: var(--text-xs);
-      font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      opacity: 0.55;
-      cursor: pointer;
-      transition: opacity 0.12s ease;
-    }
-    .config-group-header:hover {
-      opacity: 0.85;
-    }
-    .config-chevron {
-      font-size: 0.7rem;
-      line-height: 1;
-    }
+    /* ── Config entries (shared across groups) ────────────────── */
     .config-modified-badge {
-      margin-left: auto;
       font-size: 0.6rem;
       color: var(--accent-user);
-      text-transform: none;
-      letter-spacing: normal;
-      opacity: 1;
+      font-variant-numeric: tabular-nums;
     }
     .config-group-body {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: var(--space-2) var(--space-4);
-      padding: var(--space-2) 0 var(--space-2) var(--space-3);
     }
-    @media (max-width: 560px) {
+    @media (max-width: 640px) {
       .config-group-body {
         grid-template-columns: 1fr;
       }
+    }
+    .config-empty {
+      opacity: 0.4;
+      font-size: var(--text-sm);
+      font-style: italic;
     }
     .config-entry {
       display: flex;
@@ -2007,10 +2027,6 @@ export class GcApp extends LitElement {
     }
     .config-input:focus {
       border-color: var(--accent-assistant);
-    }
-    .config-input[readonly] {
-      opacity: 0.5;
-      cursor: not-allowed;
     }
     .config-desc {
       font-size: 0.65rem;
