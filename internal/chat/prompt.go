@@ -108,6 +108,8 @@ func (s *Service) buildPrompt(
 	repoEntry *repo.Entry,
 	sessionHistory []*storage.MessageRow,
 	userText string,
+	currentAttachments []llm.Attachment,
+	historyAttachments map[string][]*storage.AttachmentRow,
 ) []llm.Message {
 	var sb strings.Builder
 	sb.WriteString(s.baseSystemPrompt(repoEntry))
@@ -139,12 +141,30 @@ func (s *Service) buildPrompt(
 		if m.Role == "assistant" && diffMarkerPattern.MatchString(content) {
 			content = expandHistoryDiffMarkers(ctx, repoEntry, content, diffCache)
 		}
+		var atts []llm.Attachment
+		if m.Role == "user" {
+			if rows, ok := historyAttachments[m.ID]; ok {
+				atts = make([]llm.Attachment, 0, len(rows))
+				for _, a := range rows {
+					atts = append(atts, llm.Attachment{
+						MimeType: a.MimeType,
+						Filename: a.Filename,
+						Data:     a.Data,
+					})
+				}
+			}
+		}
 		msgs = append(msgs, llm.Message{
-			Role:    llm.Role(m.Role),
-			Content: content,
+			Role:        llm.Role(m.Role),
+			Content:     content,
+			Attachments: atts,
 		})
 	}
-	msgs = append(msgs, llm.Message{Role: llm.RoleUser, Content: userText})
+	msgs = append(msgs, llm.Message{
+		Role:        llm.RoleUser,
+		Content:     userText,
+		Attachments: currentAttachments,
+	})
 	return msgs
 }
 

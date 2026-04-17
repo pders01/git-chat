@@ -46,7 +46,82 @@ type Turn = {
   // the regenerate path distinguish "rerun a good answer" from
   // "recover from a failure".
   error?: string;
+  attachments?: ClientAttachment[];
+  // Soft server-side notices ("images stripped — model doesn't support
+  // vision"). Rendered below the user turn so the degradation is
+  // visible without blocking the stream.
+  warnings?: string[];
 };
+
+// ClientAttachment is the composer/rendering shape for a user-uploaded
+// file. `url` is an object URL created once for image previews — we
+// lean on browser-tab lifetime rather than bookkeeping revocations,
+// since the upload caps keep total memory bounded.
+type ClientAttachment = {
+  mimeType: string;
+  filename: string;
+  size: number;
+  data: Uint8Array;
+  url?: string;
+};
+
+// Client-side attachment validation mirrors the server (see
+// internal/chat/service.go). Drift is not checked — keep in sync.
+const ALLOWED_ATTACHMENT_MIMES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "text/plain",
+]);
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_ATTACHMENTS_TOTAL_BYTES = 20 * 1024 * 1024;
+const MAX_ATTACHMENTS_PER_MESSAGE = 8;
+
+async function readFileToAttachment(file: File): Promise<ClientAttachment> {
+  const buf = await file.arrayBuffer();
+  const data = new Uint8Array(buf);
+  const att: ClientAttachment = {
+    mimeType: file.type || "application/octet-stream",
+    filename: file.name || "attachment",
+    size: data.byteLength,
+    data,
+  };
+  if (att.mimeType.startsWith("image/")) {
+    att.url = bytesToDataURL(data, att.mimeType);
+  }
+  return att;
+}
+
+function attachmentFromProto(a: {
+  mimeType: string;
+  filename: string;
+  size: bigint;
+  data: Uint8Array;
+}): ClientAttachment {
+  const out: ClientAttachment = {
+    mimeType: a.mimeType,
+    filename: a.filename,
+    size: Number(a.size),
+    data: a.data,
+  };
+  if (out.mimeType.startsWith("image/") && a.data.byteLength > 0) {
+    out.url = bytesToDataURL(a.data, out.mimeType);
+  }
+  return out;
+}
+
+// bytesToDataURL builds a data: URL from raw bytes. Data URLs sidestep
+// Blob lifetime and object-URL revocation entirely, and our attachment
+// caps keep the resulting string from growing pathologically.
+function bytesToDataURL(data: Uint8Array, mime: string): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < data.length; i += chunk) {
+    binary += String.fromCharCode(...data.subarray(i, i + chunk));
+  }
+  return `data:${mime};base64,${btoa(binary)}`;
+}
 
 // Per-model pricing in dollars per million tokens.
 const MODEL_PRICING: Record<string, { in: number; out: number }> = {
@@ -68,6 +143,12 @@ function fmtNum(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
 type ViewState =
   | { phase: "loading" }
   | { phase: "ready"; sessions: ChatSession[]; selected: string | null }
@@ -84,6 +165,9 @@ export class GcChatView extends LitElement {
   @state() private input = "";
   @state() private sending = false;
   @state() private error = "";
+  @state() private pendingAttachments: ClientAttachment[] = [];
+  @state() private dragActive = false;
+  private dragDepth = 0;
   @state() private editingSessionId = "";
   @state() private sessionFilter = "";
   // @-mention autocomplete state.
@@ -551,6 +635,93 @@ export class GcChatView extends LitElement {
     }
   }
 
+  private async addFiles(files: FileList | File[] | null | undefined) {
+    if (!files || files.length === 0) return;
+    const existing = this.pendingAttachments;
+    const additions: ClientAttachment[] = [];
+    const rejections: string[] = [];
+    let runningTotal = existing.reduce((n, a) => n + a.size, 0);
+    for (const f of Array.from(files)) {
+      if (existing.length + additions.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
+        rejections.push(`max ${MAX_ATTACHMENTS_PER_MESSAGE} attachments reached`);
+        break;
+      }
+      if (!ALLOWED_ATTACHMENT_MIMES.has(f.type)) {
+        rejections.push(`${f.name}: unsupported type ${f.type || "unknown"}`);
+        continue;
+      }
+      if (f.size > MAX_ATTACHMENT_BYTES) {
+        rejections.push(
+          `${f.name}: too large (${fmtBytes(f.size)} > ${fmtBytes(MAX_ATTACHMENT_BYTES)})`,
+        );
+        continue;
+      }
+      if (runningTotal + f.size > MAX_ATTACHMENTS_TOTAL_BYTES) {
+        rejections.push(`${f.name}: would exceed total size cap`);
+        continue;
+      }
+      try {
+        const att = await readFileToAttachment(f);
+        additions.push(att);
+        runningTotal += att.size;
+      } catch (e) {
+        rejections.push(`${f.name}: ${messageOf(e)}`);
+      }
+    }
+    if (additions.length > 0) {
+      this.pendingAttachments = [...existing, ...additions];
+      this.announce(`${additions.length} attachment${additions.length === 1 ? "" : "s"} added`);
+    }
+    if (rejections.length > 0) {
+      this.error = rejections.join("; ");
+    }
+  }
+
+  private removeAttachment(index: number) {
+    const next = this.pendingAttachments.slice();
+    next.splice(index, 1);
+    this.pendingAttachments = next;
+  }
+
+  private async onPickFiles(e: Event) {
+    const input = e.target as HTMLInputElement;
+    await this.addFiles(input.files);
+    input.value = ""; // allow re-picking the same file
+  }
+
+  private async onPasteAttach(e: ClipboardEvent) {
+    const items = e.clipboardData?.files;
+    if (items && items.length > 0) {
+      e.preventDefault();
+      await this.addFiles(items);
+    }
+  }
+
+  private onDragEnter(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes("Files")) return;
+    e.preventDefault();
+    this.dragDepth++;
+    this.dragActive = true;
+  }
+
+  private onDragOver(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes("Files")) return;
+    e.preventDefault();
+  }
+
+  private onDragLeave(e: DragEvent) {
+    e.preventDefault();
+    this.dragDepth = Math.max(0, this.dragDepth - 1);
+    if (this.dragDepth === 0) this.dragActive = false;
+  }
+
+  private async onDrop(e: DragEvent) {
+    e.preventDefault();
+    this.dragDepth = 0;
+    this.dragActive = false;
+    await this.addFiles(e.dataTransfer?.files);
+  }
+
   private insertMention(path: string) {
     const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
     if (!ta) return;
@@ -603,13 +774,20 @@ export class GcChatView extends LitElement {
     // Default to the composer input. opts.text overrides it for
     // regenerate / edit paths where the source isn't the textarea.
     const text = (opts.text ?? this.input).trim();
-    if (!text || this.sending || this.state.phase !== "ready") return;
+    // Attachments only flow from the composer path — regenerate / edit
+    // replay an existing user turn whose attachments, if any, are
+    // already on the server. Day-one regenerate doesn't re-upload.
+    const composerPath = opts.text === undefined;
+    const attachments = composerPath ? this.pendingAttachments : [];
+    if (!text && attachments.length === 0) return;
+    if (this.sending || this.state.phase !== "ready") return;
 
     const sessionId = this.state.selected ?? "";
     const userTurn: Turn = {
       id: `local-${Date.now()}`,
       role: MessageRole.USER,
       content: text,
+      attachments: attachments.length > 0 ? attachments : undefined,
     };
     const assistantTurn: Turn = {
       id: `local-${Date.now()}-a`,
@@ -625,7 +803,10 @@ export class GcChatView extends LitElement {
     // Only clear the composer if this send was driven by it. Regen /
     // edit paths pass opts.text directly and shouldn't wipe a draft
     // the user has typed while reading the previous response.
-    if (opts.text === undefined) this.input = "";
+    if (composerPath) {
+      this.input = "";
+      this.pendingAttachments = [];
+    }
     this.sending = true;
     this.error = "";
     this.announce("Sending message");
@@ -643,6 +824,13 @@ export class GcChatView extends LitElement {
           repoId: this.repoId,
           text,
           replaceFromMessageId: opts.replaceFromMessageId ?? "",
+          attachments: attachments.map((a) => ({
+            id: "",
+            mimeType: a.mimeType,
+            filename: a.filename,
+            size: BigInt(a.size),
+            data: a.data,
+          })),
         },
         { signal: ac.signal },
       );
@@ -655,6 +843,9 @@ export class GcChatView extends LitElement {
           // skips the create-session branch.
           const started = chunk.kind.value;
           if (started.userMessageId) userTurn.id = started.userMessageId;
+          if (started.warnings && started.warnings.length > 0) {
+            userTurn.warnings = [...started.warnings];
+          }
           if (started.sessionId && this.state.phase === "ready" && !this.state.selected) {
             const newId = started.sessionId;
             this.state = { ...this.state, selected: newId };
@@ -988,23 +1179,33 @@ export class GcChatView extends LitElement {
           </div>
 
           <form
-            class="composer"
+            class="composer ${this.dragActive ? "drag-active" : ""}"
             role="search"
             aria-label="Chat composer"
             @submit=${(e: Event) => {
               e.preventDefault();
               void this.send();
             }}
+            @dragenter=${this.onDragEnter}
+            @dragover=${this.onDragOver}
+            @dragleave=${this.onDragLeave}
+            @drop=${this.onDrop}
           >
             <div class="composer-inner">
+              ${this.pendingAttachments.length > 0
+                ? html`<div class="attachment-strip" role="list">
+                    ${this.pendingAttachments.map((a, i) => this.renderAttachmentChip(a, i, true))}
+                  </div>`
+                : nothing}
               <textarea
                 .value=${this.input}
                 @input=${this.onInput}
                 @keydown=${this.onKeydown}
+                @paste=${this.onPasteAttach}
                 placeholder="ask about the repo — use @path/to/file to pin content"
                 ?disabled=${this.sending}
                 rows="1"
-                aria-label="Message input — type @ for file autocomplete, Enter to send"
+                aria-label="Message input — type @ for file autocomplete, Enter to send, drop files to attach"
                 aria-describedby="composer-status"
                 aria-autocomplete="list"
                 aria-expanded=${this.showMentions ? "true" : "false"}
@@ -1032,8 +1233,46 @@ export class GcChatView extends LitElement {
                     ? html`<span class="err">⚠ ${this.error}</span>`
                     : this.sending
                       ? html`<span class="dim">streaming…</span>`
-                      : html`<span class="dim">↵ send · shift+↵ newline</span>`}
+                      : html`<span class="dim"
+                          >↵ send · shift+↵ newline · drag or paste to attach</span
+                        >`}
                 </span>
+                <input
+                  type="file"
+                  class="attach-input"
+                  multiple
+                  accept="image/png,image/jpeg,image/gif,image/webp,text/plain"
+                  @change=${(e: Event) => void this.onPickFiles(e)}
+                  aria-hidden="true"
+                  tabindex="-1"
+                />
+                <button
+                  type="button"
+                  class="attach-btn"
+                  aria-label="Attach file"
+                  title="Attach file"
+                  ?disabled=${this.sending ||
+                  this.pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
+                  @click=${() => {
+                    const el = this.renderRoot.querySelector<HTMLInputElement>(".attach-input");
+                    el?.click();
+                  }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path
+                      d="M10.5 6.5 6 11a2.5 2.5 0 0 1-3.54-3.54L7.5 2.5a1.75 1.75 0 0 1 2.47 2.47L5.5 9.44"
+                    />
+                  </svg>
+                </button>
                 ${this.sending
                   ? html`<button
                       type="button"
@@ -1050,7 +1289,7 @@ export class GcChatView extends LitElement {
                       type="submit"
                       aria-label="Send message"
                       class="send"
-                      ?disabled=${!this.input.trim()}
+                      ?disabled=${!this.input.trim() && this.pendingAttachments.length === 0}
                     >
                       <svg
                         width="16"
@@ -1126,6 +1365,36 @@ export class GcChatView extends LitElement {
     });
   }
 
+  private renderAttachmentChip(a: ClientAttachment, index: number, removable: boolean) {
+    const isImage = a.mimeType.startsWith("image/") && a.url;
+    const tooltip = `${a.filename} · ${fmtBytes(a.size)}`;
+    const remove = removable
+      ? html`<button
+          type="button"
+          class="attachment-remove"
+          aria-label="Remove ${a.filename}"
+          title="Remove"
+          @click=${() => this.removeAttachment(index)}
+        >
+          ×
+        </button>`
+      : nothing;
+    if (isImage) {
+      return html`<div class="attachment-chip is-image" role="listitem" title=${tooltip}>
+        <img src=${a.url!} alt=${a.filename} class="attachment-thumb" />
+        ${remove}
+      </div>`;
+    }
+    return html`<div class="attachment-chip is-file" role="listitem" title=${tooltip}>
+      <span class="attachment-glyph" aria-hidden="true">📄</span>
+      <span class="attachment-meta">
+        <span class="attachment-name">${a.filename}</span>
+        <span class="attachment-size">${fmtBytes(a.size)}</span>
+      </span>
+      ${remove}
+    </div>`;
+  }
+
   private renderTurn(t: Turn) {
     const roleClass =
       t.role === MessageRole.USER
@@ -1174,7 +1443,17 @@ export class GcChatView extends LitElement {
               copy
             </button>
           </div>
+          ${t.attachments && t.attachments.length > 0
+            ? html`<div class="turn-attachments" role="list">
+                ${t.attachments.map((a, i) => this.renderAttachmentChip(a, i, false))}
+              </div>`
+            : nothing}
           ${isEditing ? this.renderEditTurn(t) : body}
+          ${t.warnings && t.warnings.length > 0
+            ? html`<div class="turn-warnings" role="status">
+                ${t.warnings.map((w) => html`<div class="turn-warning">⚠ ${w}</div>`)}
+              </div>`
+            : nothing}
         </article>
       `;
     }
@@ -2226,11 +2505,147 @@ export class GcChatView extends LitElement {
     .mention-item.active {
       background: var(--surface-3);
     }
+    .composer.drag-active .composer-inner {
+      border-color: var(--border-accent);
+      background: color-mix(in srgb, var(--accent-user) 8%, var(--surface-2));
+    }
+    .attach-input {
+      display: none;
+    }
+    .attach-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      background: transparent;
+      color: var(--text);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      opacity: 0.4;
+      flex-shrink: 0;
+      margin-left: auto;
+      transition:
+        opacity 0.12s ease,
+        background 0.12s ease;
+    }
+    .attach-btn:hover:not([disabled]) {
+      opacity: 0.85;
+      background: var(--surface-3);
+    }
+    .attach-btn[disabled] {
+      opacity: 0.15;
+      cursor: not-allowed;
+    }
+    .attachment-strip,
+    .turn-attachments {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    .turn-attachments {
+      margin-top: var(--space-2);
+    }
+    .turn-warnings {
+      margin-top: var(--space-2);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .turn-warning {
+      font-size: 0.7rem;
+      opacity: 0.65;
+      color: var(--warning, var(--text));
+    }
+    .attachment-chip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      background: var(--surface-3);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      font-size: var(--text-xs);
+    }
+    .attachment-chip.is-image {
+      padding: 0;
+      overflow: hidden;
+      width: 56px;
+      height: 56px;
+    }
+    .attachment-chip.is-file {
+      gap: 0.4rem;
+      padding: 5px 6px 5px 8px;
+      max-width: 240px;
+    }
+    .attachment-thumb {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .attachment-glyph {
+      font-size: 14px;
+      opacity: 0.65;
+    }
+    .attachment-meta {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      line-height: 1.2;
+    }
+    .attachment-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    .attachment-size {
+      opacity: 0.55;
+      font-size: 0.65rem;
+    }
+    .attachment-remove {
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      padding: 0;
+      width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .attachment-chip.is-image .attachment-remove {
+      position: absolute;
+      top: 3px;
+      right: 3px;
+      opacity: 0;
+      transition: opacity 0.12s ease;
+    }
+    .attachment-chip.is-image:hover .attachment-remove,
+    .attachment-chip.is-image:focus-within .attachment-remove {
+      opacity: 1;
+    }
+    .attachment-chip.is-file .attachment-remove {
+      margin-left: 0.2rem;
+      background: transparent;
+      color: var(--text);
+      opacity: 0.45;
+      width: 16px;
+      height: 16px;
+    }
+    .attachment-chip.is-file .attachment-remove:hover {
+      opacity: 1;
+    }
     .composer-row {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      gap: var(--space-3);
+      gap: var(--space-2);
     }
     .composer-hint {
       font-size: 0.68rem;
@@ -2436,6 +2851,10 @@ function turnFromMessage(m: ChatMessage): Turn {
     model: m.model || undefined,
     tokensIn: Number(m.tokenCountIn) || undefined,
     tokensOut: Number(m.tokenCountOut) || undefined,
+    attachments:
+      m.attachments && m.attachments.length > 0
+        ? m.attachments.map(attachmentFromProto)
+        : undefined,
   };
 }
 

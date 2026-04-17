@@ -43,6 +43,18 @@ type MessageRow struct {
 	CreatedAt     int64
 }
 
+// AttachmentRow is the DB-facing shape of a binary attachment on a
+// user turn.
+type AttachmentRow struct {
+	ID        string
+	MessageID string
+	MimeType  string
+	Filename  string
+	Size      int64
+	Data      []byte
+	CreatedAt int64
+}
+
 // CreateSession inserts a new chat session and returns it.
 func (d *DB) CreateSession(ctx context.Context, id, principal, repoID, title string) (*SessionRow, error) {
 	now := time.Now().Unix()
@@ -256,6 +268,71 @@ func (d *DB) DeleteMessagesFrom(ctx context.Context, sessionID, messageID string
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// CreateAttachment inserts a new attachment row bound to an existing
+// chat_message. Caller is responsible for assigning ID and MessageID.
+func (d *DB) CreateAttachment(ctx context.Context, a AttachmentRow) error {
+	if a.CreatedAt == 0 {
+		a.CreatedAt = time.Now().Unix()
+	}
+	_, err := d.ExecContext(ctx, `
+        INSERT INTO chat_attachment
+            (id, message_id, mime_type, filename, size, data, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		a.ID, a.MessageID, a.MimeType, a.Filename, a.Size, a.Data, a.CreatedAt)
+	return err
+}
+
+// ListAttachments returns every attachment for the given message in
+// insertion order. Used by GetSession to hydrate user turns for the UI
+// and by the send path to pass bytes to the LLM adapter.
+func (d *DB) ListAttachments(ctx context.Context, messageID string) ([]*AttachmentRow, error) {
+	rows, err := d.QueryContext(ctx, `
+        SELECT id, message_id, mime_type, filename, size, data, created_at
+        FROM chat_attachment
+        WHERE message_id = ?
+        ORDER BY created_at ASC, rowid ASC`,
+		messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*AttachmentRow
+	for rows.Next() {
+		a := &AttachmentRow{}
+		if err := rows.Scan(&a.ID, &a.MessageID, &a.MimeType, &a.Filename, &a.Size, &a.Data, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// ListAttachmentsForSession returns every attachment in a session keyed
+// by message ID. Lets GetSession avoid an N+1 query when hydrating
+// transcripts.
+func (d *DB) ListAttachmentsForSession(ctx context.Context, sessionID string) (map[string][]*AttachmentRow, error) {
+	rows, err := d.QueryContext(ctx, `
+        SELECT a.id, a.message_id, a.mime_type, a.filename, a.size, a.data, a.created_at
+        FROM chat_attachment a
+        JOIN chat_message m ON m.id = a.message_id
+        WHERE m.session_id = ?
+        ORDER BY a.created_at ASC, a.rowid ASC`,
+		sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]*AttachmentRow{}
+	for rows.Next() {
+		a := &AttachmentRow{}
+		if err := rows.Scan(&a.ID, &a.MessageID, &a.MimeType, &a.Filename, &a.Size, &a.Data, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out[a.MessageID] = append(out[a.MessageID], a)
+	}
+	return out, rows.Err()
 }
 
 func nullString(s string) any {

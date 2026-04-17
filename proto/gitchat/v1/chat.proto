@@ -104,6 +104,21 @@ message ChatMessage {
   int32 token_count_in = 6;
   int32 token_count_out = 7;
   int64 created_at = 8;
+  // Files the user attached when sending this turn. Only populated on
+  // user turns. `data` is included on transcript fetches so the UI can
+  // render thumbnails inline without a second round-trip; day-one
+  // upload caps keep the payload small.
+  repeated Attachment attachments = 9;
+}
+
+// Attachment carries a user-uploaded file — an image for multimodal
+// prompting or a plain-text blob to be folded into the message body.
+message Attachment {
+  string id = 1;           // server-assigned, empty on upload
+  string mime_type = 2;    // e.g. "image/png", "text/plain"
+  string filename = 3;     // original client filename
+  int64 size = 4;          // byte length of `data`
+  bytes data = 5;
 }
 
 // ─── ListSessions ───────────────────────────────────────────────────────
@@ -142,6 +157,10 @@ message SendMessageRequest {
   //     preceding user text. The old user+assistant pair is dropped
   //     and a fresh turn runs against identical input.
   string replace_from_message_id = 4;
+  // Files uploaded alongside the message. Images go into multimodal
+  // prompt blocks; plain-text attachments are folded into the message
+  // body. See Attachment for per-item details and server-side limits.
+  repeated Attachment attachments = 5;
 }
 
 // MessageChunk is the server-streamed response shape. Exactly one chunk
@@ -165,6 +184,12 @@ message MessageChunk {
 message Started {
   string user_message_id = 1;
   string session_id = 2;  // non-empty on first turn of a new session
+  // Soft degradations the server applied to the request before
+  // calling the LLM. Each entry is a plain-text line the UI should
+  // surface alongside the turn — for example "images stripped because
+  // model X does not support vision". The stream still runs to
+  // completion; warnings never fail the request.
+  repeated string warnings = 3;
 }
 
 // KnowledgeCardHit carries a cached answer from the knowledge base.

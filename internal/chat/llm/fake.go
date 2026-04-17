@@ -9,12 +9,15 @@ import (
 // separated word of Reply as its own token chunk, then a terminal Done.
 // Deterministic, network-free, fast.
 type Fake struct {
-	Reply         string
-	InTokens      int
-	OutTokens     int
-	StartError    error  // if set, Stream returns this immediately
-	StreamError   string // if set, emitted on the Done chunk's Error field
-	LastRequest   Request
+	Reply       string
+	InTokens    int
+	OutTokens   int
+	StartError  error  // if set, Stream returns this immediately
+	StreamError string // if set, emitted on the Done chunk's Error field
+	LastRequest Request
+	// SupportsImages toggles the Capabilities response for tests
+	// exercising the vision-degradation path.
+	SupportsImages bool
 }
 
 // NewFake returns a Fake that streams the given reply word-by-word.
@@ -51,4 +54,11 @@ func (f *Fake) Stream(ctx context.Context, req Request) (<-chan Chunk, error) {
 		}
 	}()
 	return out, nil
+}
+
+// Capabilities returns the flag the test case configured. Defaults to
+// no image support so callers that don't set SupportsImages exercise
+// the degradation path by default.
+func (f *Fake) Capabilities(_ context.Context, _ string) Capabilities {
+	return Capabilities{Images: f.SupportsImages}
 }

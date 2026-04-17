@@ -22,10 +22,21 @@ const (
 	RoleAssistant Role = "assistant"
 )
 
+// Attachment is a user-uploaded file bundled with a message. Images
+// feed into multimodal prompt blocks; adapters that don't support
+// images should fall back to a text placeholder so the conversation
+// remains intelligible.
+type Attachment struct {
+	MimeType string
+	Filename string
+	Data     []byte
+}
+
 // Message is one turn in the prompt.
 type Message struct {
-	Role    Role
-	Content string
+	Role        Role
+	Content     string
+	Attachments []Attachment
 }
 
 // Request is what the caller hands to an adapter. Model is the
@@ -59,6 +70,18 @@ type Chunk struct {
 	Error         string // non-empty → stream ended with an error
 }
 
+// Capabilities describes what an adapter/model combination supports.
+// Used by the service layer to decide whether to strip incompatible
+// attachments before calling Stream (with a soft warning to the UI)
+// instead of handing a request to the model that the model will
+// silently ignore or reject.
+type Capabilities struct {
+	// Images is true when the model accepts image parts in multimodal
+	// prompts. False for text-only models and when capability
+	// discovery could not determine support.
+	Images bool
+}
+
 // LLM is the adapter-facing interface. Implementations are stateless
 // and safe for concurrent use — callers construct one per process and
 // share it across goroutines.
@@ -68,4 +91,11 @@ type LLM interface {
 	// request could not be started at all; errors after the channel is
 	// returned flow through Chunk.Error on the terminal chunk.
 	Stream(ctx context.Context, req Request) (<-chan Chunk, error)
+
+	// Capabilities reports what this adapter/model combination
+	// supports. Implementations should cache probe results internally
+	// since callers may invoke this on every request. Never blocks
+	// indefinitely — adapters must apply their own timeout when
+	// talking to external discovery endpoints.
+	Capabilities(ctx context.Context, model string) Capabilities
 }

@@ -54,7 +54,22 @@ var (
 	maxTitleLen            = envIntSvc("GITCHAT_TITLE_MAX_LEN", 48)
 	titleTimeout           = envDurSvc("GITCHAT_TITLE_TIMEOUT", 15*time.Second)
 	cardTimeout            = envDurSvc("GITCHAT_CARD_TIMEOUT", 10*time.Second)
+	maxAttachmentsPerMsg   = envIntSvc("GITCHAT_MAX_ATTACHMENTS_PER_MESSAGE", 8)
+	maxAttachmentBytes     = envIntSvc("GITCHAT_MAX_ATTACHMENT_BYTES", 10*1024*1024)
+	maxAttachmentTotal     = envIntSvc("GITCHAT_MAX_ATTACHMENTS_TOTAL_BYTES", 20*1024*1024)
 )
+
+// allowedAttachmentMIMEs restricts uploads to image types Anthropic's
+// multimodal API accepts plus plain-text blobs we fold into the prompt
+// body. Other types are rejected with InvalidArgument rather than
+// silently dropped so the UI can surface a clear error.
+var allowedAttachmentMIMEs = map[string]bool{
+	"image/png":  true,
+	"image/jpeg": true,
+	"image/gif":  true,
+	"image/webp": true,
+	"text/plain": true,
+}
 
 // ─── ListSessions ───────────────────────────────────────────────────────
 func (s *Service) ListSessions(
@@ -90,9 +105,13 @@ func (s *Service) GetSession(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	attachments, err := s.DB.ListAttachmentsForSession(ctx, sess.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
 	protoMsgs := make([]*gitchatv1.ChatMessage, 0, len(msgs))
 	for _, m := range msgs {
-		protoMsgs = append(protoMsgs, toMessage(m))
+		protoMsgs = append(protoMsgs, toMessage(m, attachments[m.ID]))
 	}
 	return connect.NewResponse(&gitchatv1.GetSessionResponse{
 		Session:  toSession(sess),
@@ -235,13 +254,16 @@ func (s *Service) SendMessage(
 ) error {
 	principal, _, _ := auth.PrincipalFromContext(ctx)
 	text := strings.TrimSpace(req.Msg.Text)
-	if text == "" {
+	if text == "" && len(req.Msg.Attachments) == 0 {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("empty message"))
 	}
 	// Cap message length — unbounded input goes to the LLM and SQLite.
 	if len(text) > maxMessageBytes {
 		return connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("message too long (%d bytes, max %d)", len(text), maxMessageBytes))
+	}
+	if err := validateAttachments(req.Msg.Attachments); err != nil {
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
 	// ── Resolve or create the session.
@@ -297,6 +319,30 @@ func (s *Service) SendMessage(
 	}); err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
+	for _, a := range req.Msg.Attachments {
+		if err := s.DB.CreateAttachment(ctx, storage.AttachmentRow{
+			ID:        newID(),
+			MessageID: userMsgID,
+			MimeType:  a.MimeType,
+			Filename:  a.Filename,
+			Size:      int64(len(a.Data)),
+			Data:      a.Data,
+		}); err != nil {
+			return connect.NewError(connect.CodeInternal, err)
+		}
+	}
+
+	// Resolve the adapter's capability profile for the active model so
+	// we can strip attachments the model cannot consume before they
+	// reach the LLM. Persisted attachments are untouched — only the
+	// prompt payload is filtered, so the transcript still reflects
+	// what the user actually uploaded.
+	caps := s.LLM.Capabilities(ctx, s.Model)
+	var warnings []string
+	if !caps.Images && hasImageAttachment(req.Msg.Attachments) {
+		warnings = append(warnings,
+			fmt.Sprintf("images stripped — model %q does not report vision support", s.Model))
+	}
 
 	// Tell the client the user turn's canonical ID (and the session's,
 	// if we just created one) before we start the LLM stream. Retries
@@ -313,6 +359,7 @@ func (s *Service) SendMessage(
 			Started: &gitchatv1.Started{
 				UserMessageId: userMsgID,
 				SessionId:     startedSessionID,
+				Warnings:      warnings,
 			},
 		},
 	}); err != nil {
@@ -405,7 +452,16 @@ func (s *Service) SendMessage(
 	// top-level RPC error. The connect-web client turns top-level errors
 	// into opaque "unexpected end of JSON input" messages, while inline
 	// errors render cleanly next to the assistant turn.
-	msgs := s.buildPrompt(ctx, repoEntry, history, text)
+	historyAttachments, err := s.DB.ListAttachmentsForSession(ctx, sess.ID)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	currentAttachments := protoToLLMAttachments(req.Msg.Attachments)
+	if !caps.Images {
+		currentAttachments = stripImageAttachments(currentAttachments)
+		historyAttachments = stripImageHistory(historyAttachments)
+	}
+	msgs := s.buildPrompt(ctx, repoEntry, history, text, currentAttachments, historyAttachments)
 	var assistant strings.Builder
 	var finalIn, finalOut int
 	var llmErr string
@@ -843,8 +899,8 @@ func toSession(r *storage.SessionRow) *gitchatv1.ChatSession {
 	}
 }
 
-func toMessage(r *storage.MessageRow) *gitchatv1.ChatMessage {
-	return &gitchatv1.ChatMessage{
+func toMessage(r *storage.MessageRow, atts []*storage.AttachmentRow) *gitchatv1.ChatMessage {
+	out := &gitchatv1.ChatMessage{
 		Id:            r.ID,
 		SessionId:     r.SessionID,
 		Role:          protoRole(r.Role),
@@ -854,6 +910,128 @@ func toMessage(r *storage.MessageRow) *gitchatv1.ChatMessage {
 		TokenCountOut: int32(r.TokenCountOut),
 		CreatedAt:     r.CreatedAt,
 	}
+	if len(atts) > 0 {
+		out.Attachments = make([]*gitchatv1.Attachment, 0, len(atts))
+		for _, a := range atts {
+			out.Attachments = append(out.Attachments, &gitchatv1.Attachment{
+				Id:       a.ID,
+				MimeType: a.MimeType,
+				Filename: a.Filename,
+				Size:     a.Size,
+				Data:     a.Data,
+			})
+		}
+	}
+	return out
+}
+
+// validateAttachments enforces per-message caps on attachment count,
+// per-file size, total bytes, and MIME allowlist. Any failure returns
+// a human-readable error suitable for surfacing to the client.
+func validateAttachments(atts []*gitchatv1.Attachment) error {
+	if len(atts) == 0 {
+		return nil
+	}
+	if len(atts) > maxAttachmentsPerMsg {
+		return fmt.Errorf("too many attachments (%d, max %d)", len(atts), maxAttachmentsPerMsg)
+	}
+	var total int
+	for _, a := range atts {
+		if !allowedAttachmentMIMEs[a.MimeType] {
+			return fmt.Errorf("unsupported attachment type %q", a.MimeType)
+		}
+		if len(a.Data) == 0 {
+			return fmt.Errorf("empty attachment %q", a.Filename)
+		}
+		if len(a.Data) > maxAttachmentBytes {
+			return fmt.Errorf("attachment %q too large (%d bytes, max %d)",
+				a.Filename, len(a.Data), maxAttachmentBytes)
+		}
+		total += len(a.Data)
+	}
+	if total > maxAttachmentTotal {
+		return fmt.Errorf("attachments exceed total size cap (%d bytes, max %d)",
+			total, maxAttachmentTotal)
+	}
+	return nil
+}
+
+// protoToLLMAttachments adapts proto attachments to the adapter-facing
+// shape. Called once per send for the current turn.
+func protoToLLMAttachments(atts []*gitchatv1.Attachment) []llm.Attachment {
+	if len(atts) == 0 {
+		return nil
+	}
+	out := make([]llm.Attachment, 0, len(atts))
+	for _, a := range atts {
+		out = append(out, llm.Attachment{
+			MimeType: a.MimeType,
+			Filename: a.Filename,
+			Data:     a.Data,
+		})
+	}
+	return out
+}
+
+// hasImageAttachment reports whether the incoming request includes at
+// least one image MIME. Used to decide whether to emit a vision-
+// degradation warning.
+func hasImageAttachment(atts []*gitchatv1.Attachment) bool {
+	for _, a := range atts {
+		if strings.HasPrefix(a.MimeType, "image/") {
+			return true
+		}
+	}
+	return false
+}
+
+// stripImageAttachments drops image entries from an adapter-facing
+// attachment slice. Text attachments pass through unchanged so the
+// model still sees their contents via the adapter's text fold.
+func stripImageAttachments(atts []llm.Attachment) []llm.Attachment {
+	out := atts[:0]
+	for _, a := range atts {
+		if strings.HasPrefix(a.MimeType, "image/") {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// stripImageHistory applies the same filter to the per-message history
+// map used by buildPrompt. Mutating the values in place is safe — the
+// map is scoped to a single SendMessage invocation.
+func stripImageHistory(m map[string][]*storage.AttachmentRow) map[string][]*storage.AttachmentRow {
+	for k, rows := range m {
+		kept := rows[:0]
+		for _, r := range rows {
+			if strings.HasPrefix(r.MimeType, "image/") {
+				continue
+			}
+			kept = append(kept, r)
+		}
+		m[k] = kept
+	}
+	return m
+}
+
+// storageToLLMAttachments adapts storage rows to the adapter-facing
+// shape. Called while building the prompt to hydrate historical user
+// turns with their images.
+func storageToLLMAttachments(atts []*storage.AttachmentRow) []llm.Attachment {
+	if len(atts) == 0 {
+		return nil
+	}
+	out := make([]llm.Attachment, 0, len(atts))
+	for _, a := range atts {
+		out = append(out, llm.Attachment{
+			MimeType: a.MimeType,
+			Filename: a.Filename,
+			Data:     a.Data,
+		})
+	}
+	return out
 }
 
 func protoRole(s string) gitchatv1.MessageRole {
