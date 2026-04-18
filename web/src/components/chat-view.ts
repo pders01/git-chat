@@ -151,8 +151,7 @@ export class GcChatView extends LitElement {
       const activeId = profs.activeProfileId ?? "";
       const active = profs.profiles?.find((p) => p.id === activeId);
       this.activeProfileName = active?.name ?? "";
-      this.activeModel =
-        active?.model || modelEntry?.value || modelEntry?.defaultValue || "";
+      this.activeModel = active?.model || modelEntry?.value || modelEntry?.defaultValue || "";
     } catch {
       // Unreachable backend → leave indicator blank rather than error.
     }
@@ -571,9 +570,7 @@ export class GcChatView extends LitElement {
   // fires this event; we handle the RPC and surface success/failure
   // through the toast system. Keeping the RPC out of the composer
   // means new actions can be added by editing chat-view alone.
-  private onComposerSlashAction = async (
-    e: CustomEvent<{ command: string; args: string[] }>,
-  ) => {
+  private onComposerSlashAction = async (e: CustomEvent<{ command: string; args: string[] }>) => {
     const { command, args } = e.detail;
     try {
       if (command === "model") {
@@ -741,16 +738,13 @@ export class GcChatView extends LitElement {
                 @gc:edit-turn=${this.onMessageEdit}
                 @gc:update-turns=${this.onUpdateTurns}
               ></gc-message-list>`}
-
           ${this.activeModel
             ? html`<div class="model-indicator" role="status" aria-live="polite">
                 <span class="model-indicator-label">model</span>
                 <span class="model-indicator-value">${this.activeModel}</span>
                 ${this.activeProfileName
                   ? html`<span class="model-indicator-sep">·</span>
-                      <span class="model-indicator-profile"
-                        >${this.activeProfileName}</span
-                      >`
+                      <span class="model-indicator-profile">${this.activeProfileName}</span>`
                   : nothing}
               </div>`
             : nothing}

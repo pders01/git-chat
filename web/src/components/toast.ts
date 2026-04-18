@@ -118,7 +118,9 @@ export class GcToast extends LitElement {
       font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
       font-size: var(--text-sm);
       line-height: 1.4;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.25);
+      box-shadow:
+        0 10px 30px rgba(0, 0, 0, 0.45),
+        0 2px 4px rgba(0, 0, 0, 0.25);
       animation: slide-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
     .icon {
@@ -153,7 +155,9 @@ export class GcToast extends LitElement {
       line-height: 1;
       cursor: pointer;
       flex-shrink: 0;
-      transition: opacity 0.12s ease, background 0.12s ease;
+      transition:
+        opacity 0.12s ease,
+        background 0.12s ease;
     }
     .close:hover {
       opacity: 1;

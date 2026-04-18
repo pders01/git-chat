@@ -475,8 +475,7 @@ export class GcComposer extends LitElement {
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        this.slashIdx =
-          this.slashIdx <= 0 ? this.slashResults.length - 1 : this.slashIdx - 1;
+        this.slashIdx = this.slashIdx <= 0 ? this.slashResults.length - 1 : this.slashIdx - 1;
         this.scrollActiveIntoView(".slash-list");
         return;
       }
@@ -683,9 +682,7 @@ export class GcComposer extends LitElement {
             aria-label="Message input — type @ for file autocomplete or / for slash commands, Enter to send, drop files to attach"
             aria-describedby="composer-status"
             aria-autocomplete="list"
-            aria-expanded=${this.showMentions || this.showSlash || this.showArgs
-              ? "true"
-              : "false"}
+            aria-expanded=${this.showMentions || this.showSlash || this.showArgs ? "true" : "false"}
           ></textarea>
           ${this.showMentions
             ? html`<ul class="mention-list" role="listbox">

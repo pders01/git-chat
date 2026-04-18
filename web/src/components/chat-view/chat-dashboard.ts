@@ -59,9 +59,7 @@ export class GcChatDashboard extends LitElement {
       this.summaryLoading = true;
       const resp = await chatClient.summarizeActivity({ repoId: this.repoId });
       this.activitySummary = resp.summary || "";
-      this.activityHtml = this.activitySummary
-        ? await renderMarkdown(this.activitySummary)
-        : "";
+      this.activityHtml = this.activitySummary ? await renderMarkdown(this.activitySummary) : "";
       this.cachedSummaryKey = cacheKey;
     } catch {
       this.activitySummary = "";

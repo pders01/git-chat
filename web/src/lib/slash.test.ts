@@ -19,9 +19,7 @@ describe("transformSlashCommands", () => {
   });
 
   test("three-dot range also becomes from/to", () => {
-    expect(transformSlashCommands("/diff main...feature")).toBe(
-      "[[diff from=main to=feature]]",
-    );
+    expect(transformSlashCommands("/diff main...feature")).toBe("[[diff from=main to=feature]]");
   });
 
   test("single ref defaults to HEAD", () => {
@@ -39,8 +37,7 @@ describe("transformSlashCommands", () => {
 
   test("surrounding lines are preserved verbatim", () => {
     const input = "compare:\n/diff HEAD~3..HEAD web/src/foo.ts\nwhat broke?";
-    const expected =
-      "compare:\n[[diff from=HEAD~3 to=HEAD path=web/src/foo.ts]]\nwhat broke?";
+    const expected = "compare:\n[[diff from=HEAD~3 to=HEAD path=web/src/foo.ts]]\nwhat broke?";
     expect(transformSlashCommands(input)).toBe(expected);
   });
 
@@ -60,9 +57,7 @@ describe("transformSlashCommands", () => {
 
   test("path-looking single arg becomes path-only marker", () => {
     expect(transformSlashCommands("/diff README.md")).toBe("[[diff path=README.md]]");
-    expect(transformSlashCommands("/diff web/src/foo.ts")).toBe(
-      "[[diff path=web/src/foo.ts]]",
-    );
+    expect(transformSlashCommands("/diff web/src/foo.ts")).toBe("[[diff path=web/src/foo.ts]]");
   });
 
   test("ref-looking single arg becomes from=<ref> to=HEAD", () => {
@@ -80,15 +75,12 @@ describe("transformSlashCommands", () => {
     // The regex anchors with \s*$ after optional path, so "foo bar baz"
     // beyond the path doesn't match. Falls through as literal — user
     // clearly meant prose, not a marker.
-    expect(transformSlashCommands("/diff HEAD~1..HEAD foo bar")).toBe(
-      "/diff HEAD~1..HEAD foo bar",
-    );
+    expect(transformSlashCommands("/diff HEAD~1..HEAD foo bar")).toBe("/diff HEAD~1..HEAD foo bar");
   });
 
   test("multiple /diff lines all transform", () => {
     const input = "/diff HEAD~1..HEAD\n/diff HEAD~2..HEAD web/foo.ts";
-    const expected =
-      "[[diff from=HEAD~1 to=HEAD]]\n[[diff from=HEAD~2 to=HEAD path=web/foo.ts]]";
+    const expected = "[[diff from=HEAD~1 to=HEAD]]\n[[diff from=HEAD~2 to=HEAD path=web/foo.ts]]";
     expect(transformSlashCommands(input)).toBe(expected);
   });
 });

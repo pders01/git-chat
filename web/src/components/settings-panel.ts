@@ -576,10 +576,8 @@ export class GcSettingsPanel extends LitElement {
 
     // Model resolution: profile.model > LLM_MODEL override > LLM_MODEL compiled default.
     // Backend resolution: profile.backend > LLM_BACKEND override > LLM_BACKEND compiled default.
-    const model =
-      activeProfile?.model || modelOverride || modelDefault || "(backend default)";
-    const backend =
-      activeProfile?.backend || backendOverride || backendDefault || "(unset)";
+    const model = activeProfile?.model || modelOverride || modelDefault || "(backend default)";
+    const backend = activeProfile?.backend || backendOverride || backendDefault || "(unset)";
 
     let source: string;
     if (activeProfile) {
@@ -675,8 +673,7 @@ export class GcSettingsPanel extends LitElement {
                     >
                       ${p.name}
                       <span class="profile-meta"
-                        >${p.backend} ·
-                        ${p.model || "uses LLM_MODEL / backend default"}</span
+                        >${p.backend} · ${p.model || "uses LLM_MODEL / backend default"}</span
                       >
                     </button>
                     <div class="profile-actions">

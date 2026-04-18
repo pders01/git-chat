@@ -5,9 +5,7 @@ import { splitDiffHtml, highlightWordDiffs } from "./diff-pane.js";
 // The real component feeds whatever highlight() returns, so shape is what
 // matters — not the tokenization inside each line.
 function shikiHtml(lines: string[]): string {
-  const body = lines
-    .map((l) => `<span class="line">${l}</span>`)
-    .join("\n");
+  const body = lines.map((l) => `<span class="line">${l}</span>`).join("\n");
   return `<pre><code>${body}</code></pre>`;
 }
 
