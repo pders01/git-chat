@@ -28,16 +28,21 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
 
 /** Transform `/diff`-style slash commands to `[[diff ...]]` markers.
  *
- *   - Matches only at the start of a line (after optional whitespace).
- *   - Preserves all other lines and any trailing text on non-matching lines.
- *   - `<from>..<to>` or `<from>...<to>` becomes `from=<from> to=<to>`.
- *   - A bare ref is treated as "since that ref": `from=<ref> to=HEAD`.
- *   - Optional trailing token is the path.
+ * Matches only at the start of a line (after optional whitespace).
+ * Preserves everything else. Accepted forms:
  *
- * Example:
- *   "compare:\n/diff HEAD~3..HEAD web/src/foo.ts\nwhat broke?"
- *   →
- *   "compare:\n[[diff from=HEAD~3 to=HEAD path=web/src/foo.ts]]\nwhat broke?"
+ *   /diff                          → [[diff]]                 (latest commit)
+ *   /diff A..B                     → [[diff from=A to=B]]
+ *   /diff A..B path                → [[diff from=A to=B path=path]]
+ *   /diff A...B  (three-dot)       → same as two-dot
+ *   /diff <ref>                    → [[diff from=<ref> to=HEAD]]
+ *   /diff <ref> path               → [[diff from=<ref> to=HEAD path=path]]
+ *   /diff <path-looking>           → [[diff path=<path>]]     (latest change to file)
+ *
+ * Path heuristic for the single-arg case: if it contains a `/` or a
+ * file extension (`.ts`, `.go`, etc.) it's a path; otherwise it's a
+ * ref. Matches how humans write — `/diff README.md` reads as "show
+ * this file", `/diff HEAD~3` reads as "show since this ref".
  */
 export function transformSlashCommands(raw: string): string {
   return raw
@@ -47,13 +52,38 @@ export function transformSlashCommands(raw: string): string {
 }
 
 function transformLine(line: string): string {
-  const m = line.match(/^\s*\/diff\s+(\S+)(?:\s+(\S+))?\s*$/);
+  // Anchored: `/diff` at line start, optional args, nothing extra.
+  // Args can be empty (just `/diff`), one token, or two tokens.
+  const m = line.match(/^\s*\/diff(?:\s+(\S+)(?:\s+(\S+))?)?\s*$/);
   if (!m) return line;
-  const revspec = m[1];
-  const path = m[2] ?? "";
-  const range = revspec.match(/^(.+?)(?:\.\.\.|\.\.)(.+)$/);
+  const first = m[1];
+  const second = m[2];
+
+  // Zero-arg: latest commit.
+  if (!first) return "[[diff]]";
+
+  // Range form (two- or three-dot).
+  const range = first.match(/^(.+?)(?:\.\.\.|\.\.)(.+)$/);
   if (range) {
+    const path = second ?? "";
     return `[[diff from=${range[1]} to=${range[2]}${path ? ` path=${path}` : ""}]]`;
   }
-  return `[[diff from=${revspec} to=HEAD${path ? ` path=${path}` : ""}]]`;
+
+  // Two-arg (ref + path): from=ref to=HEAD with the path.
+  if (second) {
+    return `[[diff from=${first} to=HEAD path=${second}]]`;
+  }
+
+  // Single arg, no range: disambiguate ref vs path.
+  if (looksLikePath(first)) {
+    return `[[diff path=${first}]]`;
+  }
+  return `[[diff from=${first} to=HEAD]]`;
+}
+
+function looksLikePath(s: string): boolean {
+  if (s.includes("/")) return true;
+  // File-extension heuristic: trailing .<word> where <word> is short
+  // and alphanumeric. Tight enough to skip "HEAD~3", "v1.2.0".
+  return /\.[a-z][a-z0-9]{0,5}$/i.test(s);
 }

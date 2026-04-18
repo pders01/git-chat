@@ -48,8 +48,26 @@ describe("transformSlashCommands", () => {
     );
   });
 
-  test("/diff without args stays literal", () => {
-    expect(transformSlashCommands("/diff")).toBe("/diff");
+  test("/diff with no args becomes bare [[diff]] (latest commit)", () => {
+    expect(transformSlashCommands("/diff")).toBe("[[diff]]");
+  });
+
+  test("path-looking single arg becomes path-only marker", () => {
+    expect(transformSlashCommands("/diff README.md")).toBe("[[diff path=README.md]]");
+    expect(transformSlashCommands("/diff web/src/foo.ts")).toBe(
+      "[[diff path=web/src/foo.ts]]",
+    );
+  });
+
+  test("ref-looking single arg becomes from=<ref> to=HEAD", () => {
+    expect(transformSlashCommands("/diff HEAD~3")).toBe("[[diff from=HEAD~3 to=HEAD]]");
+    expect(transformSlashCommands("/diff main")).toBe("[[diff from=main to=HEAD]]");
+  });
+
+  test("tagged versions are treated as refs, not paths", () => {
+    // "v1.2.0" has dots but matches neither looksLikePath heuristic:
+    // no slash, no alpha extension at the end. Falls through as a ref.
+    expect(transformSlashCommands("/diff v1.2.0")).toBe("[[diff from=v1.2.0 to=HEAD]]");
   });
 
   test("three args: revspec is first, path is second, rest would be extra", () => {
