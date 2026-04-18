@@ -476,8 +476,66 @@ export class GcSettingsPanel extends LitElement {
     }
   }
 
+  /** Resolve what LLM is actually in effect, tracing through: active
+   * profile (with its model/backend) → config override on LLM_MODEL/
+   * LLM_BACKEND → compiled defaults. A profile with an empty `model`
+   * field intentionally falls back to the config override, so we note
+   * that explicitly rather than just showing "(default)". */
+  private effectiveLLMStatus() {
+    const activeProfile = this.profiles.find((p) => p.id === this.activeProfileId);
+    const modelEntry = this.configEntries.find((e) => e.key === "LLM_MODEL");
+    const backendEntry = this.configEntries.find((e) => e.key === "LLM_BACKEND");
+    const modelOverride = modelEntry?.value || "";
+    const modelDefault = modelEntry?.defaultValue || "";
+    const backendOverride = backendEntry?.value || "";
+    const backendDefault = backendEntry?.defaultValue || "";
+
+    // Model resolution: profile.model > LLM_MODEL override > LLM_MODEL compiled default.
+    // Backend resolution: profile.backend > LLM_BACKEND override > LLM_BACKEND compiled default.
+    const model =
+      activeProfile?.model || modelOverride || modelDefault || "(backend default)";
+    const backend =
+      activeProfile?.backend || backendOverride || backendDefault || "(unset)";
+
+    let source: string;
+    if (activeProfile) {
+      source = activeProfile.model
+        ? `profile "${activeProfile.name}"`
+        : `profile "${activeProfile.name}" (no model saved; falls back to config)`;
+    } else if (modelOverride && modelOverride !== modelDefault) {
+      source = "LLM_MODEL override (no profile active)";
+    } else if (modelOverride) {
+      source = "LLM_MODEL (matches compiled default)";
+    } else {
+      source = "compiled default";
+    }
+
+    return { model, backend, source, modelDefault };
+  }
+
   private renderLLMSection() {
+    const status = this.effectiveLLMStatus();
     return html`
+      <div class="llm-status">
+        <div class="llm-status-row">
+          <span class="llm-status-label">Active model</span>
+          <span class="llm-status-value">${status.model}</span>
+        </div>
+        <div class="llm-status-row">
+          <span class="llm-status-label">Backend</span>
+          <span class="llm-status-value">${status.backend}</span>
+        </div>
+        <div class="llm-status-row">
+          <span class="llm-status-label">Source</span>
+          <span class="llm-status-value llm-status-source">${status.source}</span>
+        </div>
+        ${status.modelDefault && status.modelDefault !== status.model
+          ? html`<div class="llm-status-row llm-status-subtle">
+              <span class="llm-status-label">Compiled default</span>
+              <span class="llm-status-value">${status.modelDefault}</span>
+            </div>`
+          : nothing}
+      </div>
       <div class="profiles-section">
         <div class="profiles-header">
           <span class="profiles-label">Profiles</span>
@@ -532,7 +590,10 @@ export class GcSettingsPanel extends LitElement {
                       }}
                     >
                       ${p.name}
-                      <span class="profile-meta">${p.backend} · ${p.model || "(default)"}</span>
+                      <span class="profile-meta"
+                        >${p.backend} ·
+                        ${p.model || "uses LLM_MODEL / backend default"}</span
+                      >
                     </button>
                     <div class="profile-actions">
                       ${this.activeProfileId === p.id
@@ -957,6 +1018,42 @@ export class GcSettingsPanel extends LitElement {
     }
     .advanced-config[open] summary {
       margin-bottom: var(--space-3);
+    }
+
+    /* ── LLM Active status ───────────────────────────────────── */
+    .llm-status {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+      margin-bottom: var(--space-4);
+      padding: var(--space-3);
+      background: var(--surface-2);
+      border: 1px solid var(--border-default);
+      border-left: 3px solid var(--accent-assistant);
+      border-radius: var(--radius-md);
+      font-size: var(--text-xs);
+    }
+    .llm-status-row {
+      display: grid;
+      grid-template-columns: 8em 1fr;
+      align-items: baseline;
+      column-gap: var(--space-3);
+    }
+    .llm-status-label {
+      opacity: 0.5;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.65rem;
+    }
+    .llm-status-value {
+      font-family: var(--font-mono, ui-monospace, monospace);
+    }
+    .llm-status-source {
+      opacity: 0.7;
+      font-family: inherit;
+    }
+    .llm-status-subtle {
+      opacity: 0.6;
     }
 
     /* ── LLM Profiles ────────────────────────────────────────── */
