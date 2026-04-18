@@ -200,6 +200,13 @@ func (e *Entry) cfgInt64(ctx context.Context, key string, def int64) int64 {
 
 // prewarmChurn is resolved once at package init from the environment
 // so we don't re-parse the flag on every repo registration.
+//
+// Intentionally a package-level os.Getenv, NOT a config.Registry
+// tunable. The config registry only comes up after repos are already
+// being registered, and flipping prewarm at runtime is meaningless:
+// either the scan ran once at startup or it didn't. Future agents
+// refactoring the #4-sweep "move all GITCHAT_* into the registry"
+// pattern should leave this one alone for that reason.
 var prewarmChurn = os.Getenv("GITCHAT_PREWARM_CHURN") == "1"
 
 // prewarmChurnAll runs GetFileChurnMap with an uncapped window on the
