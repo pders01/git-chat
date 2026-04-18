@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 )
@@ -14,6 +15,7 @@ import (
 type ConfigStore interface {
 	GetConfigOverride(ctx context.Context, key string) (string, bool, error)
 	SetConfigOverride(ctx context.Context, key, value string) error
+	SetConfigOverrides(ctx context.Context, kvs map[string]string) error
 	DeleteConfigOverride(ctx context.Context, key string) error
 	ListConfigOverrides(ctx context.Context) (map[string]string, error)
 }
@@ -47,9 +49,32 @@ func (d *DB) DeleteConfigOverride(ctx context.Context, key string) error {
 	return err
 }
 
+// SetConfigOverrides upserts multiple config overrides atomically in a
+// single transaction. All writes succeed or none do.
+func (d *DB) SetConfigOverrides(ctx context.Context, kvs map[string]string) error {
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO config (key, value) VALUES (?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+	if err != nil {
+		return fmt.Errorf("prepare: %w", err)
+	}
+	defer stmt.Close()
+	for k, v := range kvs {
+		if _, err := stmt.ExecContext(ctx, k, v); err != nil {
+			return fmt.Errorf("set %s: %w", k, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // ListConfigOverrides returns all persisted overrides as a map.
 func (d *DB) ListConfigOverrides(ctx context.Context) (map[string]string, error) {
-	rows, err := d.QueryContext(ctx, `SELECT key, value FROM config`)
+	rows, err := d.QueryContext(ctx, `SELECT key, value FROM config WHERE key != ?`, catalogCacheKey)
 	if err != nil {
 		return nil, err
 	}
