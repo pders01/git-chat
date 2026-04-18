@@ -835,11 +835,45 @@ export class GcCommitLog extends LitElement {
       case "ready": {
         if (this.threePane && this.selectedFile) return this.renderThreePane(this.diff);
         if (!this.diff.diffHtml) return html`<div class="diff-empty">no changes</div>`;
+        if (this.selectedFile && this.diff.rawDiff.includes("@@ placeholder-diff @@")) {
+          return this.renderPlaceholderDiff(this.diff.rawDiff);
+        }
         return this.splitView
           ? this.renderSplitDiff()
           : html`<div class="diff-content">${unsafeHTML(this.diff.diffHtml)}</div>`;
       }
     }
+  }
+
+  // Parse the backend's placeholder patch (renderPlaceholderPatch in
+  // reader.go) and show a banner instead of the raw sentinel text.
+  // Triggered when either side crossed the inline-diff size cap or is
+  // binary — both cases where a unified patch isn't meaningful.
+  private renderPlaceholderDiff(raw: string) {
+    const parse = (line: string) => {
+      const m = line.match(/kind="([^"]*)" size=(\d+)/);
+      return m ? { kind: m[1], size: Number(m[2]) } : { kind: "unknown", size: 0 };
+    };
+    const lines = raw.split("\n");
+    const from = parse(lines.find((l) => l.startsWith("# from:")) ?? "");
+    const to = parse(lines.find((l) => l.startsWith("# to:")) ?? "");
+    const reason =
+      from.kind === "binary" || to.kind === "binary"
+        ? "binary file"
+        : from.kind === "too-large" || to.kind === "too-large"
+          ? "file too large for inline diff"
+          : "inline diff unavailable";
+    const fmt = (n: number) => (n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`);
+    return html`<div class="diff-placeholder">
+      <div class="diff-placeholder-title">${reason}</div>
+      <div class="diff-placeholder-sizes">
+        before: ${fmt(from.size)} · after: ${fmt(to.size)}
+      </div>
+      <div class="diff-placeholder-hint">
+        raise <code>GITCHAT_MAX_DIFF_BYTES</code> on the server to inline, or switch to 3-pane for
+        side-by-side file bodies.
+      </div>
+    </div>`;
   }
 
   private renderThreePane(ready: DiffPaneState & { phase: "ready" }) {
@@ -1924,6 +1958,41 @@ export class GcCommitLog extends LitElement {
       opacity: 0.4;
       font-size: var(--text-sm);
       font-style: italic;
+    }
+    /* Shown when the backend emits a placeholder patch — the file's
+       blob exceeds the inline-diff size cap or is binary. Distinct from
+       .diff-empty ("no changes") so the user knows there IS a change,
+       we just can't render it as a unified diff here. */
+    .diff-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      padding: var(--space-6);
+      text-align: center;
+      height: 100%;
+      font-size: var(--text-sm);
+    }
+    .diff-placeholder-title {
+      font-weight: 600;
+      opacity: 0.75;
+    }
+    .diff-placeholder-sizes {
+      opacity: 0.55;
+      font-size: var(--text-xs);
+      letter-spacing: 0.02em;
+    }
+    .diff-placeholder-hint {
+      opacity: 0.45;
+      font-size: var(--text-xs);
+      max-width: 52ch;
+    }
+    .diff-placeholder-hint code {
+      font-family: var(--font-mono, ui-monospace, monospace);
+      background: var(--surface-3);
+      padding: 1px 4px;
+      border-radius: var(--radius-sm);
     }
     .diff-content {
       font-size: var(--text-xs);

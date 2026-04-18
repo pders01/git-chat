@@ -26,7 +26,7 @@ var DefaultMaxFileBytes int64 = envInt64Reader("GITCHAT_DEFAULT_FILE_BYTES", 512
 
 // Package-level tunables, configurable via environment variables.
 var (
-	maxWholeDiffBytes_    = envIntReader("GITCHAT_MAX_DIFF_BYTES", 32*1024)
+	maxWholeDiffBytes_    = envIntReader("GITCHAT_MAX_DIFF_BYTES", 512*1024)
 	defaultCommitLimit    = envIntReader("GITCHAT_DEFAULT_COMMIT_LIMIT", 50)
 	diffContextLines      = envIntReader("GITCHAT_DIFF_CONTEXT_LINES", 3)
 	maxChurnCommits       = envIntReader("GITCHAT_MAX_CHURN_COMMITS", 5000)
@@ -1018,15 +1018,24 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path string, detect
 
 	// ── Single-file path ───────────────────────────────────────────
 	if path != "" {
-		fromContent, fromErr := fileContent(fromCommit, path)
-		toContent, toErr := fileContent(toCommit, path)
+		from, fromErr := fileContentDetail(fromCommit, path)
+		to, toErr := fileContentDetail(toCommit, path)
 		if fromErr != nil && toErr != nil {
 			return "", fromResolved, toResolved, false, nil, ErrNotFound
 		}
-		if fromContent == toContent {
+		// Identity on (kind, sha): both-missing, same-blob, or same
+		// placeholder over the same blob all count as no change.
+		if from.kind == to.kind && from.sha == to.sha {
 			return "", fromResolved, toResolved, true, nil, nil
 		}
-		patch := renderUnifiedDiff(path, fromResolved, toResolved, fromContent, toContent)
+		// Placeholder-on-either-side diffs can't be rendered as a
+		// useful unified patch (we'd be diffing two sentinel strings),
+		// so emit a minimal placeholder patch the frontend formats
+		// into a clean "file too large / binary" banner.
+		if from.kind != "" || to.kind != "" {
+			return renderPlaceholderPatch(path, from, to), fromResolved, toResolved, false, nil, nil
+		}
+		patch := renderUnifiedDiff(path, fromResolved, toResolved, from.content, to.content)
 		return patch, fromResolved, toResolved, false, nil, nil
 	}
 
@@ -1057,18 +1066,24 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path string, detect
 	var sb bytes.Buffer
 	truncated := 0
 	for i, p := range changed {
-		fromContent, _ := fileContent(fromCommit, p)
-		toContent, _ := fileContent(toCommit, p)
-		if fromContent == toContent {
+		from, _ := fileContentDetail(fromCommit, p)
+		to, _ := fileContentDetail(toCommit, p)
+		// True no-change: same kind + same blob SHA on both sides.
+		// Placeholder text alone isn't authoritative because two
+		// "too-large" sides over different blobs share the same kind
+		// but different SHAs — we still want to emit them.
+		if from.kind == to.kind && from.sha == to.sha {
 			continue
 		}
-		// Populate per-file +/− stats for files we actually emit. Anything
-		// past the byte cap below keeps its zero counts — that file list
-		// entry is shown only as a label in the truncated tail anyway.
 		if i < len(files) {
-			files[i].Additions, files[i].Deletions = countDiffLines(fromContent, toContent)
+			files[i].Additions, files[i].Deletions = fileDiffStats(from, to)
 		}
-		filePatch := renderUnifiedDiff(p, fromResolved, toResolved, fromContent, toContent)
+		var filePatch string
+		if from.kind != "" || to.kind != "" {
+			filePatch = renderPlaceholderPatch(p, from, to)
+		} else {
+			filePatch = renderUnifiedDiff(p, fromResolved, toResolved, from.content, to.content)
+		}
 		if sb.Len()+len(filePatch) > maxWholeDiffBytes_ {
 			truncated = len(changed) - i
 			break
@@ -1312,37 +1327,143 @@ func (e *Entry) GetWorkingTreeDiff(path string) (string, bool, error) {
 	return patch, false, nil
 }
 
-// fileContent returns the contents of `path` at `commit`. Returns the
-// empty string with no error if the path doesn't exist at that commit
-// (treated as "not present" — the caller distinguishes from/to sides).
-// Any other error (binary read failure, object store miss) is returned.
-func fileContent(commit *object.Commit, path string) (string, error) {
+// fileSide captures everything GetDiff needs to know about one side of a
+// per-file change. `content` is what we'd render into a patch; `kind`
+// distinguishes real content ("") from sentinel placeholders
+// ("too-large", "binary") and missing paths ("missing"). `blob` is the
+// underlying go-git handle for streaming reads (e.g. cheap line counts
+// on oversized blobs where we intentionally skip loading the full bytes
+// into memory). `sha` plus `kind` are what callers compare for identity
+// — two placeholder strings that happen to share literal text no longer
+// masquerade as "unchanged" when the blobs behind them differ.
+type fileSide struct {
+	content string
+	kind    string // "" (real) | "missing" | "too-large" | "binary"
+	blob    *object.Blob
+	sha     string
+	size    int64
+}
+
+// fileContentDetail resolves `path` at `commit` to a fileSide. Missing
+// paths return kind="missing" with empty sha; oversized or binary blobs
+// return sentinel content tagged with the blob SHA so equality checks
+// across sides only collapse when the underlying blobs truly match.
+func fileContentDetail(commit *object.Commit, path string) (fileSide, error) {
 	if commit == nil {
-		return "", nil
+		return fileSide{kind: "missing"}, nil
 	}
 	tree, err := commit.Tree()
 	if err != nil {
-		return "", fmt.Errorf("get tree: %w", err)
+		return fileSide{}, fmt.Errorf("get tree: %w", err)
 	}
 	f, err := tree.File(path)
 	if err != nil {
 		if errors.Is(err, object.ErrFileNotFound) {
-			return "", nil
+			return fileSide{kind: "missing"}, nil
 		}
-		return "", fmt.Errorf("find file: %w", err)
+		return fileSide{}, fmt.Errorf("find file: %w", err)
 	}
-	// Skip oversized or binary files to avoid O(m×n) diff on huge blobs.
+	sha := f.Hash.String()
 	if f.Size > int64(maxWholeDiffBytes_) {
-		return "(file too large for inline diff)", nil
+		return fileSide{
+			content: fmt.Sprintf("(file too large for inline diff: %s, %d bytes)", sha[:12], f.Size),
+			kind:    "too-large",
+			blob:    &f.Blob,
+			sha:     sha,
+			size:    f.Size,
+		}, nil
 	}
 	contents, err := f.Contents()
 	if err != nil {
-		return "", fmt.Errorf("read blob: %w", err)
+		return fileSide{}, fmt.Errorf("read blob: %w", err)
 	}
 	if isBinary([]byte(contents[:min(len(contents), 8192)])) {
-		return "(binary file)", nil
+		return fileSide{
+			content: fmt.Sprintf("(binary file: %s)", sha[:12]),
+			kind:    "binary",
+			blob:    &f.Blob,
+			sha:     sha,
+			size:    f.Size,
+		}, nil
 	}
-	return contents, nil
+	return fileSide{content: contents, blob: &f.Blob, sha: sha, size: f.Size}, nil
+}
+
+// fileContent is a string-only adapter over fileContentDetail for
+// callers that don't need blob handles (rename detection, single-file
+// render). The returned string still carries the SHA-tagged placeholder
+// for oversized/binary content so any equality check downstream won't
+// silently collide when the blobs actually differ.
+func fileContent(commit *object.Commit, path string) (string, error) {
+	side, err := fileContentDetail(commit, path)
+	return side.content, err
+}
+
+// blobLineCount streams `blob` and returns the number of lines,
+// defined as the count of '\n' plus one if the final byte isn't a
+// newline. Used for per-file stats on oversized blobs where we've
+// declined to load the full contents into a string — so we can still
+// put a useful net-delta number in the file list instead of zeros.
+func blobLineCount(blob *object.Blob) (int, error) {
+	if blob == nil {
+		return 0, nil
+	}
+	r, err := blob.Reader()
+	if err != nil {
+		return 0, err
+	}
+	defer r.Close()
+	var buf [64 * 1024]byte
+	count := 0
+	hadBytes := false
+	var last byte
+	for {
+		n, rerr := r.Read(buf[:])
+		if n > 0 {
+			hadBytes = true
+			last = buf[n-1]
+			for i := 0; i < n; i++ {
+				if buf[i] == '\n' {
+					count++
+				}
+			}
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return 0, rerr
+		}
+	}
+	if hadBytes && last != '\n' {
+		count++
+	}
+	return count, nil
+}
+
+// fileDiffStats picks the cheapest accurate stat path for this pair of
+// sides. Both real: feed the full content into the LCS line differ.
+// Either side placeholder: stream newline counts and report net delta
+// — undercounts in-place edits (swapping all 1000 lines shows 0/0) but
+// accurately reports growth/shrink, which beats the previous always-0
+// behaviour. Binary on either side: stats are meaningless, return 0/0.
+func fileDiffStats(from, to fileSide) (int32, int32) {
+	if from.kind == "" && to.kind == "" {
+		return countDiffLines(from.content, to.content)
+	}
+	if from.kind == "binary" || to.kind == "binary" {
+		return 0, 0
+	}
+	fromLines, _ := blobLineCount(from.blob)
+	toLines, _ := blobLineCount(to.blob)
+	adds, dels := int32(0), int32(0)
+	if toLines > fromLines {
+		adds = int32(toLines - fromLines)
+	}
+	if fromLines > toLines {
+		dels = int32(fromLines - toLines)
+	}
+	return adds, dels
 }
 
 // renderUnifiedDiff produces a `diff --git` style unified patch for a
@@ -1379,6 +1500,37 @@ func renderUnifiedDiff(path, fromSHA, toSHA, fromContent, toContent string) stri
 		}
 	}
 	return sb.String()
+}
+
+// renderPlaceholderPatch emits a minimal unified-diff-shaped stub for a
+// file where at least one side is a placeholder (too-large or binary).
+// We can't Myers-diff sentinel strings usefully, so we encode the
+// state in a single hunk the frontend detects and rewrites into a
+// clean "file too large / binary file changed" banner. Shape stays
+// diff-adjacent so tools that dump the raw patch (CLI, chat prompts)
+// still show something readable.
+func renderPlaceholderPatch(path string, from, to fileSide) string {
+	var sb bytes.Buffer
+	fmt.Fprintf(&sb, "diff --git a/%s b/%s\n", path, path)
+	if from.sha != "" && to.sha != "" {
+		fmt.Fprintf(&sb, "index %s..%s\n", ShortSHA(from.sha), ShortSHA(to.sha))
+	}
+	fmt.Fprintf(&sb, "--- a/%s\n", path)
+	fmt.Fprintf(&sb, "+++ b/%s\n", path)
+	// Single synthetic hunk: the marker lines are prefixed with '#' so
+	// no diff parser interprets them as +/- content. The frontend looks
+	// for the "placeholder-diff:" sentinel to swap in the banner UI.
+	sb.WriteString("@@ placeholder-diff @@\n")
+	fmt.Fprintf(&sb, "# from: kind=%q size=%d sha=%s\n", describeKind(from), from.size, ShortSHA(from.sha))
+	fmt.Fprintf(&sb, "# to:   kind=%q size=%d sha=%s\n", describeKind(to), to.size, ShortSHA(to.sha))
+	return sb.String()
+}
+
+func describeKind(s fileSide) string {
+	if s.kind == "" {
+		return "content"
+	}
+	return s.kind
 }
 
 // ShortSHALen is the display-width for abbreviated commit hashes shared
