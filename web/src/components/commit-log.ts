@@ -246,11 +246,20 @@ export class GcCommitLog extends LitElement {
       return;
     }
     const sentinel = this.renderRoot.querySelector<HTMLElement>(".load-sentinel");
-    const scroller = this.renderRoot.querySelector<HTMLElement>(".commits");
+    const scroller = this.renderRoot.querySelector<HTMLElement>(
+      this.graphMode ? ".graph-scroll" : ".commits",
+    );
     if (!sentinel || !scroller) {
       this.listObserver?.disconnect();
       this.listObserver = null;
       return;
+    }
+    // The scroll root differs between list and graph views, so any
+    // existing observer is stale on mode toggle — tear it down so the
+    // new one is created with the correct `root`.
+    if (this.listObserver && this.listObserver.root !== scroller) {
+      this.listObserver.disconnect();
+      this.listObserver = null;
     }
     if (!this.listObserver) {
       this.listObserver = new IntersectionObserver(
@@ -976,9 +985,12 @@ export class GcCommitLog extends LitElement {
       }
     }
 
+    const hasMore = this.state.phase === "ready" && this.state.hasMore;
+    const sentinelH = 32;
+    const totalH = svgH + (hasMore ? sentinelH : 0);
     return html`
       <div class="graph-scroll">
-        <div class="graph-view" @keydown=${this.onListKeydown} style="height:${svgH}px">
+        <div class="graph-view" @keydown=${this.onListKeydown} style="height:${totalH}px">
           <svg class="graph-svg" width="${svgW}" height="${svgH}">${svgLines} ${svgDots}</svg>
           ${commits.map((c, i) => {
             const y = i * ROW_H;
@@ -992,6 +1004,16 @@ export class GcCommitLog extends LitElement {
               <span class="graph-age">${formatAge(Number(c.authorTime))}</span>
             </button>`;
           })}
+          ${hasMore
+            ? html`<div
+                class="load-sentinel graph-sentinel"
+                role="presentation"
+                aria-hidden="true"
+                style="top:${svgH}px; height:${sentinelH}px"
+              >
+                ${this.loadingMore ? "loading…" : ""}
+              </div>`
+            : nothing}
         </div>
       </div>
     `;
@@ -1550,6 +1572,16 @@ export class GcCommitLog extends LitElement {
       opacity: 0.4;
       font-size: var(--text-xs);
       padding: var(--space-2);
+    }
+    /* Graph view positions its rows absolutely inside .graph-view, so
+       the sentinel has to play by the same rules — absolute at the
+       bottom of the virtual stack so it crosses into view when the
+       user scrolls past the last row. */
+    .graph-sentinel {
+      position: absolute;
+      left: 0;
+      right: 0;
+      padding: 0;
     }
 
     /* ── List header + graph toggle ─────────────────────────── */
