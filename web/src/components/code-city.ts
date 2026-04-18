@@ -1470,7 +1470,7 @@ export class GcCodeCity extends LitElement {
       display: inline-flex;
       align-items: center;
       gap: var(--space-2);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      box-shadow: var(--shadow-dropdown);
       z-index: 50;
       animation: city-loading-fade-in 120ms ease-out;
     }
@@ -1639,7 +1639,7 @@ export class GcCodeCity extends LitElement {
       border-radius: var(--radius-md);
       padding: var(--space-3);
       z-index: 50;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      box-shadow: var(--shadow-dropdown);
     }
     .stats-panel[hidden] {
       display: none;
@@ -1797,7 +1797,7 @@ export class GcCodeCity extends LitElement {
       border-radius: var(--radius-md);
       padding: var(--space-3);
       z-index: 50;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      box-shadow: var(--shadow-dropdown);
     }
     .legend-row {
       display: flex;
@@ -1882,7 +1882,7 @@ export class GcCodeCity extends LitElement {
       border-radius: var(--radius-md);
       padding: var(--space-3);
       z-index: 60;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      box-shadow: var(--shadow-dropdown);
     }
     .detail-header {
       display: flex;

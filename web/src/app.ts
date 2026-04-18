@@ -2043,7 +2043,7 @@ export class GcApp extends LitElement {
       max-height: calc(100vh - 120px);
       overflow-y: auto;
       z-index: 51;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--shadow-modal);
       animation: palette-in 0.12s ease;
     }
     .modal-title {
@@ -2109,7 +2109,7 @@ export class GcApp extends LitElement {
       border: 1px solid var(--border-default);
       border-radius: var(--radius-xl);
       z-index: 51;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--shadow-modal);
       overflow: hidden;
       animation: palette-in 0.12s ease;
     }
@@ -2196,7 +2196,7 @@ export class GcApp extends LitElement {
       border: 1px solid var(--border-default);
       border-radius: var(--radius-xl);
       z-index: 51;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--shadow-modal);
       overflow: hidden;
       animation: palette-in 0.12s ease;
     }

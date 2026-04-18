@@ -243,9 +243,9 @@ export class GcCombobox extends LitElement {
       margin: 2px 0 0;
       padding: var(--space-1, 4px) 0;
       background: var(--surface-2, #252525);
-      border: 1px solid var(--border-default, #333);
+      border: 1px solid var(--border-strong, #444);
       border-radius: var(--radius-sm, 4px);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      box-shadow: var(--shadow-dropdown);
       max-height: 240px;
       overflow-y: auto;
       list-style: none;

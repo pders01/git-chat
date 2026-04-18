@@ -3187,7 +3187,7 @@ ${ev.content}</pre
         border: 1px solid var(--border-default);
         font-size: 1.1rem;
         cursor: pointer;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        box-shadow: var(--shadow-dropdown);
       }
       .sidebar {
         position: fixed;
