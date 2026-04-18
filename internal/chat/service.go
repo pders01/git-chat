@@ -146,6 +146,12 @@ var (
 	maxAttachmentTotal   = envIntSvc("GITCHAT_MAX_ATTACHMENTS_TOTAL_BYTES", 20*1024*1024)
 	toolLoopMax          = envIntSvc("GITCHAT_TOOL_LOOP_MAX", 8)
 	toolLoopMaxTokens    = envIntSvc("GITCHAT_TOOL_LOOP_MAX_TOKENS", 100_000)
+	// cardPromotionThreshold is the minimum number of similar past user
+	// messages (via FTS5) required before a question gets promoted to a
+	// knowledge card. Set to 2 so the first ask always goes to the LLM,
+	// and only on the second similar question does caching kick in. This
+	// prevents one-off exploratory questions from polluting the KB.
+	cardPromotionThreshold = envIntSvc("GITCHAT_KB_PROMOTION_THRESHOLD", 2)
 )
 
 // allowedAttachmentMIMEs restricts uploads to image types Anthropic's
@@ -1064,13 +1070,6 @@ func (s *Service) notifyInvalidation(ctx context.Context, card *storage.CardRow,
 		Path:     path,
 	})
 }
-
-// cardPromotionThreshold is the minimum number of similar past user
-// messages (via FTS5) required before a question gets promoted to a
-// knowledge card. Set to 2 so the first ask always goes to the LLM,
-// and only on the second similar question does caching kick in. This
-// prevents one-off exploratory questions from polluting the KB.
-var cardPromotionThreshold = envIntSvc("GITCHAT_KB_PROMOTION_THRESHOLD", 2)
 
 // maybePromoteCard checks whether a question has been asked enough
 // times to justify caching, and if so, upserts a knowledge card.

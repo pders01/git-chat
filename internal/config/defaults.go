@@ -4,7 +4,7 @@ package config
 // with their compiled defaults, descriptions, and groups.
 func RegisterDefaults(r *Registry) {
 	// ── repo ──────────────────────────────────────────────────────
-	r.Register("GITCHAT_MAX_DIFF_BYTES", "32768", "Max bytes for whole-commit diffs", "repo")
+	r.Register("GITCHAT_MAX_DIFF_BYTES", "524288", "Max bytes for whole-commit diffs", "repo")
 	r.Register("GITCHAT_DEFAULT_COMMIT_LIMIT", "50", "Default number of commits per page", "repo")
 	r.Register("GITCHAT_DIFF_CONTEXT_LINES", "3", "Context lines in unified diffs", "repo")
 	r.Register("GITCHAT_DEFAULT_FILE_BYTES", "524288", "Max bytes for file content responses", "repo")

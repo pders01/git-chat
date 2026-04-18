@@ -916,7 +916,7 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 	var out []*gitchatv1.BlameLine
 	out, err = gitBlamePorcelain(ctx, e.Path, resolved, path)
 	if err != nil {
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			return nil, err
 		}
 		// Fall back to go-git so blame keeps working on hosts without
