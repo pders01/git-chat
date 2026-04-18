@@ -3,7 +3,10 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+
+	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 )
 
 // ConfigStore is the interface the config registry depends on.
@@ -60,4 +63,36 @@ func (d *DB) ListConfigOverrides(ctx context.Context) (map[string]string, error)
 		out[k] = v
 	}
 	return out, rows.Err()
+}
+
+const catalogCacheKey = "__catalog_cache__"
+
+// GetCatalogCache loads the cached provider catalog from SQLite.
+func (d *DB) GetCatalogCache(ctx context.Context) ([]*gitchatv1.CatalogProvider, error) {
+	var raw string
+	err := d.QueryRowContext(ctx, `SELECT value FROM config WHERE key = ?`, catalogCacheKey).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) || raw == "" {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []*gitchatv1.CatalogProvider
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SetCatalogCache persists the provider catalog to SQLite.
+func (d *DB) SetCatalogCache(ctx context.Context, providers []*gitchatv1.CatalogProvider) error {
+	data, err := json.Marshal(providers)
+	if err != nil {
+		return err
+	}
+	_, err = d.ExecContext(ctx, `
+		INSERT INTO config (key, value) VALUES (?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		catalogCacheKey, string(data))
+	return err
 }

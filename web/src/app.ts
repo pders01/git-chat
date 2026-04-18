@@ -72,6 +72,8 @@ export class GcApp extends LitElement {
   @state() private profiles: any[] = [];
   @state() private activeProfileId = "";
   @state() private editingProfile: any | null = null;
+  @state() private catalog: any[] = []; // CatalogProvider[]
+  @state() private catalogLoading = false;
 
   override async connectedCallback() {
     super.connectedCallback();
@@ -640,6 +642,7 @@ export class GcApp extends LitElement {
                 if (this.showSettings) {
                   this.loadConfig();
                   this.loadProfiles();
+                  this.loadCatalog();
                 }
               }}
               aria-label="Settings"
@@ -786,6 +789,38 @@ export class GcApp extends LitElement {
     }
   }
 
+  private async loadCatalog() {
+    try {
+      const resp = await (repoClient as any).getProviderCatalog({});
+      this.catalog = resp.providers ?? [];
+    } catch {
+      this.catalog = [];
+    }
+  }
+
+  private async refreshCatalog() {
+    this.catalogLoading = true;
+    try {
+      const resp = await (repoClient as any).refreshProviderCatalog({});
+      this.catalog = resp.providers ?? [];
+    } catch {
+      // TODO: surface error
+    } finally {
+      this.catalogLoading = false;
+    }
+  }
+
+  /** Models for a given provider ID from the catalog. */
+  private catalogModelsFor(providerId: string): any[] {
+    const p = this.catalog.find((c: any) => c.id === providerId);
+    return p?.models ?? [];
+  }
+
+  /** Find a catalog provider by ID. */
+  private catalogProvider(providerId: string): any | undefined {
+    return this.catalog.find((c: any) => c.id === providerId);
+  }
+
   private async activateProfile(id: string) {
     try {
       await (repoClient as any).activateProfile({ id });
@@ -830,40 +865,11 @@ export class GcApp extends LitElement {
     return !!entry.secret;
   }
 
-  // Suggestions for config entries and profile fields. Keys that appear
-  // here get a <datalist> combobox; keys with `select: true` get a
-  // <select> dropdown instead.
-  private static readonly CONFIG_HINTS: Record<
-    string,
-    { options: string[]; select?: boolean }
-  > = {
-    LLM_BACKEND: { options: ["openai", "anthropic"], select: true },
-    LLM_BASE_URL: {
-      options: [
-        "http://localhost:1234/v1",
-        "http://localhost:11434/v1",
-        "https://api.openai.com/v1",
-        "https://api.fireworks.ai/inference/v1",
-        "https://openrouter.ai/api/v1",
-        "https://api.groq.com/openai/v1",
-        "https://api.together.xyz/v1",
-      ],
-    },
-    LLM_MODEL: {
-      options: [
-        "gemma-4-e4b-it",
-        "gemma-3-27b-it",
-        "gpt-4o",
-        "gpt-4o-mini",
-        "claude-sonnet-4-6",
-        "claude-haiku-4-5-20251001",
-        "accounts/fireworks/models/kimi-k2p5-turbo",
-        "deepseek-r1",
-        "qwen3-235b-a22b",
-      ],
-    },
-    LLM_TEMPERATURE: { options: ["0", "0.3", "0.5", "0.7", "1.0"] },
-    LLM_MAX_TOKENS: { options: ["0", "1024", "2048", "4096", "8192", "16384"] },
+  // Fixed-set config keys that should render as <select> instead of
+  // <input>. The catalog-driven profile editor handles rich provider/
+  // model selection; this is only for the raw config entries view.
+  private static readonly CONFIG_SELECTS: Record<string, string[]> = {
+    LLM_BACKEND: ["openai", "anthropic"],
   };
 
   private static readonly SETTINGS_SECTIONS = [
@@ -896,7 +902,7 @@ export class GcApp extends LitElement {
         ${entries.map((entry: any) => {
           const isSecret = this.isSecretEntry(entry);
           const modified = entry.value !== entry.defaultValue;
-          const hints = (this.constructor as typeof GcApp).CONFIG_HINTS[entry.key];
+          const selectOpts = (this.constructor as typeof GcApp).CONFIG_SELECTS[entry.key];
           return html`
             <div class="config-entry">
               <div class="config-entry-header">
@@ -916,7 +922,7 @@ export class GcApp extends LitElement {
                     </button>`
                   : nothing}
               </div>
-              ${hints?.select
+              ${selectOpts
                 ? html`<select
                     id="cfg-${entry.key}"
                     class="config-input"
@@ -925,7 +931,7 @@ export class GcApp extends LitElement {
                       this.updateConfigEntry(entry.key, (e.target as HTMLSelectElement).value);
                     }}
                   >
-                    ${hints.options.map(
+                    ${selectOpts.map(
                       (o) => html`<option value=${o} ?selected=${entry.value === o}>${o}</option>`,
                     )}
                   </select>`
@@ -934,7 +940,6 @@ export class GcApp extends LitElement {
                     class="config-input"
                     type=${isSecret ? "password" : "text"}
                     autocomplete="off"
-                    list=${hints ? `dl-${entry.key}` : ""}
                     placeholder=${isSecret ? entry.value || "not set" : ""}
                     .value=${isSecret ? "" : entry.value}
                     aria-describedby=${entry.description ? `cfg-desc-${entry.key}` : ""}
@@ -953,11 +958,6 @@ export class GcApp extends LitElement {
                           );
                         }}
                   />`}
-              ${hints && !hints.select
-                ? html`<datalist id="dl-${entry.key}">
-                    ${hints.options.map((o) => html`<option value=${o}></option>`)}
-                  </datalist>`
-                : nothing}
               ${entry.description
                 ? html`<span id="cfg-desc-${entry.key}" class="config-desc"
                     >${entry.description}</span
@@ -1064,9 +1064,22 @@ export class GcApp extends LitElement {
       <div class="profiles-section">
         <div class="profiles-header">
           <span class="profiles-label">Profiles</span>
-          <button
-            class="action-btn"
-            @click=${() => {
+          <div class="profiles-header-actions">
+            <button
+              class="action-btn"
+              ?disabled=${this.catalogLoading}
+              @click=${() => this.refreshCatalog()}
+              title="Fetch latest provider/model catalog from catwalk.charm.sh"
+            >
+              ${this.catalogLoading
+                ? "fetching…"
+                : this.catalog.length > 0
+                  ? `\u21BB ${this.catalog.length} providers`
+                  : "fetch catalog"}
+            </button>
+            <button
+              class="action-btn"
+              @click=${() => {
               this.editingProfile = {
                 id: "",
                 name: "",
@@ -1081,6 +1094,7 @@ export class GcApp extends LitElement {
           >
             + new
           </button>
+          </div>
         </div>
         <div class="profiles-list">
           ${this.profiles.length === 0
@@ -1145,18 +1159,59 @@ export class GcApp extends LitElement {
             />
           </label>
           <label class="profile-field">
-            <span>Backend</span>
-            <select
-              class="config-input"
-              .value=${p.backend}
-              @change=${(e: Event) => {
-                p.backend = (e.target as HTMLSelectElement).value;
-                this.requestUpdate();
-              }}
-            >
-              <option value="openai">openai</option>
-              <option value="anthropic">anthropic</option>
-            </select>
+            <span>Provider</span>
+            ${this.catalog.length > 0
+              ? html`<select
+                  class="config-input"
+                  @change=${(e: Event) => {
+                    const id = (e.target as HTMLSelectElement).value;
+                    p._providerId = id;
+                    const prov = this.catalogProvider(id);
+                    if (prov) {
+                      p.backend = prov.type;
+                      p.baseUrl = prov.defaultBaseUrl || "";
+                      p.model = prov.defaultModelId || "";
+                    } else {
+                      p.backend = id;
+                    }
+                    this.requestUpdate();
+                  }}
+                >
+                  <option value="">— select provider —</option>
+                  ${this.catalog.map(
+                    (c: any) => html`<option
+                      value=${c.id}
+                      ?selected=${c.id === p._providerId || c.type === p.backend}
+                    >
+                      ${c.name} (${c.type})
+                    </option>`,
+                  )}
+                </select>`
+              : html`<select
+                  class="config-input"
+                  .value=${p.backend}
+                  @change=${(e: Event) => {
+                    p.backend = (e.target as HTMLSelectElement).value;
+                    this.requestUpdate();
+                  }}
+                >
+                  <option value="openai">openai</option>
+                  <option value="anthropic">anthropic</option>
+                </select>`}
+            <span class="config-desc">
+              ${this.catalog.length === 0
+                ? html`<button
+                    class="action-btn"
+                    ?disabled=${this.catalogLoading}
+                    @click=${(e: Event) => {
+                      e.preventDefault();
+                      this.refreshCatalog();
+                    }}
+                  >
+                    ${this.catalogLoading ? "fetching…" : "fetch provider catalog"}
+                  </button>`
+                : nothing}
+            </span>
           </label>
           ${p.backend !== "anthropic"
             ? html`<label class="profile-field">
@@ -1164,36 +1219,40 @@ export class GcApp extends LitElement {
                 <input
                   type="text"
                   class="config-input"
-                  list="dl-profile-baseurl"
                   .value=${p.baseUrl}
                   @input=${(e: Event) => {
                     p.baseUrl = (e.target as HTMLInputElement).value;
                   }}
                 />
-                <datalist id="dl-profile-baseurl">
-                  ${(this.constructor as typeof GcApp).CONFIG_HINTS["LLM_BASE_URL"]?.options.map(
-                    (o) => html`<option value=${o}></option>`,
-                  )}
-                </datalist>
               </label>`
             : nothing}
           <label class="profile-field">
             <span>Model</span>
-            <input
-              type="text"
-              class="config-input"
-              list="dl-profile-model"
-              placeholder="(backend default)"
-              .value=${p.model}
-              @input=${(e: Event) => {
-                p.model = (e.target as HTMLInputElement).value;
-              }}
-            />
-            <datalist id="dl-profile-model">
-              ${(this.constructor as typeof GcApp).CONFIG_HINTS["LLM_MODEL"]?.options.map(
-                (o) => html`<option value=${o}></option>`,
-              )}
-            </datalist>
+            ${this.catalogModelsFor(p._providerId || "").length > 0
+              ? html`<select
+                  class="config-input"
+                  @change=${(e: Event) => {
+                    p.model = (e.target as HTMLSelectElement).value;
+                    this.requestUpdate();
+                  }}
+                >
+                  ${this.catalogModelsFor(p._providerId || "").map(
+                    (m: any) => html`<option value=${m.id} ?selected=${p.model === m.id}>
+                      ${m.name}${m.contextWindow
+                        ? ` · ${Math.round(m.contextWindow / 1000)}K`
+                        : ""}${m.costPer1MIn ? ` · $${m.costPer1MIn}/$${m.costPer1MOut}` : ""}
+                    </option>`,
+                  )}
+                </select>`
+              : html`<input
+                  type="text"
+                  class="config-input"
+                  placeholder="(backend default)"
+                  .value=${p.model}
+                  @input=${(e: Event) => {
+                    p.model = (e.target as HTMLInputElement).value;
+                  }}
+                />`}
           </label>
           <label class="profile-field">
             <span>API Key</span>
@@ -1214,36 +1273,24 @@ export class GcApp extends LitElement {
             <input
               type="text"
               class="config-input"
-              list="dl-profile-temp"
               placeholder="0"
               .value=${p.temperature}
               @input=${(e: Event) => {
                 p.temperature = (e.target as HTMLInputElement).value;
               }}
             />
-            <datalist id="dl-profile-temp">
-              ${(this.constructor as typeof GcApp).CONFIG_HINTS["LLM_TEMPERATURE"]?.options.map(
-                (o) => html`<option value=${o}></option>`,
-              )}
-            </datalist>
           </label>
           <label class="profile-field">
             <span>Max Tokens</span>
             <input
               type="text"
               class="config-input"
-              list="dl-profile-maxtok"
               placeholder="0"
               .value=${p.maxTokens}
               @input=${(e: Event) => {
                 p.maxTokens = (e.target as HTMLInputElement).value;
               }}
             />
-            <datalist id="dl-profile-maxtok">
-              ${(this.constructor as typeof GcApp).CONFIG_HINTS["LLM_MAX_TOKENS"]?.options.map(
-                (o) => html`<option value=${o}></option>`,
-              )}
-            </datalist>
           </label>
         </div>
         <div class="profile-editor-actions">
@@ -2371,6 +2418,10 @@ export class GcApp extends LitElement {
       align-items: center;
       justify-content: space-between;
       margin-bottom: var(--space-3);
+    }
+    .profiles-header-actions {
+      display: flex;
+      gap: var(--space-2);
     }
     .profiles-label {
       font-size: var(--text-xs);

@@ -64,6 +64,12 @@ const (
 	// RepoServiceUpdateConfigProcedure is the fully-qualified name of the RepoService's UpdateConfig
 	// RPC.
 	RepoServiceUpdateConfigProcedure = "/gitchat.v1.RepoService/UpdateConfig"
+	// RepoServiceGetProviderCatalogProcedure is the fully-qualified name of the RepoService's
+	// GetProviderCatalog RPC.
+	RepoServiceGetProviderCatalogProcedure = "/gitchat.v1.RepoService/GetProviderCatalog"
+	// RepoServiceRefreshProviderCatalogProcedure is the fully-qualified name of the RepoService's
+	// RefreshProviderCatalog RPC.
+	RepoServiceRefreshProviderCatalogProcedure = "/gitchat.v1.RepoService/RefreshProviderCatalog"
 	// RepoServiceListProfilesProcedure is the fully-qualified name of the RepoService's ListProfiles
 	// RPC.
 	RepoServiceListProfilesProcedure = "/gitchat.v1.RepoService/ListProfiles"
@@ -127,6 +133,10 @@ type RepoServiceClient interface {
 	// UpdateConfig writes a configuration override into SQLite. The new
 	// value takes effect immediately for future Get() calls.
 	UpdateConfig(context.Context, *connect.Request[v1.UpdateConfigRequest]) (*connect.Response[v1.UpdateConfigResponse], error)
+	// Provider/model catalog from catwalk. Returns cached data (no network).
+	GetProviderCatalog(context.Context, *connect.Request[v1.GetProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error)
+	// Fetch latest catalog from catwalk.charm.sh (user-triggered, opt-in).
+	RefreshProviderCatalog(context.Context, *connect.Request[v1.RefreshProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error)
 	// LLM profile management.
 	ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error)
 	SaveProfile(context.Context, *connect.Request[v1.SaveProfileRequest]) (*connect.Response[v1.SaveProfileResponse], error)
@@ -223,6 +233,18 @@ func NewRepoServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(repoServiceMethods.ByName("UpdateConfig")),
 			connect.WithClientOptions(opts...),
 		),
+		getProviderCatalog: connect.NewClient[v1.GetProviderCatalogRequest, v1.GetProviderCatalogResponse](
+			httpClient,
+			baseURL+RepoServiceGetProviderCatalogProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("GetProviderCatalog")),
+			connect.WithClientOptions(opts...),
+		),
+		refreshProviderCatalog: connect.NewClient[v1.RefreshProviderCatalogRequest, v1.GetProviderCatalogResponse](
+			httpClient,
+			baseURL+RepoServiceRefreshProviderCatalogProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("RefreshProviderCatalog")),
+			connect.WithClientOptions(opts...),
+		),
 		listProfiles: connect.NewClient[v1.ListProfilesRequest, v1.ListProfilesResponse](
 			httpClient,
 			baseURL+RepoServiceListProfilesProcedure,
@@ -252,23 +274,25 @@ func NewRepoServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 
 // repoServiceClient implements RepoServiceClient.
 type repoServiceClient struct {
-	listRepos          *connect.Client[v1.ListReposRequest, v1.ListReposResponse]
-	listBranches       *connect.Client[v1.ListBranchesRequest, v1.ListBranchesResponse]
-	listTree           *connect.Client[v1.ListTreeRequest, v1.ListTreeResponse]
-	getFile            *connect.Client[v1.GetFileRequest, v1.GetFileResponse]
-	listCommits        *connect.Client[v1.ListCommitsRequest, v1.ListCommitsResponse]
-	getBlame           *connect.Client[v1.GetBlameRequest, v1.GetBlameResponse]
-	compareBranches    *connect.Client[v1.CompareBranchesRequest, v1.CompareBranchesResponse]
-	getDiff            *connect.Client[v1.GetDiffRequest, v1.GetDiffResponse]
-	getStatus          *connect.Client[v1.GetStatusRequest, v1.GetStatusResponse]
-	getWorkingTreeDiff *connect.Client[v1.GetWorkingTreeDiffRequest, v1.GetWorkingTreeDiffResponse]
-	getFileChurnMap    *connect.Client[v1.GetFileChurnMapRequest, v1.GetFileChurnMapResponse]
-	getConfig          *connect.Client[v1.GetConfigRequest, v1.GetConfigResponse]
-	updateConfig       *connect.Client[v1.UpdateConfigRequest, v1.UpdateConfigResponse]
-	listProfiles       *connect.Client[v1.ListProfilesRequest, v1.ListProfilesResponse]
-	saveProfile        *connect.Client[v1.SaveProfileRequest, v1.SaveProfileResponse]
-	deleteProfile      *connect.Client[v1.DeleteProfileRequest, v1.DeleteProfileResponse]
-	activateProfile    *connect.Client[v1.ActivateProfileRequest, v1.ActivateProfileResponse]
+	listRepos              *connect.Client[v1.ListReposRequest, v1.ListReposResponse]
+	listBranches           *connect.Client[v1.ListBranchesRequest, v1.ListBranchesResponse]
+	listTree               *connect.Client[v1.ListTreeRequest, v1.ListTreeResponse]
+	getFile                *connect.Client[v1.GetFileRequest, v1.GetFileResponse]
+	listCommits            *connect.Client[v1.ListCommitsRequest, v1.ListCommitsResponse]
+	getBlame               *connect.Client[v1.GetBlameRequest, v1.GetBlameResponse]
+	compareBranches        *connect.Client[v1.CompareBranchesRequest, v1.CompareBranchesResponse]
+	getDiff                *connect.Client[v1.GetDiffRequest, v1.GetDiffResponse]
+	getStatus              *connect.Client[v1.GetStatusRequest, v1.GetStatusResponse]
+	getWorkingTreeDiff     *connect.Client[v1.GetWorkingTreeDiffRequest, v1.GetWorkingTreeDiffResponse]
+	getFileChurnMap        *connect.Client[v1.GetFileChurnMapRequest, v1.GetFileChurnMapResponse]
+	getConfig              *connect.Client[v1.GetConfigRequest, v1.GetConfigResponse]
+	updateConfig           *connect.Client[v1.UpdateConfigRequest, v1.UpdateConfigResponse]
+	getProviderCatalog     *connect.Client[v1.GetProviderCatalogRequest, v1.GetProviderCatalogResponse]
+	refreshProviderCatalog *connect.Client[v1.RefreshProviderCatalogRequest, v1.GetProviderCatalogResponse]
+	listProfiles           *connect.Client[v1.ListProfilesRequest, v1.ListProfilesResponse]
+	saveProfile            *connect.Client[v1.SaveProfileRequest, v1.SaveProfileResponse]
+	deleteProfile          *connect.Client[v1.DeleteProfileRequest, v1.DeleteProfileResponse]
+	activateProfile        *connect.Client[v1.ActivateProfileRequest, v1.ActivateProfileResponse]
 }
 
 // ListRepos calls gitchat.v1.RepoService.ListRepos.
@@ -334,6 +358,16 @@ func (c *repoServiceClient) GetConfig(ctx context.Context, req *connect.Request[
 // UpdateConfig calls gitchat.v1.RepoService.UpdateConfig.
 func (c *repoServiceClient) UpdateConfig(ctx context.Context, req *connect.Request[v1.UpdateConfigRequest]) (*connect.Response[v1.UpdateConfigResponse], error) {
 	return c.updateConfig.CallUnary(ctx, req)
+}
+
+// GetProviderCatalog calls gitchat.v1.RepoService.GetProviderCatalog.
+func (c *repoServiceClient) GetProviderCatalog(ctx context.Context, req *connect.Request[v1.GetProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error) {
+	return c.getProviderCatalog.CallUnary(ctx, req)
+}
+
+// RefreshProviderCatalog calls gitchat.v1.RepoService.RefreshProviderCatalog.
+func (c *repoServiceClient) RefreshProviderCatalog(ctx context.Context, req *connect.Request[v1.RefreshProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error) {
+	return c.refreshProviderCatalog.CallUnary(ctx, req)
 }
 
 // ListProfiles calls gitchat.v1.RepoService.ListProfiles.
@@ -406,6 +440,10 @@ type RepoServiceHandler interface {
 	// UpdateConfig writes a configuration override into SQLite. The new
 	// value takes effect immediately for future Get() calls.
 	UpdateConfig(context.Context, *connect.Request[v1.UpdateConfigRequest]) (*connect.Response[v1.UpdateConfigResponse], error)
+	// Provider/model catalog from catwalk. Returns cached data (no network).
+	GetProviderCatalog(context.Context, *connect.Request[v1.GetProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error)
+	// Fetch latest catalog from catwalk.charm.sh (user-triggered, opt-in).
+	RefreshProviderCatalog(context.Context, *connect.Request[v1.RefreshProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error)
 	// LLM profile management.
 	ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error)
 	SaveProfile(context.Context, *connect.Request[v1.SaveProfileRequest]) (*connect.Response[v1.SaveProfileResponse], error)
@@ -498,6 +536,18 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(repoServiceMethods.ByName("UpdateConfig")),
 		connect.WithHandlerOptions(opts...),
 	)
+	repoServiceGetProviderCatalogHandler := connect.NewUnaryHandler(
+		RepoServiceGetProviderCatalogProcedure,
+		svc.GetProviderCatalog,
+		connect.WithSchema(repoServiceMethods.ByName("GetProviderCatalog")),
+		connect.WithHandlerOptions(opts...),
+	)
+	repoServiceRefreshProviderCatalogHandler := connect.NewUnaryHandler(
+		RepoServiceRefreshProviderCatalogProcedure,
+		svc.RefreshProviderCatalog,
+		connect.WithSchema(repoServiceMethods.ByName("RefreshProviderCatalog")),
+		connect.WithHandlerOptions(opts...),
+	)
 	repoServiceListProfilesHandler := connect.NewUnaryHandler(
 		RepoServiceListProfilesProcedure,
 		svc.ListProfiles,
@@ -550,6 +600,10 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 			repoServiceGetConfigHandler.ServeHTTP(w, r)
 		case RepoServiceUpdateConfigProcedure:
 			repoServiceUpdateConfigHandler.ServeHTTP(w, r)
+		case RepoServiceGetProviderCatalogProcedure:
+			repoServiceGetProviderCatalogHandler.ServeHTTP(w, r)
+		case RepoServiceRefreshProviderCatalogProcedure:
+			repoServiceRefreshProviderCatalogHandler.ServeHTTP(w, r)
 		case RepoServiceListProfilesProcedure:
 			repoServiceListProfilesHandler.ServeHTTP(w, r)
 		case RepoServiceSaveProfileProcedure:
@@ -617,6 +671,14 @@ func (UnimplementedRepoServiceHandler) GetConfig(context.Context, *connect.Reque
 
 func (UnimplementedRepoServiceHandler) UpdateConfig(context.Context, *connect.Request[v1.UpdateConfigRequest]) (*connect.Response[v1.UpdateConfigResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.UpdateConfig is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) GetProviderCatalog(context.Context, *connect.Request[v1.GetProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.GetProviderCatalog is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) RefreshProviderCatalog(context.Context, *connect.Request[v1.RefreshProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.RefreshProviderCatalog is not implemented"))
 }
 
 func (UnimplementedRepoServiceHandler) ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error) {

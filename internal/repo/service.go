@@ -25,6 +25,7 @@ type Service struct {
 	Registry *Registry
 	Config   *config.Registry
 	DB       *storage.DB
+	Catalog  *Catalog
 }
 
 var _ gitchatv1connect.RepoServiceHandler = (*Service)(nil)
@@ -264,6 +265,38 @@ func (s *Service) UpdateConfig(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&gitchatv1.UpdateConfigResponse{}), nil
+}
+
+// ─── Provider Catalog ─────────────────────────────────────────────────
+
+func (s *Service) GetProviderCatalog(
+	ctx context.Context,
+	_ *connect.Request[gitchatv1.GetProviderCatalogRequest],
+) (*connect.Response[gitchatv1.GetProviderCatalogResponse], error) {
+	var providers []*gitchatv1.CatalogProvider
+	if s.Catalog != nil {
+		providers = s.Catalog.Get(ctx)
+	}
+	return connect.NewResponse(&gitchatv1.GetProviderCatalogResponse{
+		Providers: providers,
+	}), nil
+}
+
+func (s *Service) RefreshProviderCatalog(
+	ctx context.Context,
+	_ *connect.Request[gitchatv1.RefreshProviderCatalogRequest],
+) (*connect.Response[gitchatv1.GetProviderCatalogResponse], error) {
+	if s.Catalog == nil {
+		return connect.NewResponse(&gitchatv1.GetProviderCatalogResponse{}), nil
+	}
+	providers, err := s.Catalog.Refresh(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal,
+			fmt.Errorf("fetch catalog from catwalk.charm.sh: %w", err))
+	}
+	return connect.NewResponse(&gitchatv1.GetProviderCatalogResponse{
+		Providers: providers,
+	}), nil
 }
 
 // ─── LLM Profiles ─────────────────────────────────────────────────────

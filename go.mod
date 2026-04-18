@@ -1,8 +1,9 @@
 module github.com/pders01/git-chat
 
-go 1.25.0
+go 1.25.9
 
 require (
+	charm.land/catwalk v0.37.3
 	connectrpc.com/connect v1.19.1
 	github.com/anthropics/anthropic-sdk-go v1.35.0
 	github.com/charmbracelet/lipgloss v1.1.0
@@ -12,7 +13,8 @@ require (
 	github.com/go-git/go-git/v5 v5.14.0
 	github.com/mark3labs/mcp-go v0.47.1
 	github.com/sashabaranov/go-openai v1.41.2
-	golang.org/x/crypto v0.40.0
+	golang.org/x/crypto v0.41.0
+	golang.org/x/term v0.42.0
 	google.golang.org/protobuf v1.36.11
 	modernc.org/sqlite v1.48.2
 )
@@ -30,6 +32,7 @@ require (
 	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
 	github.com/charmbracelet/x/conpty v0.1.0 // indirect
 	github.com/charmbracelet/x/errors v0.0.0-20240508181413-e8d8b6e2de86 // indirect
+	github.com/charmbracelet/x/etag v0.2.0 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/charmbracelet/x/termios v0.1.0 // indirect
 	github.com/cloudflare/circl v1.6.0 // indirect
@@ -60,6 +63,7 @@ require (
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/skeema/knownhosts v1.3.1 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -68,11 +72,10 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
-	golang.org/x/net v0.41.0 // indirect
+	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/term v0.42.0 // indirect
-	golang.org/x/text v0.27.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	modernc.org/libc v1.70.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

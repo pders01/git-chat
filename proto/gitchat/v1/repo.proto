@@ -73,6 +73,11 @@ service RepoService {
   // value takes effect immediately for future Get() calls.
   rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
 
+  // Provider/model catalog from catwalk. Returns cached data (no network).
+  rpc GetProviderCatalog(GetProviderCatalogRequest) returns (GetProviderCatalogResponse);
+  // Fetch latest catalog from catwalk.charm.sh (user-triggered, opt-in).
+  rpc RefreshProviderCatalog(RefreshProviderCatalogRequest) returns (GetProviderCatalogResponse);
+
   // LLM profile management.
   rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
   rpc SaveProfile(SaveProfileRequest) returns (SaveProfileResponse);
@@ -350,6 +355,35 @@ message GetFileChurnMapResponse {
   // date at the true data boundary so "slider at left" never lies
   // about showing all history while the server silently truncated.
   int64 effective_since_timestamp = 7;
+}
+
+// ─── Provider Catalog ─────────────────────────────────────────────────
+
+message GetProviderCatalogRequest {}
+message RefreshProviderCatalogRequest {}
+
+message CatalogModel {
+  string id = 1;
+  string name = 2;
+  int64  context_window = 3;
+  double cost_per_1m_in = 4;
+  double cost_per_1m_out = 5;
+  bool   can_reason = 6;
+  bool   supports_images = 7;
+  int64  default_max_tokens = 8;
+}
+
+message CatalogProvider {
+  string id = 1;
+  string name = 2;
+  string type = 3;            // "openai", "anthropic", etc.
+  string default_base_url = 4;
+  string default_model_id = 5;
+  repeated CatalogModel models = 6;
+}
+
+message GetProviderCatalogResponse {
+  repeated CatalogProvider providers = 1;
 }
 
 // ─── LLM Profiles ─────────────────────────────────────────────────────
