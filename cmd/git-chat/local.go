@@ -178,6 +178,7 @@ func runLocal(args []string) error {
 	registry.SetConfig(cfg)
 
 	sessions := auth.NewSessionStore(false)
+	sessions.SetConfig(cfg)
 	localTok := auth.NewLocalTokens()
 	token, _, err := localTok.Mint()
 	if err != nil {

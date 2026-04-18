@@ -166,6 +166,7 @@ const (
 	defaultMaxTreeLines            = 60
 	defaultMaxTreeBytes            = 2 * 1024
 	defaultRecentCommitCount       = 5
+	defaultDefaultSessionLimit     = 100
 )
 
 // cfgInt resolves a chat-Registry-backed int tunable, falling back to
@@ -235,7 +236,8 @@ func (s *Service) ListSessions(
 	req *connect.Request[gitchatv1.ListSessionsRequest],
 ) (*connect.Response[gitchatv1.ListSessionsResponse], error) {
 	principal, _, _ := auth.PrincipalFromContext(ctx)
-	rows, err := s.DB.ListSessions(ctx, principal, req.Msg.RepoId, 0, 0)
+	limit := s.cfgInt(ctx, "GITCHAT_DEFAULT_SESSION_LIMIT", defaultDefaultSessionLimit)
+	rows, err := s.DB.ListSessions(ctx, principal, req.Msg.RepoId, limit, 0)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

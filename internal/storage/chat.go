@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
-	"strconv"
 	"time"
 )
 
@@ -15,9 +13,12 @@ import (
 // of session IDs never reveals whether an ID is in use.
 var ErrNotFound = errors.New("storage: not found")
 
-// defaultSessionLimit is the default number of sessions returned by
-// ListSessions when the caller passes limit <= 0.
-var defaultSessionLimit = envIntStorage("GITCHAT_DEFAULT_SESSION_LIMIT", 100)
+// defaultSessionLimit is the backstop page size used when a caller
+// passes limit <= 0. The canonical source is the config Registry
+// (GITCHAT_DEFAULT_SESSION_LIMIT), resolved by chat.Service before it
+// calls ListSessions — so this const only applies for direct storage
+// users (tests, the MCP server if it ever grows its own session list).
+const defaultSessionLimit = 100
 
 // SessionRow is the DB-facing shape of a chat session.
 type SessionRow struct {
@@ -407,12 +408,3 @@ func nullString(s string) any {
 	return s
 }
 
-// envIntStorage reads an env var as int, returning def if unset or invalid.
-func envIntStorage(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return n
-		}
-	}
-	return def
-}

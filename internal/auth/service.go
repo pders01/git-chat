@@ -176,7 +176,7 @@ func (s *Service) writeSetCookie(h http.Header, sess *Session) {
 		Value:    sess.Token,
 		Path:     "/",
 		Expires:  sess.ExpiresAt,
-		MaxAge:   int(s.Sessions.ttl.Seconds()),
+		MaxAge:   int(s.Sessions.TTL().Seconds()),
 		HttpOnly: true,
 		Secure:   s.Sessions.secureCk,
 		SameSite: http.SameSiteStrictMode,

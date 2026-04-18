@@ -89,6 +89,7 @@ func runServe(args []string) error {
 
 	pairings := auth.NewPairingStore()
 	sessions := auth.NewSessionStore(*behindTLS)
+	sessions.SetConfig(cfg)
 	llmAdapter, err := buildLLM(*llmBackend, *llmBase, *llmKey, llmModel)
 	if err != nil {
 		return err
