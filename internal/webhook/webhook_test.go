@@ -213,6 +213,20 @@ func TestFormatTextCardInvalidated(t *testing.T) {
 	}
 }
 
+func TestFormatTextCardCreated(t *testing.T) {
+	text := formatText(Event{
+		Type:     "card_created",
+		RepoID:   "git-chat",
+		Question: "How does auth work?",
+	})
+	if !contains(text, "git-chat") || !contains(text, "auth") {
+		t.Fatalf("text missing expected content: %q", text)
+	}
+	if !contains(text, "New KB card") {
+		t.Fatalf("text should say 'New KB card': %q", text)
+	}
+}
+
 func TestFormatTextDefault(t *testing.T) {
 	text := formatText(Event{Type: "unknown", RepoID: "r"})
 	if text != "[unknown] r" {

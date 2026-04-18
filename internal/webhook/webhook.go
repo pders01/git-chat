@@ -154,6 +154,8 @@ func formatText(ev Event) string {
 	case "card_invalidated":
 		return fmt.Sprintf("KB card invalidated in *%s*\n> %s\n> Reason: `%s` %s",
 			ev.RepoID, ev.Question, ev.Path, ev.Reason)
+	case "card_created":
+		return fmt.Sprintf("New KB card in *%s*\n> %s", ev.RepoID, ev.Question)
 	default:
 		return fmt.Sprintf("[%s] %s", ev.Type, ev.RepoID)
 	}

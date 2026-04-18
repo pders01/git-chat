@@ -1161,8 +1161,9 @@ func (s *Service) maybePromoteCard(model, repoID, normalizedQ, answer, headCommi
 		return
 	}
 
+	newCardID := newID()
 	cardID, err := s.DB.UpsertCard(ctx, storage.CardRow{
-		ID:                 newID(),
+		ID:                 newCardID,
 		RepoID:             repoID,
 		QuestionNormalized: normalizedQ,
 		AnswerMD:           answer,
@@ -1174,6 +1175,18 @@ func (s *Service) maybePromoteCard(model, repoID, normalizedQ, answer, headCommi
 	if err != nil {
 		slog.Debug("card upsert failed", "err", err)
 		return
+	}
+	// UpsertCard returns the canonical ID — equal to newCardID only when
+	// the insert landed fresh (no conflict). Updates to an existing
+	// card's answer don't fire this event; otherwise webhooks would get
+	// noisy every time someone re-asked a covered question.
+	if cardID == newCardID && s.Webhook != nil {
+		s.Webhook.Send(ctx, webhook.Event{
+			Type:     "card_created",
+			RepoID:   repoID,
+			CardID:   cardID,
+			Question: normalizedQ,
+		})
 	}
 
 	// Gather provenance from @-mentions in the user message.
