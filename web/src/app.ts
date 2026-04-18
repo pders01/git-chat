@@ -73,6 +73,25 @@ export class GcApp extends LitElement {
   private _routing = false;
   private _paletteScrollRafId: number | null = null;
 
+  // Only one overlay can be visible at a time. Before this guard, hitting
+  // Cmd+K while settings was open would stack a palette on top of settings,
+  // layering two backdrops and two input focus targets. openOverlay() is
+  // the single entry point; direct assignment to showX is allowed only
+  // for the explicit "close this one" path inside each overlay.
+  private openOverlay(name: "settings" | "shortcuts" | "palette" | "search" | null) {
+    this.showSettings = name === "settings";
+    this.showShortcuts = name === "shortcuts";
+    this.showSearch = name === "search";
+    if (name !== "palette") {
+      if (this._paletteScrollRafId !== null) {
+        cancelAnimationFrame(this._paletteScrollRafId);
+        this._paletteScrollRafId = null;
+      }
+      this.paletteQuery = "";
+    }
+    this.showPalette = name === "palette";
+  }
+
   override async connectedCallback() {
     super.connectedCallback();
     window.addEventListener("hashchange", this.onHashChange);
@@ -217,7 +236,7 @@ export class GcApp extends LitElement {
       !(origin instanceof HTMLInputElement)
     ) {
       e.preventDefault();
-      this.showShortcuts = !this.showShortcuts;
+      this.openOverlay(this.showShortcuts ? null : "shortcuts");
       return;
     }
     if (
@@ -225,18 +244,7 @@ export class GcApp extends LitElement {
       !e.defaultPrevented &&
       (this.showShortcuts || this.showSettings || this.showPalette || this.showSearch)
     ) {
-      this.showShortcuts = false;
-      this.showSettings = false;
-      this.showSearch = false;
-      if (this.showPalette) {
-        // Cancel pending scroll RAF when closing palette
-        if (this._paletteScrollRafId !== null) {
-          cancelAnimationFrame(this._paletteScrollRafId);
-          this._paletteScrollRafId = null;
-        }
-        this.showPalette = false;
-        this.paletteQuery = "";
-      }
+      this.openOverlay(null);
       return;
     }
 
@@ -246,8 +254,7 @@ export class GcApp extends LitElement {
     switch (e.key) {
       case "k":
         e.preventDefault();
-        this.showPalette = !this.showPalette;
-        if (!this.showPalette) this.paletteQuery = "";
+        this.openOverlay(this.showPalette ? null : "palette");
         break;
       case "1":
         e.preventDefault();
@@ -272,7 +279,7 @@ export class GcApp extends LitElement {
       case "f":
         // ⌘F → global search
         e.preventDefault();
-        this.showSearch = !this.showSearch;
+        this.openOverlay(this.showSearch ? null : "search");
         if (this.showSearch) {
           requestAnimationFrame(() => {
             const input = this.renderRoot.querySelector<HTMLInputElement>(".search-input");
@@ -610,9 +617,7 @@ export class GcApp extends LitElement {
             <span class="mode">${modeLabel}</span>
             <button
               class="settings-btn"
-              @click=${() => {
-                this.showSettings = !this.showSettings;
-              }}
+              @click=${() => this.openOverlay(this.showSettings ? null : "settings")}
               aria-label="Settings"
               title="Settings"
             >
@@ -671,7 +676,7 @@ export class GcApp extends LitElement {
       <gc-settings-panel
         .open=${this.showSettings}
         @gc:close=${() => {
-          this.showSettings = false;
+          this.openOverlay(null);
         }}
       ></gc-settings-panel>
       ${this.showSearch ? this.renderSearchOverlay() : nothing}
@@ -698,7 +703,7 @@ export class GcApp extends LitElement {
       ["?", "Toggle this help"],
     ];
     return html`
-      <div class="modal-backdrop" @click=${() => (this.showShortcuts = false)}>
+      <div class="modal-backdrop" @click=${() => this.openOverlay(null)}>
         <div
           class="modal"
           role="dialog"
@@ -760,7 +765,7 @@ export class GcApp extends LitElement {
 
   private onSearchKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
-      this.showSearch = false;
+      this.openOverlay(null);
       return;
     }
     if (e.key === "ArrowDown") {
@@ -780,7 +785,7 @@ export class GcApp extends LitElement {
   }
 
   private activateSearchResult(r: { source: string; id: string; title: string }) {
-    this.showSearch = false;
+    this.openOverlay(null);
     if (this.state.phase !== "authenticated") return;
 
     switch (r.source) {
@@ -839,9 +844,7 @@ export class GcApp extends LitElement {
         id: "open-search",
         label: "Open Search",
         hint: `${mod}F`,
-        action: () => {
-          this.showSearch = true;
-        },
+        action: () => this.openOverlay("search"),
       },
       {
         id: "theme-light",
@@ -865,17 +868,13 @@ export class GcApp extends LitElement {
         id: "open-settings",
         label: "Open Settings",
         hint: "",
-        action: () => {
-          this.showSettings = true;
-        },
+        action: () => this.openOverlay("settings"),
       },
       {
         id: "shortcuts-help",
         label: "Show Shortcuts",
         hint: "?",
-        action: () => {
-          this.showShortcuts = true;
-        },
+        action: () => this.openOverlay("shortcuts"),
       },
     );
 
@@ -897,8 +896,7 @@ export class GcApp extends LitElement {
 
   private onPaletteKeydown(filtered: Array<{ action: () => void }>, e: KeyboardEvent) {
     if (e.key === "Escape") {
-      this.showPalette = false;
-      this.paletteQuery = "";
+      this.openOverlay(null);
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       this.paletteSelectedIdx = Math.min(this.paletteSelectedIdx + 1, filtered.length - 1);
@@ -909,9 +907,13 @@ export class GcApp extends LitElement {
       this.scrollPaletteSelectionIntoView();
     } else if (e.key === "Enter" && filtered.length > 0) {
       e.preventDefault();
-      filtered[this.paletteSelectedIdx].action();
-      this.showPalette = false;
-      this.paletteQuery = "";
+      // Close palette first so actions that open another overlay (e.g.
+      // "Open Settings" → openOverlay("settings")) don't fight with our
+      // cleanup. Actions that don't change overlays (theme, tab nav)
+      // just run in a clean state.
+      const action = filtered[this.paletteSelectedIdx].action;
+      this.openOverlay(null);
+      action();
     }
   }
 
@@ -936,13 +938,7 @@ export class GcApp extends LitElement {
     if (idx !== this.paletteSelectedIdx) this.paletteSelectedIdx = idx;
 
     return html`
-      <div
-        class="search-backdrop"
-        @click=${() => {
-          this.showPalette = false;
-          this.paletteQuery = "";
-        }}
-      ></div>
+      <div class="search-backdrop" @click=${() => this.openOverlay(null)}></div>
       <div
         class="palette"
         role="dialog"
@@ -969,9 +965,9 @@ export class GcApp extends LitElement {
                 role="option"
                 aria-selected=${i === idx}
                 @click=${() => {
-                  a.action();
-                  this.showPalette = false;
-                  this.paletteQuery = "";
+                  const action = a.action;
+                  this.openOverlay(null);
+                  action();
                 }}
                 @mouseenter=${() => {
                   this.paletteSelectedIdx = i;
@@ -998,7 +994,7 @@ export class GcApp extends LitElement {
       file: "files",
     };
     return html`
-      <div class="search-backdrop" @click=${() => (this.showSearch = false)}></div>
+      <div class="search-backdrop" @click=${() => this.openOverlay(null)}></div>
       <div
         class="search-palette"
         role="dialog"
