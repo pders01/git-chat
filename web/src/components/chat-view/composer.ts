@@ -193,6 +193,17 @@ export class GcComposer extends LitElement {
     return [];
   }
 
+  // Scroll the active item in a listbox into view after keyboard nav.
+  // Takes the selector so one helper covers mention, slash, and arg lists.
+  private scrollActiveIntoView(listSelector: string) {
+    void this.updateComplete.then(() => {
+      const el = this.renderRoot.querySelector<HTMLElement>(
+        `${listSelector} [aria-selected="true"]`,
+      );
+      el?.scrollIntoView({ block: "nearest" });
+    });
+  }
+
   private acceptArgSuggestion(sugg: ArgSuggestion) {
     const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
     if (!ta || !this.argCtx) return;
@@ -337,12 +348,14 @@ export class GcComposer extends LitElement {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         this.mentionIdx = (this.mentionIdx + 1) % this.mentionResults.length;
+        this.scrollActiveIntoView(".mention-list");
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         this.mentionIdx =
           this.mentionIdx <= 0 ? this.mentionResults.length - 1 : this.mentionIdx - 1;
+        this.scrollActiveIntoView(".mention-list");
         return;
       }
       if (e.key === "Enter" || e.key === "Tab") {
@@ -361,12 +374,14 @@ export class GcComposer extends LitElement {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         this.slashIdx = (this.slashIdx + 1) % this.slashResults.length;
+        this.scrollActiveIntoView(".slash-list");
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         this.slashIdx =
           this.slashIdx <= 0 ? this.slashResults.length - 1 : this.slashIdx - 1;
+        this.scrollActiveIntoView(".slash-list");
         return;
       }
       if (e.key === "Enter" || e.key === "Tab") {
@@ -384,11 +399,13 @@ export class GcComposer extends LitElement {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         this.argIdx = (this.argIdx + 1) % this.argResults.length;
+        this.scrollActiveIntoView(".arg-list");
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         this.argIdx = this.argIdx <= 0 ? this.argResults.length - 1 : this.argIdx - 1;
+        this.scrollActiveIntoView(".arg-list");
         return;
       }
       if (e.key === "Tab") {
@@ -769,6 +786,7 @@ export class GcComposer extends LitElement {
       pointer-events: none;
     }
     .composer-inner {
+      position: relative;
       max-width: var(--content-max-width);
       margin: 0 auto;
       box-sizing: border-box;
@@ -809,13 +827,26 @@ export class GcComposer extends LitElement {
     textarea::placeholder {
       opacity: 0.35;
     }
-    .mention-list {
+    /* All three autocomplete lists open UPWARD above the textarea —
+       composer sits at the viewport bottom, so a downward dropdown
+       gets clipped by the screen edge. Positioning is relative to
+       .composer-inner (position: relative set below). */
+    .mention-list,
+    .slash-list {
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      right: 0;
+      margin: 0 0 var(--space-1);
       list-style: none;
-      margin: 0;
       padding: var(--space-1) 0;
-      border-top: 1px solid var(--surface-4);
-      max-height: 160px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      box-shadow: var(--shadow-dropdown, 0 4px 12px rgba(0, 0, 0, 0.35));
+      max-height: min(50vh, 420px);
       overflow-y: auto;
+      z-index: 10;
     }
     .mention-item {
       display: block;
@@ -832,14 +863,6 @@ export class GcComposer extends LitElement {
     .mention-item:hover,
     .mention-item.active {
       background: var(--surface-3);
-    }
-    .slash-list {
-      list-style: none;
-      margin: 0;
-      padding: var(--space-1) 0;
-      border-top: 1px solid var(--surface-4);
-      max-height: 160px;
-      overflow-y: auto;
     }
     .slash-item {
       display: grid;
@@ -870,9 +893,6 @@ export class GcComposer extends LitElement {
     .slash-example {
       opacity: 0.45;
       font-size: 0.68rem;
-    }
-    .arg-list {
-      max-height: 240px;
     }
     .arg-item {
       grid-template-columns: max-content 1fr;
