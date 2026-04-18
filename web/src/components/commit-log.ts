@@ -41,6 +41,18 @@ type DiffPaneState =
   | { phase: "error"; message: string }
   | { phase: "ready"; rawDiff: string; diffHtml: string; parentSha: string };
 
+// insertByAuthorTime splices a commit into a desc-sorted commit
+// array at the right chronological position. Used when a commit
+// selection originates from outside the currently paginated list
+// (calendar drill-in, blame short-SHA lookup) — keeps the list
+// visually coherent instead of appending out-of-order at the end.
+function insertByAuthorTime(list: CommitEntry[], c: CommitEntry): CommitEntry[] {
+  const t = Number(c.authorTime);
+  let i = 0;
+  while (i < list.length && Number(list[i]!.authorTime) >= t) i++;
+  return [...list.slice(0, i), c, ...list.slice(i)];
+}
+
 @customElement("gc-commit-log")
 export class GcCommitLog extends LitElement {
   @property({ type: String }) repoId = "";
@@ -48,6 +60,7 @@ export class GcCommitLog extends LitElement {
   @property({ type: String }) initialCommitSha = "";
   @property({ type: String }) initialLogFile = "";
   @property({ type: Boolean }) initialSplitView = false;
+  @property({ type: String }) initialLogView: "commits" | "calendar" = "commits";
   @state() private state: LogState = { phase: "loading" };
   @state() private selectedSha = "";
   @state() private drawerOpen = false;
@@ -212,6 +225,11 @@ export class GcCommitLog extends LitElement {
     if (changed.has("initialSplitView")) {
       this.splitView = this.initialSplitView;
     }
+    // URL drives viewMode: when the route changes (deep link, back
+    // button, bridge from another view), sync the internal mode.
+    if (changed.has("initialLogView") && this.initialLogView !== this.viewMode) {
+      this.viewMode = this.initialLogView;
+    }
     // Re-attach the infinite-scroll sentinel observer every render
     // in commits view — the sentinel is recreated whenever
     // hasMore flips or the list re-renders. Calling observe() on
@@ -360,29 +378,46 @@ export class GcCommitLog extends LitElement {
   };
 
   private async selectCommit(sha: string) {
-    // Support prefix matching (e.g. 7-char short SHA from blame).
-    if (this.state.phase === "ready" && sha.length < 40) {
-      const match = this.state.commits.find((c) => c.sha.startsWith(sha));
-      if (match) {
-        sha = match.sha;
-      } else if (this.state.hasMore) {
-        // Commit not in loaded page — resolve via listCommits with ref.
-        try {
-          const resp = await repoClient.listCommits({
-            repoId: this.repoId,
-            ref: sha,
-            limit: 1,
-          });
-          if (resp.commits.length > 0) {
-            sha = resp.commits[0].sha;
-            // Append to loaded commits so it's selectable.
-            this.state = {
-              ...this.state,
-              commits: [...this.state.commits, resp.commits[0]],
-            };
+    // Resolve and splice-in commits that aren't in the paginated
+    // state.commits page yet. Two entry paths need this:
+    //   - short SHA from blame ("b7f7cd0") → listCommits with ref
+    //     to expand to full SHA + entry
+    //   - full SHA from the calendar drill-in → commit lives in
+    //     calendarCommits (full history), not state.commits. We
+    //     copy it over so the sidebar can highlight the selection
+    //     without a round-trip.
+    if (this.state.phase === "ready") {
+      const inList = this.state.commits.find(
+        (c) => c.sha === sha || (sha.length < 40 && c.sha.startsWith(sha)),
+      );
+      if (inList) {
+        sha = inList.sha;
+      } else {
+        const fromCalendar =
+          sha.length === 40 ? this.calendarCommits.find((c) => c.sha === sha) : undefined;
+        if (fromCalendar) {
+          this.state = {
+            ...this.state,
+            commits: insertByAuthorTime(this.state.commits, fromCalendar),
+          };
+        } else if (this.state.hasMore) {
+          // Not in either list — resolve via listCommits with ref.
+          try {
+            const resp = await repoClient.listCommits({
+              repoId: this.repoId,
+              ref: sha,
+              limit: 1,
+            });
+            if (resp.commits.length > 0) {
+              sha = resp.commits[0].sha;
+              this.state = {
+                ...this.state,
+                commits: insertByAuthorTime(this.state.commits, resp.commits[0]),
+              };
+            }
+          } catch {
+            // Can't resolve — proceed with best-effort SHA.
           }
-        } catch {
-          // Can't resolve — proceed with short SHA anyway.
         }
       }
     }
@@ -987,22 +1022,12 @@ export class GcCommitLog extends LitElement {
         )
       : rawCommits;
     const sel = this.selectedCommit();
-    if (this.viewMode === "calendar") {
-      return html`
-        <div class="log-root">
-          ${this.renderViewSwitch()}
-          <gc-commit-calendar
-            .commits=${this.calendarCommits}
-            @gc:select-commit=${this.onCalendarPick}
-          ></gc-commit-calendar>
-        </div>
-      `;
-    }
     return html`
       <div class="log-root">
-        ${this.renderViewSwitch()}
         <div
-          class="layout ${this.drawerOpen ? "drawer-open" : ""} ${this.focused ? "focused" : ""}"
+          class="layout ${this.viewMode === "calendar" ? "calendar-mode" : ""} ${this.drawerOpen
+            ? "drawer-open"
+            : ""} ${this.focused ? "focused" : ""}"
           @keydown=${(e: KeyboardEvent) => {
             if (e.key === "Escape" && this.drawerOpen) {
               this.drawerOpen = false;
@@ -1034,7 +1059,17 @@ export class GcCommitLog extends LitElement {
                 aria-label="Filter commits by message or author"
               />
               <button
-                class="graph-toggle ${this.graphMode ? "active" : ""}"
+                class="hd-btn ${this.viewMode === "calendar" ? "active" : ""}"
+                @click=${() =>
+                  this.setViewMode(this.viewMode === "calendar" ? "commits" : "calendar")}
+                aria-label="Toggle commit calendar"
+                aria-pressed=${this.viewMode === "calendar" ? "true" : "false"}
+                title="Commit calendar"
+              >
+                ▦
+              </button>
+              <button
+                class="hd-btn ${this.graphMode ? "active" : ""}"
                 @click=${() => {
                   this.graphMode = !this.graphMode;
                 }}
@@ -1090,213 +1125,211 @@ export class GcCommitLog extends LitElement {
                       </li>
                     `,
                   )}
+                  ${hasMore
+                    ? html`<li class="load-sentinel" role="presentation" aria-hidden="true">
+                        ${this.loadingMore ? "loading…" : ""}
+                      </li>`
+                    : nothing}
                 </ul>`}
-            ${hasMore
-              ? html`<div class="load-sentinel" aria-hidden="true">
-                  ${this.loadingMore ? "loading…" : ""}
-                </div>`
-              : nothing}
           </aside>
 
-          <!-- Middle: commit info pane — split vertically, top is the
+          ${this.viewMode === "calendar"
+            ? html`<gc-commit-calendar
+                class="calendar-pane"
+                .commits=${this.calendarCommits}
+                .loadedCount=${this.calendarCommits.length}
+                .loading=${this.calendarLoading}
+                @gc:select-commit=${this.onCalendarPick}
+              ></gc-commit-calendar>`
+            : html` <!-- Middle: commit info pane — split vertically, top is the
              commit metadata capped at 50% of the pane height, bottom is
              the file list filling the remainder. -->
-          <section class="info-pane">
-            ${sel
-              ? html`
-                  <div class="info-meta-section">
-                    <div class="info-sha">
-                      <span
-                        class="detail-sha copyable"
-                        tabindex="0"
-                        role="button"
-                        @click=${(e: Event) => {
-                          e.stopPropagation();
-                          copyText(this, sel.sha, "SHA copied");
-                        }}
-                        @keydown=${(e: KeyboardEvent) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            copyText(this, sel.sha, "SHA copied");
-                          }
-                        }}
-                        title="Press Enter to copy full SHA"
-                        >${sel.shortSha}</span
-                      >
-                    </div>
-                    <div class="info-subject">${sel.message}</div>
-                    ${sel.body ? html`<pre class="info-body">${sel.body}</pre>` : nothing}
-                    <div class="info-meta">
-                      <span>${sel.authorName}</span>
-                      <span class="info-age">${formatAge(Number(sel.authorTime))}</span>
-                    </div>
-                    <button
-                      class="action-btn"
-                      @click=${() => this.askAboutCommit(sel)}
-                      aria-label="Explain commit ${sel.shortSha} in chat"
-                    >
-                      explain in chat
-                    </button>
-                  </div>
-                  ${this.files.length
-                    ? html` <div class="info-files-section">
-                        <div class="file-list-header">
-                          <span>files</span>
-                          <span class="info-files">${this.files.length}</span>
-                        </div>
-                        <ul class="file-list" role="list">
-                          <li>
-                            <button
-                              class="file-entry ${this.selectedFile === "" ? "selected" : ""}"
-                              @click=${() => this.selectFile("")}
+                <section class="info-pane">
+                  ${sel
+                    ? html`
+                        <div class="info-meta-section">
+                          <div class="info-sha">
+                            <span
+                              class="detail-sha copyable"
+                              tabindex="0"
+                              role="button"
+                              @click=${(e: Event) => {
+                                e.stopPropagation();
+                                copyText(this, sel.sha, "SHA copied");
+                              }}
+                              @keydown=${(e: KeyboardEvent) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  copyText(this, sel.sha, "SHA copied");
+                                }
+                              }}
+                              title="Press Enter to copy full SHA"
+                              >${sel.shortSha}</span
                             >
-                              <span class="file-status all">∗</span>
-                              <span class="file-path">all files</span>
-                              <span class="file-stats">
-                                <span class="adds">+${sel.additions}</span>
-                                <span class="dels">-${sel.deletions}</span>
-                              </span>
-                            </button>
-                          </li>
-                          ${this.files.map(
-                            (f) => html`
-                              <li>
-                                <button
-                                  class="file-entry ${this.selectedFile === f.path
-                                    ? "selected"
-                                    : ""}"
-                                  @click=${(e: MouseEvent) => {
-                                    if (e.metaKey || e.ctrlKey) {
-                                      this.openInBrowse(f.path);
-                                    } else {
-                                      this.selectFile(f.path);
-                                    }
-                                  }}
-                                  title="${f.fromPath
-                                    ? `${f.fromPath} → ${f.path} (renamed)`
-                                    : f.path} (⌘+click to open in browse)"
-                                >
-                                  <span class="file-status ${f.status}"
-                                    >${statusLabel(f.status)}</span
-                                  >
-                                  <span class="file-path"
-                                    >${fileName(f.path)}${f.fromPath
-                                      ? html`<span class="rename-from"
-                                          >← ${fileName(f.fromPath)}</span
-                                        >`
-                                      : nothing}</span
-                                  >
-                                  <span class="file-stats">
-                                    <span class="adds">+${f.additions}</span>
-                                    <span class="dels">-${f.deletions}</span>
-                                  </span>
-                                </button>
-                              </li>
-                            `,
-                          )}
-                        </ul>
-                      </div>`
-                    : nothing}
-                `
-              : html`<div class="info-empty">select a commit</div>`}
-          </section>
-
-          <!-- Right: diff pane -->
-          <section class="diff-pane">
-            ${sel
-              ? html` <div class="diff-header">
-                    ${this.selectedFile
-                      ? html` <span class="file-status ${this.selectedFileEntry()?.status ?? ""}"
-                            >${statusLabel(this.selectedFileEntry()?.status ?? "")}</span
+                          </div>
+                          <div class="info-subject">${sel.message}</div>
+                          ${sel.body ? html`<pre class="info-body">${sel.body}</pre>` : nothing}
+                          <div class="info-meta">
+                            <span>${sel.authorName}</span>
+                            <span class="info-age">${formatAge(Number(sel.authorTime))}</span>
+                          </div>
+                          <button
+                            class="action-btn"
+                            @click=${() => this.askAboutCommit(sel)}
+                            aria-label="Explain commit ${sel.shortSha} in chat"
                           >
-                          <span class="diff-filepath">${this.selectedFile}</span>
-                          <span class="diff-spacer"></span>
-                          ${this.selectedFileEntry()
-                            ? html`<span class="detail-stats">
-                                <span class="adds">+${this.selectedFileEntry()!.additions}</span>
-                                <span class="dels">-${this.selectedFileEntry()!.deletions}</span>
-                              </span>`
-                            : nothing}`
-                      : html` <span class="detail-sha">${sel.shortSha}</span>
-                          <span class="diff-label">diff</span>
-                          <span class="diff-spacer"></span>
-                          ${sel.filesChanged
-                            ? html`<span class="detail-stats">
-                                <span class="info-files"
-                                  >${sel.filesChanged} file${sel.filesChanged > 1 ? "s" : ""}</span
+                            explain in chat
+                          </button>
+                        </div>
+                        ${this.files.length
+                          ? html` <div class="info-files-section">
+                              <div class="file-list-header">
+                                <span>files</span>
+                                <span class="info-files">${this.files.length}</span>
+                              </div>
+                              <ul class="file-list" role="list">
+                                <li>
+                                  <button
+                                    class="file-entry ${this.selectedFile === "" ? "selected" : ""}"
+                                    @click=${() => this.selectFile("")}
+                                  >
+                                    <span class="file-status all">∗</span>
+                                    <span class="file-path">all files</span>
+                                    <span class="file-stats">
+                                      <span class="adds">+${sel.additions}</span>
+                                      <span class="dels">-${sel.deletions}</span>
+                                    </span>
+                                  </button>
+                                </li>
+                                ${this.files.map(
+                                  (f) => html`
+                                    <li>
+                                      <button
+                                        class="file-entry ${this.selectedFile === f.path
+                                          ? "selected"
+                                          : ""}"
+                                        @click=${(e: MouseEvent) => {
+                                          if (e.metaKey || e.ctrlKey) {
+                                            this.openInBrowse(f.path);
+                                          } else {
+                                            this.selectFile(f.path);
+                                          }
+                                        }}
+                                        title="${f.fromPath
+                                          ? `${f.fromPath} → ${f.path} (renamed)`
+                                          : f.path} (⌘+click to open in browse)"
+                                      >
+                                        <span class="file-status ${f.status}"
+                                          >${statusLabel(f.status)}</span
+                                        >
+                                        <span class="file-path"
+                                          >${fileName(f.path)}${f.fromPath
+                                            ? html`<span class="rename-from"
+                                                >← ${fileName(f.fromPath)}</span
+                                              >`
+                                            : nothing}</span
+                                        >
+                                        <span class="file-stats">
+                                          <span class="adds">+${f.additions}</span>
+                                          <span class="dels">-${f.deletions}</span>
+                                        </span>
+                                      </button>
+                                    </li>
+                                  `,
+                                )}
+                              </ul>
+                            </div>`
+                          : nothing}
+                      `
+                    : html`<div class="info-empty">select a commit</div>`}
+                </section>
+
+                <!-- Right: diff pane -->
+                <section class="diff-pane">
+                  ${sel
+                    ? html` <div class="diff-header">
+                          ${this.selectedFile
+                            ? html` <span
+                                  class="file-status ${this.selectedFileEntry()?.status ?? ""}"
+                                  >${statusLabel(this.selectedFileEntry()?.status ?? "")}</span
                                 >
-                                <span class="adds">+${sel.additions}</span>
-                                <span class="dels">-${sel.deletions}</span>
-                              </span>`
-                            : nothing}`}
-                    <button
-                      class="split-toggle ${this.splitView ? "active" : ""}"
-                      @click=${() => {
-                        this.splitView = !this.splitView;
-                        this.dispatchNav({ splitView: this.splitView });
-                      }}
-                      aria-label="Toggle split diff view"
-                      aria-pressed=${this.splitView ? "true" : "false"}
-                      title="Toggle split/unified diff"
-                    >
-                      ${this.splitView ? "unified" : "split"}
-                    </button>
-                    ${this.selectedFile
-                      ? html`<button
-                          class="split-toggle ${this.threePane ? "active" : ""}"
-                          @click=${() => this.toggleThreePane()}
-                          aria-label="Toggle 3-pane diff view (before | diff | after)"
-                          aria-pressed=${this.threePane ? "true" : "false"}
-                          title="Toggle 3-pane view (before | diff | after)"
-                        >
-                          3-pane
-                        </button>`
-                      : nothing}
-                  </div>
-                  <div class="diff-body">${this.renderDiffPane()}</div>`
-              : html`<div class="empty-detail">
-                  <p class="empty-sub">click a commit to view its diff</p>
-                </div>`}
-          </section>
+                                <span class="diff-filepath">${this.selectedFile}</span>
+                                <span class="diff-spacer"></span>
+                                ${this.selectedFileEntry()
+                                  ? html`<span class="detail-stats">
+                                      <span class="adds"
+                                        >+${this.selectedFileEntry()!.additions}</span
+                                      >
+                                      <span class="dels"
+                                        >-${this.selectedFileEntry()!.deletions}</span
+                                      >
+                                    </span>`
+                                  : nothing}`
+                            : html` <span class="detail-sha">${sel.shortSha}</span>
+                                <span class="diff-label">diff</span>
+                                <span class="diff-spacer"></span>
+                                ${sel.filesChanged
+                                  ? html`<span class="detail-stats">
+                                      <span class="info-files"
+                                        >${sel.filesChanged}
+                                        file${sel.filesChanged > 1 ? "s" : ""}</span
+                                      >
+                                      <span class="adds">+${sel.additions}</span>
+                                      <span class="dels">-${sel.deletions}</span>
+                                    </span>`
+                                  : nothing}`}
+                          <button
+                            class="split-toggle ${this.splitView ? "active" : ""}"
+                            @click=${() => {
+                              this.splitView = !this.splitView;
+                              this.dispatchNav({ splitView: this.splitView });
+                            }}
+                            aria-label="Toggle split diff view"
+                            aria-pressed=${this.splitView ? "true" : "false"}
+                            title="Toggle split/unified diff"
+                          >
+                            ${this.splitView ? "unified" : "split"}
+                          </button>
+                          ${this.selectedFile
+                            ? html`<button
+                                class="split-toggle ${this.threePane ? "active" : ""}"
+                                @click=${() => this.toggleThreePane()}
+                                aria-label="Toggle 3-pane diff view (before | diff | after)"
+                                aria-pressed=${this.threePane ? "true" : "false"}
+                                title="Toggle 3-pane view (before | diff | after)"
+                              >
+                                3-pane
+                              </button>`
+                            : nothing}
+                        </div>
+                        <div class="diff-body">${this.renderDiffPane()}</div>`
+                    : html`<div class="empty-detail">
+                        <p class="empty-sub">click a commit to view its diff</p>
+                      </div>`}
+                </section>`}
         </div>
       </div>
     `;
   }
 
-  private renderViewSwitch() {
-    const loaded = this.calendarCommits.length;
-    return html`
-      <div class="view-switch" role="tablist" aria-label="Log view mode">
-        <button
-          role="tab"
-          class="view-opt ${this.viewMode === "commits" ? "active" : ""}"
-          aria-selected=${this.viewMode === "commits" ? "true" : "false"}
-          @click=${() => (this.viewMode = "commits")}
-        >
-          commits
-        </button>
-        <button
-          role="tab"
-          class="view-opt ${this.viewMode === "calendar" ? "active" : ""}"
-          aria-selected=${this.viewMode === "calendar" ? "true" : "false"}
-          @click=${() => (this.viewMode = "calendar")}
-        >
-          calendar
-        </button>
-        ${this.viewMode === "calendar" && (this.calendarLoading || loaded > 0)
-          ? html`<span class="view-progress" aria-live="polite">
-              ${this.calendarLoading ? html`loading ${loaded} commits…` : html`${loaded} commits`}
-            </span>`
-          : nothing}
-      </div>
-    `;
+  private setViewMode(next: "commits" | "calendar") {
+    if (this.viewMode === next) return;
+    this.viewMode = next;
+    // Sync to the URL — `logView` is "commits" by default, so
+    // clearing it (undefined) keeps the hash compact for the
+    // default case while ?view=calendar persists the toggle
+    // across reloads and deep-links.
+    this.dispatchNav({ logView: next === "calendar" ? "calendar" : undefined });
   }
 
-  // Calendar emitted a pick — flip back to the commits view with
-  // that SHA selected, so the diff pane resumes where the user
-  // zoomed in from.
+  // Calendar emitted a pick — flip back to commits mode so the
+  // diff pane becomes visible, and select the picked SHA. We also
+  // listen for `gc:select-commit` on this host (connectedCallback);
+  // halt propagation so the bubbling listener doesn't re-fire and
+  // toggle the selection back off.
   private onCalendarPick = (e: CustomEvent<{ sha: string }>) => {
-    this.viewMode = "commits";
+    e.stopPropagation();
+    this.setViewMode("commits");
     void this.selectCommit(e.detail.sha);
   };
 
@@ -1314,9 +1347,6 @@ export class GcCommitLog extends LitElement {
       color: var(--text);
       background: var(--surface-1);
     }
-    /* log-root stacks the view-mode switch over either the three-
-       pane commit layout or the full-pane calendar. Inherits the
-       host's flex column so inner panes keep their scroll chain. */
     .log-root {
       display: flex;
       flex: 1;
@@ -1324,18 +1354,16 @@ export class GcCommitLog extends LitElement {
       min-height: 0;
       min-width: 0;
     }
-    /* Tab-underline switcher — same visual language as the app's
-       main tab bar, so it reads as "scoped view toggle" rather
-       than a heavy button pair. The 2px accent underline on the
-       active option matches our other focus/selection affordances. */
+    /* View-switch lives inside .list-header in commits mode
+       (keeps total pane height unchanged) and inside gc-commit-
+       calendar's own header in calendar mode. Both placements
+       share this tab-underline styling so the toggle looks the
+       same regardless of which view is active. */
     .view-switch {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: var(--space-3);
-      padding: 0 var(--space-3);
-      border-bottom: 1px solid var(--surface-4);
-      flex-shrink: 0;
-      height: 30px;
+      margin-right: var(--space-2);
     }
     .view-opt {
       padding: 6px 0;
@@ -1356,13 +1384,8 @@ export class GcCommitLog extends LitElement {
     }
     .view-opt.active {
       opacity: 1;
+      color: var(--accent-user);
       border-bottom-color: var(--accent-user);
-    }
-    .view-progress {
-      margin-left: auto;
-      font-size: var(--text-xs);
-      opacity: 0.55;
-      letter-spacing: 0.02em;
     }
     gc-commit-calendar {
       flex: 1;
@@ -1401,6 +1424,17 @@ export class GcCommitLog extends LitElement {
       flex: 1;
       min-height: 0;
       min-width: 0;
+    }
+    /* Calendar mode collapses the info+diff panes into a single
+       main area so the year heatmap has room to breathe while the
+       commit-list sidebar stays visible for direct selection. */
+    .layout.calendar-mode {
+      grid-template-columns: var(--sidebar-width) 1fr;
+    }
+    gc-commit-calendar.calendar-pane {
+      min-height: 0;
+      min-width: 0;
+      display: flex;
     }
     /* Focus mode (⌘\): hide commit list and metadata pane so the
        diff area — whether unified, split, or 3-pane — gets the full
@@ -1529,7 +1563,10 @@ export class GcCommitLog extends LitElement {
       height: 36px;
       box-sizing: border-box;
     }
-    .graph-toggle {
+    /* Shared header-button style — same pattern as repo-browser's
+       .hd-btn so the two tabs feel visually consistent and a user
+       who learned one affordance applies it to the other. */
+    .hd-btn {
       padding: 2px var(--space-2);
       background: transparent;
       color: var(--text);
@@ -1538,11 +1575,15 @@ export class GcCommitLog extends LitElement {
       font-size: var(--text-xs);
       cursor: pointer;
       opacity: 0.4;
+      transition:
+        opacity 0.12s ease,
+        background 0.12s ease,
+        border-color 0.12s ease;
     }
-    .graph-toggle:hover {
+    .hd-btn:hover {
       opacity: 0.8;
     }
-    .graph-toggle.active {
+    .hd-btn.active {
       opacity: 1;
       background: var(--surface-3);
       border-color: var(--accent-user);
