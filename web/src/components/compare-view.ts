@@ -6,6 +6,7 @@ import type { ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
 import "./loading-indicator.js";
 import "./three-pane-view.js";
+import type { SideFilesState } from "../lib/diff-types.js";
 
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
 function loadHighlight() {
@@ -52,13 +53,6 @@ type DiffPaneState =
   | { phase: "loading" }
   | { phase: "error"; message: string }
   | { phase: "ready"; rawDiff: string; diffHtml: string };
-
-// SideFilesState: before/after file bodies for the 3-pane view. Mirrors
-// the commit-log definition.
-type SideFilesState =
-  | { phase: "idle" }
-  | { phase: "loading" }
-  | { phase: "ready"; leftText: string; rightText: string; language: string };
 
 @customElement("gc-compare-view")
 export class GcCompareView extends LitElement {

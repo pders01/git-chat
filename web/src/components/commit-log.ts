@@ -9,6 +9,7 @@ import { onChange as onSettingsChange } from "../lib/settings.js";
 import "./loading-indicator.js";
 import "./three-pane-view.js";
 import { readFocus } from "../lib/focus.js";
+import type { SideFilesState } from "../lib/diff-types.js";
 
 // Lazy-load highlight for diff rendering.
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
@@ -38,15 +39,6 @@ type DiffPaneState =
   | { phase: "loading" } // fetching the diff for the current selection
   | { phase: "error"; message: string }
   | { phase: "ready"; rawDiff: string; diffHtml: string; parentSha: string };
-
-// SideFilesState models the 3-pane view's enrichment data — the full
-// before/after file bodies fetched in parallel with the diff. Only
-// consulted when the diff is `ready` AND threePane is toggled on;
-// otherwise it sits at `idle`.
-type SideFilesState =
-  | { phase: "idle" }
-  | { phase: "loading" }
-  | { phase: "ready"; leftText: string; rightText: string; language: string };
 
 @customElement("gc-commit-log")
 export class GcCommitLog extends LitElement {
