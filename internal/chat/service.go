@@ -951,7 +951,8 @@ func (s *Service) DeleteCard(
 	ctx context.Context,
 	req *connect.Request[gitchatv1.DeleteCardRequest],
 ) (*connect.Response[gitchatv1.DeleteCardResponse], error) {
-	if err := s.DB.DeleteCard(ctx, req.Msg.CardId); err != nil {
+	principal, _, _ := auth.PrincipalFromContext(ctx)
+	if err := s.DB.DeleteCardScoped(ctx, req.Msg.CardId, principal); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil, connect.NewError(connect.CodeNotFound, err)
 		}

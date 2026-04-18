@@ -269,6 +269,23 @@ func (d *DB) DeleteCard(ctx context.Context, cardID string) error {
 	return nil
 }
 
+// DeleteCardScoped removes a card only if it was created by the given
+// principal. Returns ErrNotFound if the card doesn't exist or belongs
+// to someone else.
+func (d *DB) DeleteCardScoped(ctx context.Context, cardID, principal string) error {
+	res, err := d.ExecContext(ctx,
+		`DELETE FROM kb_card WHERE id = ? AND created_by = ?`,
+		cardID, principal)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ListProvenance returns all provenance rows for a card, sorted by path.
 func (d *DB) ListProvenance(ctx context.Context, cardID string) ([]ProvenanceRow, error) {
 	rows, err := d.QueryContext(ctx, `
