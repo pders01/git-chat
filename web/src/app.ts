@@ -908,35 +908,38 @@ export class GcApp extends LitElement {
     return !!entry.secret;
   }
 
-  // Input hints for config entries. `select` renders a <select>;
-  // otherwise a <datalist> is attached for suggestions while still
-  // allowing free-form input. The catalog-driven profile editor
-  // handles rich provider/model selection separately.
-  private static readonly CONFIG_HINTS: Record<
-    string,
-    { options: string[]; select?: boolean }
-  > = {
-    LLM_BACKEND: { options: ["openai", "anthropic"], select: true },
-    LLM_BASE_URL: {
-      options: [
-        "http://localhost:1234/v1",
-        "http://localhost:11434/v1",
-        "https://api.openai.com/v1",
-        "https://api.fireworks.ai/inference/v1",
-        "https://openrouter.ai/api/v1",
-        "https://api.groq.com/openai/v1",
-      ],
-    },
-    LLM_MODEL: {
-      options: [
-        "gemma-4-e4b-it",
-        "gpt-4o",
-        "claude-sonnet-4-6",
-        "accounts/fireworks/models/kimi-k2p5-turbo",
-      ],
-    },
-    LLM_TEMPERATURE: { options: ["0", "0.3", "0.7", "1.0"] },
-    LLM_MAX_TOKENS: { options: ["0", "2048", "4096", "8192"] },
+  // Combobox suggestions for config entries. Keys listed here get a
+  // <gc-combobox> with suggestions; all others get a plain <input>.
+  private static readonly CONFIG_SUGGESTIONS: Record<string, ComboboxOption[]> = {
+    LLM_BACKEND: [
+      { value: "openai", label: "openai" },
+      { value: "anthropic", label: "anthropic" },
+    ],
+    LLM_BASE_URL: [
+      { value: "http://localhost:1234/v1", label: "LM Studio (localhost:1234)" },
+      { value: "http://localhost:11434/v1", label: "Ollama (localhost:11434)" },
+      { value: "https://api.openai.com/v1", label: "OpenAI" },
+      { value: "https://api.fireworks.ai/inference/v1", label: "Fireworks AI" },
+      { value: "https://openrouter.ai/api/v1", label: "OpenRouter" },
+      { value: "https://api.groq.com/openai/v1", label: "Groq" },
+    ],
+    LLM_MODEL: [
+      { value: "gemma-4-e4b-it", label: "Gemma 4 e4b", description: "local" },
+      { value: "gpt-4o", label: "GPT-4o", description: "OpenAI" },
+      { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", description: "Anthropic" },
+    ],
+    LLM_TEMPERATURE: [
+      { value: "0", label: "0 (deterministic)" },
+      { value: "0.3", label: "0.3 (focused)" },
+      { value: "0.7", label: "0.7 (balanced)" },
+      { value: "1.0", label: "1.0 (creative)" },
+    ],
+    LLM_MAX_TOKENS: [
+      { value: "0", label: "0 (provider default)" },
+      { value: "2048", label: "2048" },
+      { value: "4096", label: "4096" },
+      { value: "8192", label: "8192" },
+    ],
   };
 
   private static readonly SETTINGS_SECTIONS = [
@@ -969,7 +972,7 @@ export class GcApp extends LitElement {
         ${entries.map((entry: any) => {
           const isSecret = this.isSecretEntry(entry);
           const modified = entry.value !== entry.defaultValue;
-          const hints = (this.constructor as typeof GcApp).CONFIG_HINTS[entry.key];
+          const suggestions = (this.constructor as typeof GcApp).CONFIG_SUGGESTIONS[entry.key];
           return html`
             <div class="config-entry">
               <div class="config-entry-header">
@@ -989,48 +992,43 @@ export class GcApp extends LitElement {
                     </button>`
                   : nothing}
               </div>
-              ${hints?.select
-                ? html`<select
+              ${isSecret
+                ? html`<input
                     id="cfg-${entry.key}"
                     class="config-input"
-                    .value=${entry.value}
-                    @change=${(e: Event) => {
-                      this.updateConfigEntry(entry.key, (e.target as HTMLSelectElement).value);
-                    }}
-                  >
-                    ${hints.options.map(
-                      (o) => html`<option value=${o} ?selected=${entry.value === o}>${o}</option>`,
-                    )}
-                  </select>`
-                : html`<input
-                    id="cfg-${entry.key}"
-                    class="config-input"
-                    type=${isSecret ? "password" : "text"}
+                    type="password"
                     autocomplete="off"
-                    list=${hints ? `dl-${entry.key}` : ""}
-                    placeholder=${isSecret ? entry.value || "not set" : ""}
-                    .value=${isSecret ? "" : entry.value}
-                    aria-describedby=${entry.description ? `cfg-desc-${entry.key}` : ""}
-                    @change=${isSecret
-                      ? (e: Event) => {
-                          const v = (e.target as HTMLInputElement).value;
-                          if (v) this.updateConfigEntry(entry.key, v);
-                        }
-                      : nothing}
-                    @input=${isSecret
-                      ? nothing
-                      : (e: Event) => {
-                          this.updateConfigEntry(
-                            entry.key,
-                            (e.target as HTMLInputElement).value,
-                          );
-                        }}
-                  />`}
-              ${hints && !hints.select
-                ? html`<datalist id="dl-${entry.key}">
-                    ${hints.options.map((o) => html`<option value=${o}></option>`)}
-                  </datalist>`
-                : nothing}
+                    placeholder=${entry.value || "not set"}
+                    .value=${""}
+                    @change=${(e: Event) => {
+                      const v = (e.target as HTMLInputElement).value;
+                      if (v) this.updateConfigEntry(entry.key, v);
+                    }}
+                  />`
+                : suggestions
+                  ? html`<gc-combobox
+                      .options=${suggestions}
+                      .value=${entry.value}
+                      @gc-select=${(e: CustomEvent) => {
+                        this.updateConfigEntry(entry.key, e.detail.value);
+                      }}
+                      @gc-input=${(e: CustomEvent) => {
+                        this.updateConfigEntry(entry.key, e.detail);
+                      }}
+                    ></gc-combobox>`
+                  : html`<input
+                      id="cfg-${entry.key}"
+                      class="config-input"
+                      type="text"
+                      autocomplete="off"
+                      .value=${entry.value}
+                      @input=${(e: Event) => {
+                        this.updateConfigEntry(
+                          entry.key,
+                          (e.target as HTMLInputElement).value,
+                        );
+                      }}
+                    />`}
               ${entry.description
                 ? html`<span id="cfg-desc-${entry.key}" class="config-desc"
                     >${entry.description}</span
