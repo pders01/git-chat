@@ -3,7 +3,11 @@ import { defineConfig } from "vite";
 export default defineConfig({
   build: {
     outDir: "../internal/assets/dist",
-    emptyOutDir: true,
+    // The Makefile's `web` target pre-cleans dist/ (preserving
+    // .gitkeep, which //go:embed needs on fresh clones). Letting
+    // vite wipe dist/ would delete .gitkeep on every build and make
+    // `git status` noisy again.
+    emptyOutDir: false,
     target: "es2022",
     // Shiki's lazy highlight chunk is ~2 MB raw / 247 kB gzipped (grammar
     // data, not executable code). That's inherent; the lazy split already

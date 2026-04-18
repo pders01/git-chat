@@ -13,6 +13,9 @@ web:
 		echo "hint: run 'make all' as your user first, then 'sudo make install'"; \
 		exit 1; \
 	fi
+	# Pre-clean vite output but preserve .gitkeep (required by //go:embed
+	# on fresh clones). vite.config.ts has emptyOutDir: false.
+	find internal/assets/dist -mindepth 1 ! -name '.gitkeep' -exec rm -rf {} +
 	cd web && bun install --frozen-lockfile && bun run build
 
 .PHONY: build
