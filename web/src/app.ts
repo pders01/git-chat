@@ -2338,7 +2338,10 @@ export class GcApp extends LitElement {
 
     /* ── Settings modal (sidebar layout) ───────────────────────── */
     .settings-modal {
-      max-width: 900px;
+      max-width: min(1100px, 92vw);
+      width: 92vw;
+      top: 40px;
+      max-height: calc(100vh - 80px);
       display: flex;
       padding: 0;
       overflow: hidden;
@@ -2390,9 +2393,9 @@ export class GcApp extends LitElement {
     .settings-content {
       flex: 1;
       min-width: 0;
+      min-height: 0;
       padding: var(--space-6) var(--space-7);
       overflow-y: auto;
-      max-height: calc(100vh - 120px);
     }
     .settings-section-title {
       margin: 0 0 var(--space-4);
@@ -2400,7 +2403,15 @@ export class GcApp extends LitElement {
       font-weight: 500;
     }
     @media (max-width: 640px) {
-      .settings-modal { flex-direction: column; }
+      .settings-modal {
+        flex-direction: column;
+        top: 0;
+        max-height: 100vh;
+        height: 100vh;
+        width: 100vw;
+        max-width: 100vw;
+        border-radius: 0;
+      }
       .settings-sidebar {
         width: 100%;
         flex-direction: row;
@@ -2412,7 +2423,7 @@ export class GcApp extends LitElement {
       }
       .settings-title { display: none; }
       .settings-sidebar-footer { display: none; }
-      .settings-content { max-height: calc(100vh - 220px); }
+      .settings-content { max-height: none; flex: 1; }
     }
 
     /* ── Appearance settings ──────────────────────────────────── */
