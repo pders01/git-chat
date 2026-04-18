@@ -82,6 +82,13 @@ export class GcCommitLog extends LitElement {
   @state() private calendarCommits: CommitEntry[] = [];
   @state() private calendarLoading = false;
   private calendarLoaded = false;
+  // When the user clicks a commit row in the sidebar while
+  // calendar view is active, we DON'T navigate to the diff
+  // (the diff pane is hidden behind the calendar). Instead we
+  // arm the commit in the calendar — child jumps activeDate to
+  // the commit's author time and the action bar appears for
+  // explicit drill-in.
+  @state() private calendarArmedSha = "";
   // Infinite-scroll plumbing for the commits list. The sentinel
   // sits at the tail of the commits list; whenever it crosses
   // into the scroll viewport, we fire the next page load. The
@@ -197,6 +204,7 @@ export class GcCommitLog extends LitElement {
       // means different history.
       this.calendarCommits = [];
       this.calendarLoaded = false;
+      this.calendarArmedSha = "";
     }
     // Kick off the full-history fetch the first time the user
     // switches into calendar view. Cached until the invalidation
@@ -386,6 +394,20 @@ export class GcCommitLog extends LitElement {
     const next = e.key === "ArrowDown" ? idx + 1 : idx - 1;
     rows[next]?.focus();
   };
+
+  // pickCommit is the sidebar-row click entry point. In commits
+  // view it drills to the diff (full selectCommit flow); in
+  // calendar view it only arms the commit in the child so the
+  // calendar jumps to the relevant date — drill-in then happens
+  // via the action bar's "view commit" button, matching the
+  // click-on-calendar-entry flow.
+  private pickCommit(sha: string) {
+    if (this.viewMode === "calendar") {
+      this.calendarArmedSha = sha;
+      return;
+    }
+    void this.selectCommit(sha);
+  }
 
   private async selectCommit(sha: string) {
     // Resolve and splice-in commits that aren't in the paginated
@@ -867,9 +889,7 @@ export class GcCommitLog extends LitElement {
     const fmt = (n: number) => (n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`);
     return html`<div class="diff-placeholder">
       <div class="diff-placeholder-title">${reason}</div>
-      <div class="diff-placeholder-sizes">
-        before: ${fmt(from.size)} · after: ${fmt(to.size)}
-      </div>
+      <div class="diff-placeholder-sizes">before: ${fmt(from.size)} · after: ${fmt(to.size)}</div>
       <div class="diff-placeholder-hint">
         raise <code>GITCHAT_MAX_DIFF_BYTES</code> on the server to inline, or switch to 3-pane for
         side-by-side file bodies.
@@ -1029,10 +1049,13 @@ export class GcCommitLog extends LitElement {
           <svg class="graph-svg" width="${svgW}" height="${svgH}">${svgLines} ${svgDots}</svg>
           ${commits.map((c, i) => {
             const y = i * ROW_H;
+            const armed = this.viewMode === "calendar" && c.sha === this.calendarArmedSha;
             return html` <button
-              class="graph-row ${c.sha === this.selectedSha ? "selected" : ""}"
+              class="graph-row ${c.sha === this.selectedSha ? "selected" : ""} ${armed
+                ? "armed"
+                : ""}"
               style="height:${ROW_H}px; top:${y}px; padding-left:${svgW + 4}px"
-              @click=${() => this.selectCommit(c.sha)}
+              @click=${() => this.pickCommit(c.sha)}
               title="${c.message} — ${c.authorName}"
             >
               <span class="graph-msg">${c.shortSha} ${c.message}</span>
@@ -1155,13 +1178,16 @@ export class GcCommitLog extends LitElement {
             ${this.graphMode
               ? this.renderGraph(commits)
               : html`<ul class="commits" role="list" @keydown=${this.onListKeydown}>
-                  ${commits.map(
-                    (c) => html`
+                  ${commits.map((c) => {
+                    const armed = this.viewMode === "calendar" && c.sha === this.calendarArmedSha;
+                    return html`
                       <li>
                         <button
-                          class="commit-row ${c.sha === this.selectedSha ? "selected" : ""}"
+                          class="commit-row ${c.sha === this.selectedSha ? "selected" : ""} ${armed
+                            ? "armed"
+                            : ""}"
                           aria-pressed=${c.sha === this.selectedSha ? "true" : "false"}
-                          @click=${() => this.selectCommit(c.sha)}
+                          @click=${() => this.pickCommit(c.sha)}
                           title="${c.message} — ${c.authorName}"
                         >
                           <div class="commit-line1">
@@ -1180,8 +1206,8 @@ export class GcCommitLog extends LitElement {
                           </div>
                         </button>
                       </li>
-                    `,
-                  )}
+                    `;
+                  })}
                   ${hasMore
                     ? html`<li class="load-sentinel" role="presentation" aria-hidden="true">
                         ${this.loadingMore ? "loading…" : ""}
@@ -1196,6 +1222,7 @@ export class GcCommitLog extends LitElement {
                 .commits=${this.calendarCommits}
                 .loadedCount=${this.calendarCommits.length}
                 .loading=${this.calendarLoading}
+                .armedSha=${this.calendarArmedSha}
                 @gc:select-commit=${this.onCalendarPick}
               ></gc-commit-calendar>`
             : html` <!-- Middle: commit info pane — split vertically, top is the
@@ -1386,6 +1413,7 @@ export class GcCommitLog extends LitElement {
   // toggle the selection back off.
   private onCalendarPick = (e: CustomEvent<{ sha: string }>) => {
     e.stopPropagation();
+    this.calendarArmedSha = "";
     this.setViewMode("commits");
     void this.selectCommit(e.detail.sha);
   };
@@ -1546,6 +1574,15 @@ export class GcCommitLog extends LitElement {
       background: var(--surface-2);
       border-left-color: var(--accent-assistant);
     }
+    /* Armed = "calendar has this commit focused" — parallel to
+       .selected but uses the user accent so the two states are
+       distinguishable when both happen to apply (e.g., user
+       previously selected a commit then switched to calendar mode
+       and armed a different one). */
+    .commit-row.armed {
+      background: var(--surface-2);
+      border-left-color: var(--accent-user);
+    }
     .commit-row:focus-visible {
       outline: 2px solid var(--accent-assistant);
       outline-offset: -2px;
@@ -1696,6 +1733,10 @@ export class GcCommitLog extends LitElement {
     .graph-row.selected {
       background: var(--surface-2);
       border-left-color: var(--accent-assistant);
+    }
+    .graph-row.armed {
+      background: var(--surface-2);
+      border-left-color: var(--accent-user);
     }
     .graph-msg {
       flex: 1;

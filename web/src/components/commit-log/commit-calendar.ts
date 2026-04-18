@@ -42,13 +42,52 @@ function keyFor(heading: string): string {
   return heading.split(" ", 1)[0] ?? heading;
 }
 
+function todayDate(): CalendarDate {
+  const d = new Date();
+  return { day: d.getDate(), month: d.getMonth() + 1, year: d.getFullYear() };
+}
+
+// Subset of kalendus's internal ViewState controller we poke at —
+// enough to navigate imperatively without depending on its private
+// full shape. Matches the runtime methods in dist/kalendus.js.
+interface CalendarViewState {
+  setActiveDate(date: CalendarDate): void;
+  switchToDayView(): void;
+}
+
+// Kalendus's public openMenu API + the internal _viewState accessor
+// we also reach for to navigate. Typed narrowly so a future kalendus
+// version breaking either contract trips TS rather than silently
+// no-op'ing at runtime.
+interface KalendusAPI extends HTMLElement {
+  openMenu(details: {
+    heading: string;
+    content: string;
+    time?: CalendarTimeInterval;
+    displayTime: string;
+    date?: CalendarDate;
+    anchorRect?: DOMRect;
+  }): void;
+  updateComplete: Promise<boolean>;
+  _viewState: CalendarViewState;
+}
+
 @customElement("gc-commit-calendar")
 export class GcCommitCalendar extends LitElement {
   @property({ type: Array }) commits: CommitEntry[] = [];
   @property({ type: Number }) loadedCount = 0;
   @property({ type: Boolean }) loading = false;
+  // External arming from the sidebar commit list: when the parent
+  // sets this to a full SHA, the matching commit is armed in the
+  // calendar (tooltip-ready via the action bar) and the calendar
+  // navigates its activeDate to the commit's author date, so the
+  // year heatmap / week grid scrolls to reveal it. Empty = no
+  // external arming; internal clicks on calendar entries still
+  // arm independently via onOpenMenu.
+  @property({ type: String }) armedSha = "";
 
   @state() private entries: CalendarEntry[] = [];
+  @state() private activeDate: CalendarDate = todayDate();
   // The commit the user clicked on most recently in the calendar.
   // Kalendus opens its own detail tooltip on entry click — we hold
   // the SHA here so a companion "View commit" button can navigate
@@ -70,17 +109,83 @@ export class GcCommitCalendar extends LitElement {
       if (this.commits.length === 0) {
         this.entryCache.clear();
         this.entries = [];
-        return;
+      } else {
+        this.entries = this.commits.map((c) => {
+          let entry = this.entryCache.get(c.sha);
+          if (!entry) {
+            entry = commitToEntry(c);
+            this.entryCache.set(c.sha, entry);
+          }
+          return entry;
+        });
       }
-      this.entries = this.commits.map((c) => {
-        let entry = this.entryCache.get(c.sha);
-        if (!entry) {
-          entry = commitToEntry(c);
-          this.entryCache.set(c.sha, entry);
-        }
-        return entry;
-      });
     }
+    // External arming: sidebar row click in calendar mode drives
+    // this. Reacts to armedSha changes OR late commits arrivals
+    // (if the SHA was set before its commit loaded, we re-try once
+    // the batch lands).
+    if ((changed.has("armedSha") || changed.has("commits")) && this.armedSha) {
+      const commit = this.commits.find((c) => c.sha === this.armedSha);
+      if (commit) {
+        this.armedCommit = commit;
+        const d = new Date(Number(commit.authorTime) * 1000);
+        this.activeDate = {
+          day: d.getDate(),
+          month: d.getMonth() + 1,
+          year: d.getFullYear(),
+        };
+      }
+    }
+  }
+
+  override updated(changed: Map<string, unknown>) {
+    if (changed.has("armedSha") && this.armedSha) {
+      void this.revealArmedCommit();
+    }
+  }
+
+  // Navigate to the armed commit's date, switch to day view, and
+  // open kalendus's built-in detail menu anchored to the entry
+  // chip so the user sees the same popup they'd get from clicking
+  // the chip directly. Three steps: setActiveDate + switchToDayView
+  // via the (private-prefix) controller, await kalendus's render
+  // so the entry chip exists in the day-view DOM, then openMenu
+  // with a best-effort anchor.
+  private async revealArmedCommit() {
+    const commit = this.commits.find((c) => c.sha === this.armedSha);
+    if (!commit) return;
+    const cal = this.renderRoot.querySelector("lms-calendar") as KalendusAPI | null;
+    if (!cal) return;
+    const d = new Date(Number(commit.authorTime) * 1000);
+    const date: CalendarDate = {
+      day: d.getDate(),
+      month: d.getMonth() + 1,
+      year: d.getFullYear(),
+    };
+    cal._viewState.setActiveDate(date);
+    cal._viewState.switchToDayView();
+    // Wait for kalendus to paint the day view so the entry chip
+    // exists and getBoundingClientRect returns a real rect.
+    await cal.updateComplete;
+    const heading = `${commit.shortSha} ${commit.message}`;
+    const entryNodes = cal.shadowRoot?.querySelectorAll<HTMLElement>("lms-calendar-entry");
+    let anchor: HTMLElement | undefined;
+    entryNodes?.forEach((node) => {
+      if ((node as unknown as { heading?: string }).heading === heading) anchor = node;
+    });
+    const hh = d.getHours().toString().padStart(2, "0");
+    const mm = d.getMinutes().toString().padStart(2, "0");
+    cal.openMenu({
+      heading,
+      content: `${commit.authorName} · ${commit.filesChanged} file${commit.filesChanged === 1 ? "" : "s"} · +${commit.additions} -${commit.deletions}`,
+      time: {
+        start: { hour: d.getHours(), minute: d.getMinutes() },
+        end: { hour: d.getHours(), minute: (d.getMinutes() + 5) % 60 },
+      },
+      displayTime: `${hh}:${mm}`,
+      date,
+      anchorRect: anchor?.getBoundingClientRect(),
+    });
   }
 
   private onOpenMenu = (e: Event) => {
@@ -122,6 +227,7 @@ export class GcCommitCalendar extends LitElement {
       <lms-calendar
         .heading=${heading}
         .entries=${this.entries}
+        .activeDate=${this.activeDate}
         .yearDensityMode=${"heatmap"}
         .yearDrillTarget=${"day"}
         color="var(--accent-user, #3b82f6)"
@@ -239,26 +345,20 @@ export class GcCommitCalendar extends LitElement {
       min-height: 0;
       min-width: 0;
       color: var(--text);
-      /* Outer edges stay rectangular so the calendar butts up
-         against the sidebar's vertical rule without a visible
-         seam or corner halo — matches the rest of git-chat's
-         pane-against-pane flat layout. Inner pills/cells keep
-         their small radii (set via --border-radius-* tokens). */
-      border-radius: 0;
+      /* Crops the outer 1px border drawn by kalendus on its
+         .calendar-container (inside the shadow root) — that border
+         uses --separator-light, which we can't transparent-out
+         without losing internal hairlines. clip-path crops final
+         pixels including shadow DOM, no stacking context side
+         effects. */
+      clip-path: inset(1px);
 
       /* ── Palette ─────────────────────────────────────────── */
       --background-color: var(--surface-1);
       --context-bg: var(--surface-0);
       --primary-color: var(--accent-user);
       --header-text-color: var(--text-muted);
-      /* Kalendus's outer container + many inner hairlines use
-         --separator-light for their border colour. We want the
-         outer edge invisible so it butts flush against the
-         sidebar's own border-right. Transparent here drops ALL
-         hairlines — in exchange git-chat's flat pane-against-
-         pane look reads coherently. --separator-mid stays
-         available for the spots that truly need a visible rule. */
-      --separator-light: transparent;
+      --separator-light: var(--surface-4);
       --separator-mid: var(--border-default);
       /* Despite the name, kalendus uses --separator-dark for primary
          text color in several views (commit-row text in month view,
