@@ -2,6 +2,7 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { parseUnifiedDiff, type ParsedDiff } from "../lib/diff-parse.js";
+import { onChange as onSettingsChange } from "../lib/settings.js";
 import "./loading-indicator.js";
 
 // Lazy-load highlight — same lazy pattern other views use.
@@ -64,6 +65,18 @@ export class GcThreePaneView extends LitElement {
   @state() private ready = false;
 
   private parsed: ParsedDiff | null = null;
+  private unsubSettings: (() => void) | null = null;
+
+  override connectedCallback() {
+    super.connectedCallback();
+    this.unsubSettings = onSettingsChange(() => void this.rehighlight());
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this.unsubSettings?.();
+    this.unsubSettings = null;
+  }
 
   override updated(changed: Map<string, unknown>) {
     if (
@@ -74,6 +87,22 @@ export class GcThreePaneView extends LitElement {
     ) {
       void this.rebuild();
     }
+  }
+
+  // Re-highlight in place on theme change without resetting `ready` or
+  // re-parsing. Keeps the user's scroll position and avoids a loading
+  // banner flash. Safe to skip when rebuild() is mid-flight (ready=false):
+  // rebuild() calls highlight() which reads the current theme at call time,
+  // so its output will already be theme-correct.
+  private async rehighlight() {
+    if (!this.ready || !this.parsed) return;
+    const { highlight } = await loadHighlight();
+    const [leftFullHtml, rightFullHtml] = await Promise.all([
+      this.leftText ? highlight(this.leftText, this.language) : Promise.resolve(""),
+      this.rightText ? highlight(this.rightText, this.language) : Promise.resolve(""),
+    ]);
+    if (!this.ready) return;
+    this.rows = this.buildRows(extractShikiLines(leftFullHtml), extractShikiLines(rightFullHtml));
   }
 
   private async rebuild() {
