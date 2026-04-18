@@ -297,10 +297,12 @@ export class GcComposer extends LitElement {
     } else {
       // "word" mode — replace just the current token (last whitespace-delimited
       // fragment), preserving anything typed before it. For directory suggestions
-      // (trailing "/") we DON'T add a space so the user can keep drilling.
+      // (trailing "/") we DON'T add a space so the user can keep drilling; for
+      // final values (refs, files, model IDs) append a space so the cursor is
+      // parked where the next arg would start.
       const lastSpace = currentLine.lastIndexOf(" ");
       const head = currentLine.slice(0, lastSpace + 1);
-      const trailing = sugg.value.endsWith("/") ? "" : "";
+      const trailing = sugg.value.endsWith("/") ? "" : " ";
       newLine = head + sugg.value + trailing;
       newCaretInLine = newLine.length;
     }
@@ -736,8 +738,16 @@ export class GcComposer extends LitElement {
                     <button
                       class="slash-item arg-item ${i === this.argIdx ? "active" : ""}"
                       @click=${() => {
+                        // Mirror the keyboard-Enter rule: directories drill,
+                        // transform commands keep editing, only final action
+                        // picks auto-submit. Otherwise clicking a directory
+                        // during /diff completion would ship a half-formed
+                        // marker.
+                        const cmd = this.argCtx?.command;
+                        const isDir = s.value.endsWith("/");
+                        const autoSubmit = cmd?.kind === "action" && !isDir;
                         this.acceptArgSuggestion(s);
-                        queueMicrotask(() => this.submit());
+                        if (autoSubmit) queueMicrotask(() => this.submit());
                       }}
                     >
                       <span class="arg-label">${s.label}</span>

@@ -91,6 +91,14 @@ export class GcApp extends LitElement {
   // the single entry point; direct assignment to showX is allowed only
   // for the explicit "close this one" path inside each overlay.
   private openOverlay(name: "settings" | "shortcuts" | "palette" | "search" | null) {
+    // Any explicit close/switch invalidates the double-press timer:
+    // otherwise Cmd+F → Esc → Cmd+F within 300ms would still register
+    // as a double and fall through to the browser instead of reopening
+    // our search. Only the rapid-press path wants to carry state forward.
+    if (name === null) {
+      this.lastShortcut = "";
+      this.lastShortcutAt = 0;
+    }
     this.showSettings = name === "settings";
     this.showShortcuts = name === "shortcuts";
     this.showSearch = name === "search";
