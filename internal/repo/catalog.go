@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -74,7 +75,9 @@ func (c *Catalog) Refresh(ctx context.Context) ([]*gitchatv1.CatalogProvider, er
 	c.mu.Unlock()
 
 	// Persist to SQLite for offline use.
-	_ = c.db.SetCatalogCache(ctx, out)
+	if err := c.db.SetCatalogCache(ctx, out); err != nil {
+		slog.Warn("failed to cache catalog to SQLite", "err", err)
+	}
 
 	return out, nil
 }
@@ -84,11 +87,14 @@ func convertProviders(providers []catwalk.Provider) []*gitchatv1.CatalogProvider
 	for _, p := range providers {
 		pType := string(p.Type)
 		// Map to the two backend types git-chat supports.
+		// Providers with non-openai-compatible APIs are skipped.
 		switch p.Type {
 		case "openai", "anthropic":
 			// keep as-is
 		case "openrouter":
 			pType = "openai" // openrouter is openai-compatible
+		case "gemini", "vertexai", "bedrock", "azure":
+			continue // skip — requires dedicated backend support
 		default:
 			pType = "openai" // assume openai-compatible
 		}

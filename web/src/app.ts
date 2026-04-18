@@ -865,11 +865,35 @@ export class GcApp extends LitElement {
     return !!entry.secret;
   }
 
-  // Fixed-set config keys that should render as <select> instead of
-  // <input>. The catalog-driven profile editor handles rich provider/
-  // model selection; this is only for the raw config entries view.
-  private static readonly CONFIG_SELECTS: Record<string, string[]> = {
-    LLM_BACKEND: ["openai", "anthropic"],
+  // Input hints for config entries. `select` renders a <select>;
+  // otherwise a <datalist> is attached for suggestions while still
+  // allowing free-form input. The catalog-driven profile editor
+  // handles rich provider/model selection separately.
+  private static readonly CONFIG_HINTS: Record<
+    string,
+    { options: string[]; select?: boolean }
+  > = {
+    LLM_BACKEND: { options: ["openai", "anthropic"], select: true },
+    LLM_BASE_URL: {
+      options: [
+        "http://localhost:1234/v1",
+        "http://localhost:11434/v1",
+        "https://api.openai.com/v1",
+        "https://api.fireworks.ai/inference/v1",
+        "https://openrouter.ai/api/v1",
+        "https://api.groq.com/openai/v1",
+      ],
+    },
+    LLM_MODEL: {
+      options: [
+        "gemma-4-e4b-it",
+        "gpt-4o",
+        "claude-sonnet-4-6",
+        "accounts/fireworks/models/kimi-k2p5-turbo",
+      ],
+    },
+    LLM_TEMPERATURE: { options: ["0", "0.3", "0.7", "1.0"] },
+    LLM_MAX_TOKENS: { options: ["0", "2048", "4096", "8192"] },
   };
 
   private static readonly SETTINGS_SECTIONS = [
@@ -902,7 +926,7 @@ export class GcApp extends LitElement {
         ${entries.map((entry: any) => {
           const isSecret = this.isSecretEntry(entry);
           const modified = entry.value !== entry.defaultValue;
-          const selectOpts = (this.constructor as typeof GcApp).CONFIG_SELECTS[entry.key];
+          const hints = (this.constructor as typeof GcApp).CONFIG_HINTS[entry.key];
           return html`
             <div class="config-entry">
               <div class="config-entry-header">
@@ -922,7 +946,7 @@ export class GcApp extends LitElement {
                     </button>`
                   : nothing}
               </div>
-              ${selectOpts
+              ${hints?.select
                 ? html`<select
                     id="cfg-${entry.key}"
                     class="config-input"
@@ -931,7 +955,7 @@ export class GcApp extends LitElement {
                       this.updateConfigEntry(entry.key, (e.target as HTMLSelectElement).value);
                     }}
                   >
-                    ${selectOpts.map(
+                    ${hints.options.map(
                       (o) => html`<option value=${o} ?selected=${entry.value === o}>${o}</option>`,
                     )}
                   </select>`
@@ -940,6 +964,7 @@ export class GcApp extends LitElement {
                     class="config-input"
                     type=${isSecret ? "password" : "text"}
                     autocomplete="off"
+                    list=${hints ? `dl-${entry.key}` : ""}
                     placeholder=${isSecret ? entry.value || "not set" : ""}
                     .value=${isSecret ? "" : entry.value}
                     aria-describedby=${entry.description ? `cfg-desc-${entry.key}` : ""}
@@ -958,6 +983,11 @@ export class GcApp extends LitElement {
                           );
                         }}
                   />`}
+              ${hints && !hints.select
+                ? html`<datalist id="dl-${entry.key}">
+                    ${hints.options.map((o) => html`<option value=${o}></option>`)}
+                  </datalist>`
+                : nothing}
               ${entry.description
                 ? html`<span id="cfg-desc-${entry.key}" class="config-desc"
                     >${entry.description}</span
@@ -1105,7 +1135,12 @@ export class GcApp extends LitElement {
                     <button
                       class="profile-name"
                       @click=${() => {
-                        this.editingProfile = { ...p };
+                        // Resolve _providerId from catalog so the model
+                        // dropdown populates correctly on edit.
+                        const prov = this.catalog.find(
+                          (c: any) => c.type === p.backend && c.id === p.backend,
+                        ) || this.catalog.find((c: any) => c.type === p.backend);
+                        this.editingProfile = { ...p, _providerId: prov?.id ?? "" };
                       }}
                     >
                       ${p.name}
@@ -1181,7 +1216,7 @@ export class GcApp extends LitElement {
                   ${this.catalog.map(
                     (c: any) => html`<option
                       value=${c.id}
-                      ?selected=${c.id === p._providerId || c.type === p.backend}
+                      ?selected=${c.id === p._providerId}
                     >
                       ${c.name} (${c.type})
                     </option>`,
@@ -1300,7 +1335,11 @@ export class GcApp extends LitElement {
           ${!isNew
             ? html`<button
                 class="action-btn danger"
-                @click=${() => this.deleteProfile(p.id)}
+                @click=${() => {
+                  if (confirm(`Delete profile "${p.name}"? This cannot be undone.`)) {
+                    this.deleteProfile(p.id);
+                  }
+                }}
               >
                 delete
               </button>`
@@ -1352,6 +1391,7 @@ export class GcApp extends LitElement {
               <button
                 class="action-btn"
                 @click=${async () => {
+                  if (!confirm("Reset all settings to defaults? This cannot be undone.")) return;
                   for (const k of settings.allKeys()) settings.reset(k);
                   settings.setTheme("system");
                   for (const entry of this.configEntries) {

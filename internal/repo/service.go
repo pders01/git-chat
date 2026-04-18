@@ -363,8 +363,8 @@ func (s *Service) SaveProfile(
 	}
 	// Encrypt API key before storage.
 	apiKey := p.ApiKey
-	// Don't overwrite with masked placeholder on edit.
-	if apiKey == "••••••••" {
+	// Don't overwrite with masked placeholder on edit of existing profile.
+	if apiKey == "••••••••" && p.Id != "" {
 		// Load existing key from DB.
 		existing, err := s.DB.GetProfile(ctx, id)
 		if err == nil {
