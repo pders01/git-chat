@@ -251,6 +251,11 @@ export class GcComposer extends LitElement {
       ta.focus();
       const newPos = lineStart + replacement.length;
       ta.setSelectionRange(newPos, newPos);
+      // Programmatic input skips the input event, so arg-completion
+      // wouldn't otherwise engage until the user types a character.
+      // Kick it manually for action commands (transform commands like
+      // /diff don't currently have arg completion).
+      if (cmd.kind === "action") void this.checkArgContext();
     });
   }
 
