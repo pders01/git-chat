@@ -1,6 +1,8 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { chatClient, repoClient } from "../../lib/transport.js";
+import { renderMarkdown } from "../../lib/markdown.js";
 import "./../../components/loading-indicator.js";
 
 @customElement("gc-chat-dashboard")
@@ -8,6 +10,10 @@ export class GcChatDashboard extends LitElement {
   @property({ type: String }) repoId = "";
 
   @state() private activitySummary = "";
+  // Rendered HTML from activitySummary via marked. Lets the backend
+  // fallback "Recent commits:\n- sha subject\n..." become a real <ul>
+  // instead of a wall of text whose newlines collapse inside a <p>.
+  @state() private activityHtml = "";
   @state() private summaryLoading = false;
   private cachedSummaryKey = "";
   @state() private suggestions: Array<{ label: string; prompt: string }> = [];
@@ -53,9 +59,13 @@ export class GcChatDashboard extends LitElement {
       this.summaryLoading = true;
       const resp = await chatClient.summarizeActivity({ repoId: this.repoId });
       this.activitySummary = resp.summary || "";
+      this.activityHtml = this.activitySummary
+        ? await renderMarkdown(this.activitySummary)
+        : "";
       this.cachedSummaryKey = cacheKey;
     } catch {
       this.activitySummary = "";
+      this.activityHtml = "";
     } finally {
       this.summaryLoading = false;
     }
@@ -101,8 +111,8 @@ export class GcChatDashboard extends LitElement {
                 <gc-spinner></gc-spinner>
                 summarizing recent changes…
               </p>`
-            : this.activitySummary
-              ? html`<p class="activity-text">${this.activitySummary}</p>`
+            : this.activityHtml
+              ? html`<div class="activity-text">${unsafeHTML(this.activityHtml)}</div>`
               : nothing}
         </div>
       </div>
@@ -203,6 +213,26 @@ export class GcChatDashboard extends LitElement {
     .activity-text.loading {
       opacity: 0.35;
       font-style: italic;
+    }
+    /* Markdown-rendered content: lists get bullets, paragraphs get
+       spacing. Keep typography muted so the list doesn't compete with
+       the suggestion cards above. */
+    .activity-text :is(ul, ol) {
+      margin: var(--space-1) 0;
+      padding-left: 1.3em;
+    }
+    .activity-text li {
+      margin: 0.1em 0;
+    }
+    .activity-text p {
+      margin: 0.3em 0;
+    }
+    .activity-text code {
+      font-family: var(--font-mono, ui-monospace, monospace);
+      background: var(--surface-3);
+      padding: 0 0.25em;
+      border-radius: 3px;
+      font-size: 0.9em;
     }
     @media (prefers-reduced-motion: reduce) {
       .example {
