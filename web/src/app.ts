@@ -830,6 +830,42 @@ export class GcApp extends LitElement {
     return !!entry.secret;
   }
 
+  // Suggestions for config entries and profile fields. Keys that appear
+  // here get a <datalist> combobox; keys with `select: true` get a
+  // <select> dropdown instead.
+  private static readonly CONFIG_HINTS: Record<
+    string,
+    { options: string[]; select?: boolean }
+  > = {
+    LLM_BACKEND: { options: ["openai", "anthropic"], select: true },
+    LLM_BASE_URL: {
+      options: [
+        "http://localhost:1234/v1",
+        "http://localhost:11434/v1",
+        "https://api.openai.com/v1",
+        "https://api.fireworks.ai/inference/v1",
+        "https://openrouter.ai/api/v1",
+        "https://api.groq.com/openai/v1",
+        "https://api.together.xyz/v1",
+      ],
+    },
+    LLM_MODEL: {
+      options: [
+        "gemma-4-e4b-it",
+        "gemma-3-27b-it",
+        "gpt-4o",
+        "gpt-4o-mini",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5-20251001",
+        "accounts/fireworks/models/kimi-k2p5-turbo",
+        "deepseek-r1",
+        "qwen3-235b-a22b",
+      ],
+    },
+    LLM_TEMPERATURE: { options: ["0", "0.3", "0.5", "0.7", "1.0"] },
+    LLM_MAX_TOKENS: { options: ["0", "1024", "2048", "4096", "8192", "16384"] },
+  };
+
   private static readonly SETTINGS_SECTIONS = [
     { id: "appearance", label: "Appearance" },
     { id: "llm", label: "LLM" },
@@ -860,6 +896,7 @@ export class GcApp extends LitElement {
         ${entries.map((entry: any) => {
           const isSecret = this.isSecretEntry(entry);
           const modified = entry.value !== entry.defaultValue;
+          const hints = (this.constructor as typeof GcApp).CONFIG_HINTS[entry.key];
           return html`
             <div class="config-entry">
               <div class="config-entry-header">
@@ -879,29 +916,48 @@ export class GcApp extends LitElement {
                     </button>`
                   : nothing}
               </div>
-              <input
-                id="cfg-${entry.key}"
-                class="config-input"
-                type=${isSecret ? "password" : "text"}
-                autocomplete="off"
-                placeholder=${isSecret ? entry.value || "not set" : ""}
-                .value=${isSecret ? "" : entry.value}
-                aria-describedby=${entry.description ? `cfg-desc-${entry.key}` : ""}
-                @change=${isSecret
-                  ? (e: Event) => {
-                      const v = (e.target as HTMLInputElement).value;
-                      if (v) this.updateConfigEntry(entry.key, v);
-                    }
-                  : nothing}
-                @input=${isSecret
-                  ? nothing
-                  : (e: Event) => {
-                      this.updateConfigEntry(
-                        entry.key,
-                        (e.target as HTMLInputElement).value,
-                      );
+              ${hints?.select
+                ? html`<select
+                    id="cfg-${entry.key}"
+                    class="config-input"
+                    .value=${entry.value}
+                    @change=${(e: Event) => {
+                      this.updateConfigEntry(entry.key, (e.target as HTMLSelectElement).value);
                     }}
-              />
+                  >
+                    ${hints.options.map(
+                      (o) => html`<option value=${o} ?selected=${entry.value === o}>${o}</option>`,
+                    )}
+                  </select>`
+                : html`<input
+                    id="cfg-${entry.key}"
+                    class="config-input"
+                    type=${isSecret ? "password" : "text"}
+                    autocomplete="off"
+                    list=${hints ? `dl-${entry.key}` : ""}
+                    placeholder=${isSecret ? entry.value || "not set" : ""}
+                    .value=${isSecret ? "" : entry.value}
+                    aria-describedby=${entry.description ? `cfg-desc-${entry.key}` : ""}
+                    @change=${isSecret
+                      ? (e: Event) => {
+                          const v = (e.target as HTMLInputElement).value;
+                          if (v) this.updateConfigEntry(entry.key, v);
+                        }
+                      : nothing}
+                    @input=${isSecret
+                      ? nothing
+                      : (e: Event) => {
+                          this.updateConfigEntry(
+                            entry.key,
+                            (e.target as HTMLInputElement).value,
+                          );
+                        }}
+                  />`}
+              ${hints && !hints.select
+                ? html`<datalist id="dl-${entry.key}">
+                    ${hints.options.map((o) => html`<option value=${o}></option>`)}
+                  </datalist>`
+                : nothing}
               ${entry.description
                 ? html`<span id="cfg-desc-${entry.key}" class="config-desc"
                     >${entry.description}</span
@@ -1108,11 +1164,17 @@ export class GcApp extends LitElement {
                 <input
                   type="text"
                   class="config-input"
+                  list="dl-profile-baseurl"
                   .value=${p.baseUrl}
                   @input=${(e: Event) => {
                     p.baseUrl = (e.target as HTMLInputElement).value;
                   }}
                 />
+                <datalist id="dl-profile-baseurl">
+                  ${(this.constructor as typeof GcApp).CONFIG_HINTS["LLM_BASE_URL"]?.options.map(
+                    (o) => html`<option value=${o}></option>`,
+                  )}
+                </datalist>
               </label>`
             : nothing}
           <label class="profile-field">
@@ -1120,12 +1182,18 @@ export class GcApp extends LitElement {
             <input
               type="text"
               class="config-input"
+              list="dl-profile-model"
               placeholder="(backend default)"
               .value=${p.model}
               @input=${(e: Event) => {
                 p.model = (e.target as HTMLInputElement).value;
               }}
             />
+            <datalist id="dl-profile-model">
+              ${(this.constructor as typeof GcApp).CONFIG_HINTS["LLM_MODEL"]?.options.map(
+                (o) => html`<option value=${o}></option>`,
+              )}
+            </datalist>
           </label>
           <label class="profile-field">
             <span>API Key</span>
@@ -1146,24 +1214,36 @@ export class GcApp extends LitElement {
             <input
               type="text"
               class="config-input"
+              list="dl-profile-temp"
               placeholder="0"
               .value=${p.temperature}
               @input=${(e: Event) => {
                 p.temperature = (e.target as HTMLInputElement).value;
               }}
             />
+            <datalist id="dl-profile-temp">
+              ${(this.constructor as typeof GcApp).CONFIG_HINTS["LLM_TEMPERATURE"]?.options.map(
+                (o) => html`<option value=${o}></option>`,
+              )}
+            </datalist>
           </label>
           <label class="profile-field">
             <span>Max Tokens</span>
             <input
               type="text"
               class="config-input"
+              list="dl-profile-maxtok"
               placeholder="0"
               .value=${p.maxTokens}
               @input=${(e: Event) => {
                 p.maxTokens = (e.target as HTMLInputElement).value;
               }}
             />
+            <datalist id="dl-profile-maxtok">
+              ${(this.constructor as typeof GcApp).CONFIG_HINTS["LLM_MAX_TOKENS"]?.options.map(
+                (o) => html`<option value=${o}></option>`,
+              )}
+            </datalist>
           </label>
         </div>
         <div class="profile-editor-actions">
@@ -2270,6 +2350,9 @@ export class GcApp extends LitElement {
     }
     .config-input:focus {
       border-color: var(--accent-assistant);
+    }
+    select.config-input {
+      cursor: pointer;
     }
     .config-desc {
       font-size: 0.65rem;
