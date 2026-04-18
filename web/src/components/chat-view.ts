@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { classMap } from "lit/directives/class-map.js";
 import { chatClient, repoClient } from "../lib/transport.js";
 import { readFocus, writeFocus } from "../lib/focus.js";
 import {
@@ -571,7 +572,7 @@ export class GcChatView extends LitElement {
     const s = this.state;
     return html`
       <div
-        class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen ? "drawer-open" : ""}"
+        class=${classMap({ layout: true, focused: this.focused, "drawer-open": this.drawerOpen })}
         role="main"
         @keydown=${(e: KeyboardEvent) => {
           if (e.key === "Escape" && this.drawerOpen) {

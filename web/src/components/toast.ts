@@ -1,5 +1,6 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { repeat } from "lit/directives/repeat.js";
 
 type ToastItem = {
   id: number;
@@ -52,7 +53,9 @@ export class GcToast extends LitElement {
   override render() {
     return html`
       <div class="stack" role="alert" aria-live="polite">
-        ${this.items.map(
+        ${repeat(
+          this.items,
+          (t) => t.id,
           (t) => html`
             <div class="toast ${t.kind}" @click=${() => this.dismiss(t.id)}>${t.message}</div>
           `,

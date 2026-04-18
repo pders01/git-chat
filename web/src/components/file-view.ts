@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { classMap } from "lit/directives/class-map.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
 import { copyText } from "../lib/clipboard.js";
@@ -246,7 +247,7 @@ export class GcFileView extends LitElement {
           history
         </button>
         <button
-          class="hd-btn ${this.showBlame ? "active" : ""} ${this.blameLoading ? "loading" : ""}"
+          class=${classMap({ "hd-btn": true, active: this.showBlame, loading: this.blameLoading })}
           @click=${() => this.toggleBlame()}
           ?disabled=${this.blameLoading}
           aria-label="Toggle git blame"
@@ -361,7 +362,7 @@ export class GcFileView extends LitElement {
   // Single-line template: whitespace inside <td white-space:pre> becomes visible line gaps.
   // prettier-ignore
   private renderBlameRow(i: number, line: string, isHighlighted: boolean, isNewBlock: boolean, isSelected: boolean, blame: BlameLine | undefined) {
-    return html`<tr class="${isNewBlock ? "blame-start" : ""} ${isSelected ? "blame-selected" : ""}"><td class="blame-cell" data-idx=${i} tabindex=${isNewBlock ? "0" : "-1"} role="button">${isNewBlock && blame ? html`<span class="blame-sha">${blame.commitSha}</span>` : nothing}</td><td class="lno-cell">${i + 1}</td><td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">${isHighlighted ? unsafeHTML(line) : line}</td></tr>`;
+    return html`<tr class=${classMap({ "blame-start": isNewBlock, "blame-selected": isSelected })}><td class="blame-cell" data-idx=${i} tabindex=${isNewBlock ? "0" : "-1"} role="button">${isNewBlock && blame ? html`<span class="blame-sha">${blame.commitSha}</span>` : nothing}</td><td class="lno-cell">${i + 1}</td><td class="code-cell ${isHighlighted ? "highlighted" : "plain-cell"}">${isHighlighted ? unsafeHTML(line) : line}</td></tr>`;
   }
 
   private async toggleBlame() {

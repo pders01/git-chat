@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { classMap } from "lit/directives/class-map.js";
 import { repoClient } from "../lib/transport.js";
 import type { CatalogProvider, LLMProfile, LocalEndpoint } from "../gen/gitchat/v1/repo_pb.js";
 import "./combobox.js";
@@ -274,7 +275,7 @@ export class GcConnectionWizard extends LitElement {
     return html`
       ${steps.map((s, i) => html`
         <button
-          class="step-dot ${i <= current ? "done" : ""} ${this.step === s.id ? "active" : ""}"
+          class=${classMap({ "step-dot": true, done: i <= current, active: this.step === s.id })}
           @click=${() => { if (i <= current) this.step = s.id; }}
           ?disabled=${i > current}
         >${s.label}</button>

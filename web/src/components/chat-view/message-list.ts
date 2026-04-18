@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { repeat } from "lit/directives/repeat.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { copyText } from "../../lib/clipboard.js";
 import {
@@ -53,7 +54,13 @@ export class GcMessageList extends LitElement {
         @click=${this.onMessagesClick}
         @scroll=${this.onScroll}
       >
-        <div class="messages-inner">${this.turns.map((t) => this.renderTurn(t))}</div>
+        <div class="messages-inner">
+          ${repeat(
+            this.turns,
+            (t) => t.id,
+            (t) => this.renderTurn(t),
+          )}
+        </div>
       </div>
     `;
   }

@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { classMap } from "lit/directives/class-map.js";
 import { repoClient } from "../lib/transport.js";
 import { readFocus, writeFocus } from "../lib/focus.js";
 import { EntryType, type Repo } from "../gen/gitchat/v1/repo_pb.js";
@@ -352,9 +353,12 @@ export class GcRepoBrowser extends LitElement {
   private renderReady(s: Extract<BrowserState, { phase: "ready" }>) {
     return html`
       <div
-        class="layout ${this.focused ? "focused" : ""} ${this.drawerOpen
-          ? "drawer-open"
-          : ""} ${this.comparing || this.showChanges || this.showCity ? "comparing" : ""}"
+        class=${classMap({
+          layout: true,
+          focused: this.focused,
+          "drawer-open": this.drawerOpen,
+          comparing: this.comparing || this.showChanges || this.showCity,
+        })}
         @keydown=${(e: KeyboardEvent) => {
           if (e.key === "Escape" && this.drawerOpen) {
             this.drawerOpen = false;

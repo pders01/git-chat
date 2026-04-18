@@ -1,5 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { classMap } from "lit/directives/class-map.js";
+import { repeat } from "lit/directives/repeat.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { svg } from "lit";
 import { repoClient } from "../lib/transport.js";
@@ -1047,22 +1049,26 @@ export class GcCommitLog extends LitElement {
       <div class="graph-scroll">
         <div class="graph-view" @keydown=${this.onListKeydown} style="height:${totalH}px">
           <svg class="graph-svg" width="${svgW}" height="${svgH}">${svgLines} ${svgDots}</svg>
-          ${commits.map((c, i) => {
-            const y = i * ROW_H;
-            const inCal = this.viewMode === "calendar";
-            const armed = inCal && c.sha === this.calendarArmedSha;
-            const selected = !inCal && c.sha === this.selectedSha;
-            return html` <button
-              data-sha=${c.sha}
-              class="graph-row ${selected ? "selected" : ""} ${armed ? "armed" : ""}"
-              style="height:${ROW_H}px; top:${y}px; padding-left:${svgW + 4}px"
-              @click=${() => this.pickCommit(c.sha)}
-              title="${c.message} — ${c.authorName}"
-            >
-              <span class="graph-msg">${c.shortSha} ${c.message}</span>
-              <span class="graph-age">${formatAge(Number(c.authorTime))}</span>
-            </button>`;
-          })}
+          ${repeat(
+            commits,
+            (c) => c.sha,
+            (c, i) => {
+              const y = i * ROW_H;
+              const inCal = this.viewMode === "calendar";
+              const armed = inCal && c.sha === this.calendarArmedSha;
+              const selected = !inCal && c.sha === this.selectedSha;
+              return html` <button
+                data-sha=${c.sha}
+                class=${classMap({ "graph-row": true, selected, armed })}
+                style="height:${ROW_H}px; top:${y}px; padding-left:${svgW + 4}px"
+                @click=${() => this.pickCommit(c.sha)}
+                title="${c.message} — ${c.authorName}"
+              >
+                <span class="graph-msg">${c.shortSha} ${c.message}</span>
+                <span class="graph-age">${formatAge(Number(c.authorTime))}</span>
+              </button>`;
+            },
+          )}
           ${hasMore
             ? html`<div
                 class="load-sentinel graph-sentinel"
@@ -1106,9 +1112,12 @@ export class GcCommitLog extends LitElement {
     return html`
       <div class="log-root">
         <div
-          class="layout ${this.viewMode === "calendar" ? "calendar-mode" : ""} ${this.drawerOpen
-            ? "drawer-open"
-            : ""} ${this.focused ? "focused" : ""}"
+          class=${classMap({
+            layout: true,
+            "calendar-mode": this.viewMode === "calendar",
+            "drawer-open": this.drawerOpen,
+            focused: this.focused,
+          })}
           @keydown=${(e: KeyboardEvent) => {
             if (e.key === "Escape" && this.drawerOpen) {
               this.drawerOpen = false;
@@ -1179,37 +1188,41 @@ export class GcCommitLog extends LitElement {
             ${this.graphMode
               ? this.renderGraph(commits)
               : html`<ul class="commits" role="list" @keydown=${this.onListKeydown}>
-                  ${commits.map((c) => {
-                    const inCal = this.viewMode === "calendar";
-                    const armed = inCal && c.sha === this.calendarArmedSha;
-                    const selected = !inCal && c.sha === this.selectedSha;
-                    return html`
-                      <li>
-                        <button
-                          data-sha=${c.sha}
-                          class="commit-row ${selected ? "selected" : ""} ${armed ? "armed" : ""}"
-                          aria-pressed=${selected || armed ? "true" : "false"}
-                          @click=${() => this.pickCommit(c.sha)}
-                          title="${c.message} — ${c.authorName}"
-                        >
-                          <div class="commit-line1">
-                            <span class="sha">${c.shortSha}</span>
-                            <span class="commit-msg">${c.message}</span>
-                          </div>
-                          <div class="commit-line2">
-                            <span class="commit-author">${c.authorName}</span>
-                            <span class="commit-age">${formatAge(Number(c.authorTime), true)}</span>
-                            ${c.filesChanged
-                              ? html`<span class="commit-stats">
-                                  <span class="adds">+${c.additions}</span>
-                                  <span class="dels">-${c.deletions}</span>
-                                </span>`
-                              : nothing}
-                          </div>
-                        </button>
-                      </li>
-                    `;
-                  })}
+                  ${repeat(
+                    commits,
+                    (c) => c.sha,
+                    (c) => {
+                      const inCal = this.viewMode === "calendar";
+                      const armed = inCal && c.sha === this.calendarArmedSha;
+                      const selected = !inCal && c.sha === this.selectedSha;
+                      return html`
+                        <li>
+                          <button
+                            data-sha=${c.sha}
+                            class=${classMap({ "commit-row": true, selected, armed })}
+                            aria-pressed=${selected || armed ? "true" : "false"}
+                            @click=${() => this.pickCommit(c.sha)}
+                            title="${c.message} — ${c.authorName}"
+                          >
+                            <div class="commit-line1">
+                              <span class="sha">${c.shortSha}</span>
+                              <span class="commit-msg">${c.message}</span>
+                            </div>
+                            <div class="commit-line2">
+                              <span class="commit-author">${c.authorName}</span>
+                              <span class="commit-age">${formatAge(Number(c.authorTime), true)}</span>
+                              ${c.filesChanged
+                                ? html`<span class="commit-stats">
+                                    <span class="adds">+${c.additions}</span>
+                                    <span class="dels">-${c.deletions}</span>
+                                  </span>`
+                                : nothing}
+                            </div>
+                          </button>
+                        </li>
+                      `;
+                    },
+                  )}
                   ${hasMore
                     ? html`<li class="load-sentinel" role="presentation" aria-hidden="true">
                         ${this.loadingMore ? "loading…" : ""}
@@ -1288,7 +1301,9 @@ export class GcCommitLog extends LitElement {
                                     </span>
                                   </button>
                                 </li>
-                                ${this.files.map(
+                                ${repeat(
+                                  this.files,
+                                  (f) => f.path,
                                   (f) => html`
                                     <li>
                                       <button
