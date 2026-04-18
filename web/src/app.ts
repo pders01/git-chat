@@ -11,6 +11,7 @@ import "./components/toast.js";
 import "./components/kb-view.js";
 import "./components/loading-indicator.js";
 import "./components/combobox.js";
+import "./components/connection-wizard.js";
 import type { ComboboxOption } from "./components/combobox.js";
 import * as settings from "./lib/settings.js";
 import { readFocus, writeFocus } from "./lib/focus.js";
@@ -826,82 +827,7 @@ export class GcApp extends LitElement {
     }
   }
 
-  /** Models for a given provider ID from the catalog. */
-  private catalogModelsFor(providerId: string): any[] {
-    const p = this.catalog.find((c: any) => c.id === providerId);
-    return p?.models ?? [];
-  }
 
-  /** Sorted combobox options for providers. */
-  private get providerOptions(): ComboboxOption[] {
-    const local: ComboboxOption[] = this.localEndpoints.map((ep: any) => ({
-      value: `local:${ep.url}`,
-      label: ep.name,
-      description: `local · ${ep.models?.length ?? 0} models`,
-    }));
-    const catalog: ComboboxOption[] = [...this.catalog]
-      .sort((a: any, b: any) => a.name.localeCompare(b.name))
-      .map((c: any) => ({
-        value: c.id,
-        label: c.name,
-        description: `${c.type} · ${c.models?.length ?? 0} models`,
-      }));
-    if (local.length === 0 && catalog.length === 0) {
-      return [
-        { value: "openai", label: "openai" },
-        { value: "anthropic", label: "anthropic" },
-      ];
-    }
-    return [...local, ...catalog];
-  }
-
-  /** Sorted combobox options for models of a given provider. */
-  private modelOptionsFor(providerId: string): ComboboxOption[] {
-    // Local endpoint models.
-    if (providerId.startsWith("local:")) {
-      const url = providerId.slice(6);
-      const ep = this.localEndpoints.find((ep: any) => ep.url === url);
-      return (ep?.models ?? []).map((id: string) => ({
-        value: id,
-        label: id,
-        description: ep?.name ?? "local",
-      }));
-    }
-    return this.catalogModelsFor(providerId)
-      .sort((a: any, b: any) => a.name.localeCompare(b.name))
-      .map((m: any) => ({
-        value: m.id,
-        label: m.name,
-        description: [
-          m.contextWindow ? `${Math.round(Number(m.contextWindow) / 1000)}K ctx` : "",
-          m.costPer1MIn ? `$${m.costPer1MIn}/$${m.costPer1MOut} per 1M` : "",
-          m.canReason ? "reasoning" : "",
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      }));
-  }
-
-  /** Combobox options for base URLs. */
-  private get baseUrlOptions(): ComboboxOption[] {
-    const seen = new Set<string>();
-    const result: ComboboxOption[] = [];
-    // Local discovered endpoints first.
-    for (const ep of this.localEndpoints) {
-      if (!seen.has(ep.url)) {
-        seen.add(ep.url);
-        result.push({ value: ep.url, label: ep.name, description: `${ep.models?.length ?? 0} models` });
-      }
-    }
-    // Catalog provider URLs.
-    for (const c of this.catalog) {
-      if (c.defaultBaseUrl && !seen.has(c.defaultBaseUrl)) {
-        seen.add(c.defaultBaseUrl);
-        result.push({ value: c.defaultBaseUrl, label: c.name, description: c.type });
-      }
-    }
-    return result;
-  }
 
   private async activateProfile(id: string) {
     try {
@@ -1259,41 +1185,20 @@ export class GcApp extends LitElement {
                   ? `${this.localEndpoints.length} local`
                   : "detect local"}
             </button>
-            <button
-              class="action-btn"
-              @click=${() => {
-              this.editingProfile = {
-                id: "",
-                name: "",
-                backend: "openai",
-                baseUrl: "http://localhost:1234/v1",
-                model: "",
-                apiKey: "",
-                temperature: "",
-                maxTokens: "",
-              };
-            }}
-          >
-            + new
-          </button>
+            <button class="action-btn" @click=${() => { this.editingProfile = null; this.editingProfile = {}; }}>
+              + new connection
+            </button>
           </div>
         </div>
         <div class="profiles-list">
           ${this.profiles.length === 0
-            ? html`<p class="config-empty">no profiles yet</p>`
+            ? html`<p class="config-empty">no profiles yet — click "+ new connection" to get started</p>`
             : this.profiles.map(
                 (p: any) => html`
                   <div class="profile-item ${this.activeProfileId === p.id ? "active" : ""}">
                     <button
                       class="profile-name"
-                      @click=${() => {
-                        // Resolve _providerId from catalog so the model
-                        // dropdown populates correctly on edit.
-                        const prov = this.catalog.find(
-                          (c: any) => c.type === p.backend && c.id === p.backend,
-                        ) || this.catalog.find((c: any) => c.type === p.backend);
-                        this.editingProfile = { ...p, _providerId: prov?.id ?? "" };
-                      }}
+                      @click=${() => { this.editingProfile = { ...p }; }}
                     >
                       ${p.name}
                       <span class="profile-meta">${p.backend} · ${p.model || "(default)"}</span>
@@ -1301,177 +1206,49 @@ export class GcApp extends LitElement {
                     <div class="profile-actions">
                       ${this.activeProfileId === p.id
                         ? html`<span class="profile-active-badge">active</span>`
-                        : html`<button
-                            class="action-btn"
-                            @click=${() => this.activateProfile(p.id)}
-                          >
+                        : html`<button class="action-btn" @click=${() => this.activateProfile(p.id)}>
                             activate
                           </button>`}
+                      <button
+                        class="action-btn danger"
+                        @click=${() => {
+                          if (confirm(`Delete profile "${p.name}"?`)) this.deleteProfile(p.id);
+                        }}
+                      >&times;</button>
                     </div>
                   </div>
                 `,
               )}
         </div>
         ${this.activeProfileId
-          ? html`<button
-              class="action-btn profile-deactivate"
-              @click=${() => this.activateProfile("")}
-            >
-              use manual settings
-            </button>`
+          ? html`<button class="action-btn profile-deactivate"
+              @click=${() => this.activateProfile("")}>use manual settings</button>`
           : nothing}
       </div>
-      ${this.editingProfile ? this.renderProfileEditor() : nothing}
-      ${!this.editingProfile ? this.renderConfigGroup("llm") : nothing}
-    `;
-  }
 
-  private renderProfileEditor() {
-    const p = this.editingProfile;
-    if (!p) return nothing;
-    const isNew = !p.id;
-    return html`
-      <div class="profile-editor">
-        <h4 class="profile-editor-title">${isNew ? "New Profile" : p.name}</h4>
-        <div class="profile-fields">
-          <label class="profile-field">
-            <span>Name</span>
-            <input
-              type="text"
-              class="config-input"
-              .value=${p.name}
-              @input=${(e: Event) => {
-                p.name = (e.target as HTMLInputElement).value;
-              }}
-            />
-          </label>
-          <label class="profile-field">
-            <span>Provider</span>
-            <gc-combobox
-              .options=${this.providerOptions}
-              .value=${p._providerId || p.backend || ""}
-              placeholder="e.g. openai, anthropic"
-              @gc-select=${(e: CustomEvent) => {
-                const opt = e.detail;
-                p._providerId = opt.value;
-                // Local endpoint selected.
-                if (opt.value.startsWith("local:")) {
-                  const url = opt.value.slice(6);
-                  p.backend = "openai";
-                  p.baseUrl = url;
-                  const ep = this.localEndpoints.find((ep: any) => ep.url === url);
-                  p.model = ep?.models?.[0] || "";
-                } else {
-                  const prov = this.catalog.find((c: any) => c.id === opt.value);
-                  if (prov) {
-                    p.backend = prov.type;
-                    p.baseUrl = prov.defaultBaseUrl || p.baseUrl || "";
-                    p.model = prov.defaultModelId || "";
-                  } else {
-                    p.backend = opt.value;
-                  }
-                }
-                this.requestUpdate();
-              }}
-              @gc-input=${(e: CustomEvent) => {
-                const val = e.detail;
-                if (val === "openai" || val === "anthropic") {
-                  p.backend = val;
-                  p._providerId = "";
-                }
-              }}
-            ></gc-combobox>
-          </label>
-          ${p.backend !== "anthropic"
-            ? html`<label class="profile-field">
-                <span>Base URL</span>
-                <gc-combobox
-                  .options=${this.baseUrlOptions}
-                  .value=${p.baseUrl}
-                  placeholder="http://localhost:1234/v1"
-                  @gc-select=${(e: CustomEvent) => {
-                    p.baseUrl = e.detail.value;
-                  }}
-                  @gc-input=${(e: CustomEvent) => {
-                    p.baseUrl = e.detail;
-                  }}
-                ></gc-combobox>
-              </label>`
-            : nothing}
-          <label class="profile-field">
-            <span>Model</span>
-            <gc-combobox
-              .options=${this.modelOptionsFor(p._providerId || "")}
-              .value=${p.model}
-              placeholder="(backend default)"
-              @gc-select=${(e: CustomEvent) => {
-                p.model = e.detail.value;
-              }}
-              @gc-input=${(e: CustomEvent) => {
-                p.model = e.detail;
-              }}
-            ></gc-combobox>
-          </label>
-          <label class="profile-field">
-            <span>API Key</span>
-            <input
-              type="password"
-              class="config-input"
-              autocomplete="off"
-              placeholder=${p.apiKey || "not set"}
-              .value=${p.apiKey === "••••••••" ? "" : p.apiKey}
-              @change=${(e: Event) => {
-                const v = (e.target as HTMLInputElement).value;
-                if (v) p.apiKey = v;
-              }}
-            />
-          </label>
-          <label class="profile-field">
-            <span>Temperature</span>
-            <input
-              type="text"
-              class="config-input"
-              placeholder="0"
-              .value=${p.temperature}
-              @input=${(e: Event) => {
-                p.temperature = (e.target as HTMLInputElement).value;
-              }}
-            />
-          </label>
-          <label class="profile-field">
-            <span>Max Tokens</span>
-            <input
-              type="text"
-              class="config-input"
-              placeholder="0"
-              .value=${p.maxTokens}
-              @input=${(e: Event) => {
-                p.maxTokens = (e.target as HTMLInputElement).value;
-              }}
-            />
-          </label>
-        </div>
-        <div class="profile-editor-actions">
-          <button class="action-btn" @click=${() => this.saveProfile(p)}>
-            ${isNew ? "create" : "save"}
-          </button>
-          ${!isNew
-            ? html`<button
-                class="action-btn danger"
-                @click=${() => {
-                  if (confirm(`Delete profile "${p.name}"? This cannot be undone.`)) {
-                    this.deleteProfile(p.id);
-                  }
-                }}
-              >
-                delete
-              </button>`
-            : nothing}
-          <button class="action-btn" @click=${() => (this.editingProfile = null)}>
-            cancel
-          </button>
-        </div>
-      </div>
+      ${this.editingProfile
+        ? html`<gc-connection-wizard
+            .catalog=${this.catalog}
+            .localEndpoints=${this.localEndpoints}
+            .profile=${this.editingProfile.id ? this.editingProfile : null}
+            @gc-profile-save=${async (e: CustomEvent) => {
+              const { profile, activate } = e.detail;
+              await this.saveProfile(profile);
+              if (activate) {
+                // Find the saved profile ID.
+                const saved = this.profiles.find((p: any) => p.name === profile.name);
+                if (saved) await this.activateProfile(saved.id);
+              }
+              this.editingProfile = null;
+            }}
+            @gc-profile-cancel=${() => { this.editingProfile = null; }}
+          ></gc-connection-wizard>`
+        : nothing}
+
+      <details class="advanced-config">
+        <summary>Advanced — raw config entries</summary>
+        ${this.renderConfigGroup("llm")}
+      </details>
     `;
   }
 
@@ -2579,6 +2356,23 @@ export class GcApp extends LitElement {
       font-size: 0.65rem;
       opacity: 0.4;
       line-height: 1.3;
+    }
+
+    /* ── Advanced config collapsible ─────────────────────────── */
+    .advanced-config {
+      margin-top: var(--space-4);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      padding: var(--space-2) var(--space-3);
+    }
+    .advanced-config summary {
+      font-size: var(--text-xs);
+      cursor: pointer;
+      opacity: 0.5;
+      font-weight: 500;
+    }
+    .advanced-config[open] summary {
+      margin-bottom: var(--space-3);
     }
 
     /* ── LLM Profiles ────────────────────────────────────────── */
