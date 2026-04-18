@@ -25,9 +25,28 @@ import (
 	"github.com/pders01/git-chat/internal/config"
 )
 
-// Entry is a registered repository. The mu mutex serializes go-git
-// operations — go-git's packfile index uses internal maps that are
-// not safe for concurrent access.
+// Entry is a registered repository.
+//
+// ── Locking ─────────────────────────────────────────────────────────
+//
+// mu serializes access to the *git.Repository handle. go-git is NOT
+// thread-safe: even concurrent reads can panic via MemoryIndex.FindHash
+// (concurrent map read/write in the packfile index). See
+// https://github.com/go-git/go-git/issues/773 and #1121. Do not relax
+// this to an RWMutex — every known "read-only" go-git method still
+// mutates internal caches.
+//
+// cacheMu is a separate RWMutex dedicated to blameCache and churnCache.
+// Cache hits take RLock and parallelize; cache stores take Lock. This
+// decouples cache lookups from mu so two users hitting cached results
+// don't serialize behind a third user's in-flight go-git walk.
+//
+// Lock order: mu before cacheMu when both are needed. Long-running
+// subprocess work (git blame, git log) MUST be done with neither held
+// — those paths resolve the SHA under mu, release, exec, then
+// re-acquire for any post-processing that touches go-git.
+//
+// ── Caches ──────────────────────────────────────────────────────────
 //
 // blameCache holds per-(commitSHA, path) blame results. Blame is
 // deterministic for a given commit, so entries never need invalidation;
@@ -52,6 +71,7 @@ type Entry struct {
 	Config        *config.Registry
 	mu            sync.Mutex
 	repo          *git.Repository
+	cacheMu       sync.RWMutex
 	blameCache    map[string]any // key: commitSHA + "\x00" + path → []*gitchatv1.BlameLine (declared as any to keep this file free of gen/ imports)
 	churnCache    map[string]any // key: tipSHA|since|until|maxCommits → *ChurnMapResult (any keeps this file free of gen/ imports)
 }

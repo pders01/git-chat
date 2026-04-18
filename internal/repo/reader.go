@@ -499,11 +499,19 @@ func churnCacheKey(tipSHA string, since, until int64, maxCommits int) string {
 	return fmt.Sprintf("%s|%d|%d|%d", tipSHA, since, until, maxCommits)
 }
 
-func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until int64, maxCommitsOverride int) (*ChurnMapResult, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+// churnAcc accumulates per-path churn numbers during a single call.
+// Hoisted out of GetFileChurnMap so the subprocess and go-git paths
+// can share the type without nesting.
+type churnAcc struct {
+	commits   int
+	additions int64
+	deletions int64
+	lastMod   int64
+}
 
-	// Apply sensible defaults for large repos to avoid walking entire history
+func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until int64, maxCommitsOverride int) (*ChurnMapResult, error) {
+	// Apply sensible defaults for large repos to avoid walking entire history.
+	// cfgInt goes to SQLite/env — unrelated to go-git, so no lock needed.
 	if since == 0 && until == 0 {
 		until = time.Now().Unix()
 		since = until - int64(e.cfgInt(ctx, "GITCHAT_CHURN_WINDOW_DAYS", defaultChurnWindowDaysFallback)*24*3600)
@@ -520,28 +528,24 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 		}
 	}
 
-	commit, resolvedTip, err := e.resolveCommit(ref)
+	// Phase 1 — resolve tip under mu (go-git access).
+	e.mu.Lock()
+	_, resolvedTip, err := e.resolveCommit(ref)
+	e.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
 
-	// Cache lookup — tip-SHA-keyed, so refs that haven't moved return
-	// instantly. The walk itself can take minutes on large repos, so
-	// even a small cache pays for itself the first time the user
-	// re-plays the same query (slider bounce, tab return, etc.).
+	// Phase 2 — cache lookup under cacheMu (parallel readers). Tip-SHA-keyed,
+	// so refs that haven't moved return instantly.
 	cacheKey := churnCacheKey(resolvedTip, since, until, effCap)
-	if e.churnCache != nil {
-		if cached, ok := e.churnCache[cacheKey]; ok {
-			return cached.(*ChurnMapResult), nil
-		}
+	e.cacheMu.RLock()
+	cached, hit := e.churnCache[cacheKey]
+	e.cacheMu.RUnlock()
+	if hit {
+		return cached.(*ChurnMapResult), nil
 	}
 
-	type churnAcc struct {
-		commits   int
-		additions int64
-		deletions int64
-		lastMod   int64
-	}
 	m := map[string]*churnAcc{}
 	var commitsScanned int
 	var capReached bool
@@ -551,7 +555,7 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 	// user-requested since, which the cap may have silently narrowed.
 	var oldestScannedTs int64
 
-	// ── Primary: git log --numstat subprocess ────────────────────────
+	// Phase 3 — subprocess scan with no locks held.
 	//
 	// Request cap+1 so we can disambiguate "exactly cap commits in the
 	// window" (complete data) from "more than cap, we truncated"
@@ -588,122 +592,23 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 			}
 		}
 	} else {
-		// ── Fallback: go-git walk ────────────────────────────────────
-		filterTime := since > 0 || until > 0
-		iter := object.NewCommitIterCTime(commit, nil, nil)
-		defer iter.Close()
-
-		commitsProcessed := 0
-		for {
-			c, err := iter.Next()
-			if err != nil {
-				break
-			}
-			commitsProcessed++
-			// Walk one beyond the cap so we can distinguish "exactly
-			// cap commits walked" from "more than cap walked" — same
-			// rationale as the +1 in the primary path. Detect here,
-			// before processing the extra commit, so commitsScanned
-			// stays bounded by the cap.
-			if commitsProcessed > effCap {
-				capReached = true
-				break
-			}
-
-			ts := c.Author.When.Unix()
-			if filterTime {
-				if since > 0 && ts < since {
-					break
-				}
-				if until > 0 && ts > until {
-					continue
-				}
-			}
-			// Only count commits that actually contribute to the
-			// churn map — otherwise "N commits in selected window"
-			// would include ones skipped by the time filter.
-			commitsScanned++
-			if ts > 0 && (oldestScannedTs == 0 || ts < oldestScannedTs) {
-				oldestScannedTs = ts
-			}
-
-			cTree, err := c.Tree()
-			if err != nil {
-				continue
-			}
-			var pTree *object.Tree
-			if c.NumParents() > 0 {
-				parent, perr := c.Parents().Next()
-				if perr == nil {
-					pTree, _ = parent.Tree()
-				}
-			}
-
-			if pTree == nil {
-				cTree.Files().ForEach(func(f *object.File) error {
-					acc, ok := m[f.Name]
-					if !ok {
-						acc = &churnAcc{}
-						m[f.Name] = acc
-					}
-					acc.commits++
-					acc.additions += f.Size / 40
-					if ts > acc.lastMod {
-						acc.lastMod = ts
-					}
-					return nil
-				})
-				continue
-			}
-
-			changes, err := pTree.Diff(cTree)
-			if err != nil {
-				continue
-			}
-			patch, err := changes.Patch()
-			if err != nil {
-				continue
-			}
-			for _, st := range patch.Stats() {
-				acc, ok := m[st.Name]
-				if !ok {
-					acc = &churnAcc{}
-					m[st.Name] = acc
-				}
-				acc.commits++
-				acc.additions += int64(st.Addition)
-				acc.deletions += int64(st.Deletion)
-				if ts > acc.lastMod {
-					acc.lastMod = ts
-				}
-			}
+		// Phase 3b — go-git fallback. Stays under mu for the whole walk
+		// since every iter/diff call touches packfile internals.
+		if err := e.churnWalkGoGit(resolvedTip, since, until, effCap, m, &commitsScanned, &capReached, &oldestScannedTs); err != nil {
+			return nil, err
 		}
 	}
 
-	// Collect file sizes. Native `git ls-tree -r -l` emits all blob
-	// sizes in one subprocess; go-git's tree.Files() walker opens each
-	// blob header individually, which was half the churn latency.
+	// Phase 4 — file sizes: subprocess first (no lock), go-git fallback under mu.
 	sizeMap, sizeErr := gitLsTreeSizes(ctx, e.Path, ref)
 	if sizeErr != nil {
-		// Fallback: go-git tree walk. Slow, but keeps the feature
-		// working on hosts without the git binary.
-		tree, terr := commit.Tree()
-		if terr != nil {
-			return nil, fmt.Errorf("get tree for sizes: %w", terr)
-		}
-		sizeMap = map[string]int64{}
-		fileIter := tree.Files()
-		defer fileIter.Close()
-		for {
-			f, ferr := fileIter.Next()
-			if ferr != nil {
-				break
-			}
-			sizeMap[f.Name] = f.Size
+		sizeMap, err = e.sizeMapGoGit(resolvedTip)
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	// Merge into result.
+	// Phase 5 — merge + sort (pure, no lock).
 	out := make([]*gitchatv1.FileChurn, 0, len(m))
 	for path, acc := range m {
 		out = append(out, &gitchatv1.FileChurn{
@@ -715,8 +620,6 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 			Size:           sizeMap[path],
 		})
 	}
-
-	// Sort by commit_count DESC, then path ASC for determinism.
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].CommitCount != out[j].CommitCount {
 			return out[i].CommitCount > out[j].CommitCount
@@ -731,8 +634,10 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 		MaxCommitsScanned:       int32(effCap),
 		EffectiveSinceTimestamp: oldestScannedTs,
 	}
-	// Populate the cache. Half-drop random entries when full — matches
-	// blameCache's eviction style and keeps the bookkeeping simple.
+
+	// Phase 6 — cache store under cacheMu. Half-drop random entries when
+	// full — matches blameCache's eviction style.
+	e.cacheMu.Lock()
 	if e.churnCache == nil {
 		e.churnCache = make(map[string]any, churnCacheCap)
 	}
@@ -747,7 +652,134 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 		}
 	}
 	e.churnCache[cacheKey] = result
+	e.cacheMu.Unlock()
+
 	return result, nil
+}
+
+// churnWalkGoGit walks commits via go-git and accumulates into m. Holds
+// e.mu for the entire walk because every iter/tree/diff call touches
+// go-git internals. Only reached when the `git log --numstat` subprocess
+// fails (e.g. missing git binary).
+func (e *Entry) churnWalkGoGit(resolvedTip string, since, until int64, effCap int, m map[string]*churnAcc, commitsScanned *int, capReached *bool, oldestScannedTs *int64) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	commit, cerr := e.repo.CommitObject(plumbing.NewHash(resolvedTip))
+	if cerr != nil {
+		return fmt.Errorf("lookup commit %s: %w", resolvedTip, cerr)
+	}
+	filterTime := since > 0 || until > 0
+	iter := object.NewCommitIterCTime(commit, nil, nil)
+	defer iter.Close()
+
+	commitsProcessed := 0
+	for {
+		c, err := iter.Next()
+		if err != nil {
+			break
+		}
+		commitsProcessed++
+		// Walk one beyond the cap so we can distinguish "exactly cap
+		// commits walked" from "more than cap walked" — same rationale
+		// as the +1 in the primary path.
+		if commitsProcessed > effCap {
+			*capReached = true
+			break
+		}
+
+		ts := c.Author.When.Unix()
+		if filterTime {
+			if since > 0 && ts < since {
+				break
+			}
+			if until > 0 && ts > until {
+				continue
+			}
+		}
+		*commitsScanned++
+		if ts > 0 && (*oldestScannedTs == 0 || ts < *oldestScannedTs) {
+			*oldestScannedTs = ts
+		}
+
+		cTree, err := c.Tree()
+		if err != nil {
+			continue
+		}
+		var pTree *object.Tree
+		if c.NumParents() > 0 {
+			parent, perr := c.Parents().Next()
+			if perr == nil {
+				pTree, _ = parent.Tree()
+			}
+		}
+
+		if pTree == nil {
+			cTree.Files().ForEach(func(f *object.File) error {
+				acc, ok := m[f.Name]
+				if !ok {
+					acc = &churnAcc{}
+					m[f.Name] = acc
+				}
+				acc.commits++
+				acc.additions += f.Size / 40
+				if ts > acc.lastMod {
+					acc.lastMod = ts
+				}
+				return nil
+			})
+			continue
+		}
+
+		changes, err := pTree.Diff(cTree)
+		if err != nil {
+			continue
+		}
+		patch, err := changes.Patch()
+		if err != nil {
+			continue
+		}
+		for _, st := range patch.Stats() {
+			acc, ok := m[st.Name]
+			if !ok {
+				acc = &churnAcc{}
+				m[st.Name] = acc
+			}
+			acc.commits++
+			acc.additions += int64(st.Addition)
+			acc.deletions += int64(st.Deletion)
+			if ts > acc.lastMod {
+				acc.lastMod = ts
+			}
+		}
+	}
+	return nil
+}
+
+// sizeMapGoGit collects blob sizes via go-git's tree walker. Slow (opens
+// each blob header individually) but keeps churn working on hosts
+// without the git binary.
+func (e *Entry) sizeMapGoGit(resolvedTip string) (map[string]int64, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	commit, cerr := e.repo.CommitObject(plumbing.NewHash(resolvedTip))
+	if cerr != nil {
+		return nil, fmt.Errorf("lookup commit %s: %w", resolvedTip, cerr)
+	}
+	tree, terr := commit.Tree()
+	if terr != nil {
+		return nil, fmt.Errorf("get tree for sizes: %w", terr)
+	}
+	out := map[string]int64{}
+	fileIter := tree.Files()
+	defer fileIter.Close()
+	for {
+		f, ferr := fileIter.Next()
+		if ferr != nil {
+			break
+		}
+		out[f.Name] = f.Size
+	}
+	return out, nil
 }
 
 // GetCommitTimeRange returns the committer time of the ref's root
@@ -903,29 +935,43 @@ const blameCacheCap = 256
 //
 // ctx is threaded to the subprocess so a client cancel (or deadline)
 // actually kills the git process instead of leaving it orphaned.
+//
+// Locking is phased (see Entry doc comment): mu held only for go-git
+// access; the 23-second subprocess runs with no lock so other requests
+// to the same repo parallelize.
 func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.BlameLine, error) {
+	// Phase 1 — resolve the ref under mu (go-git access).
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	commit, resolved, err := e.resolveCommit(ref)
+	_, resolved, err := e.resolveCommit(ref)
+	e.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
+
+	// Phase 2 — cache lookup under cacheMu (parallel readers).
 	key := resolved + "\x00" + path
-	if e.blameCache != nil {
-		if cached, ok := e.blameCache[key]; ok {
-			return cached.([]*gitchatv1.BlameLine), nil
-		}
+	e.cacheMu.RLock()
+	cached, hit := e.blameCache[key]
+	e.cacheMu.RUnlock()
+	if hit {
+		return cached.([]*gitchatv1.BlameLine), nil
 	}
 
-	var out []*gitchatv1.BlameLine
-	out, err = gitBlamePorcelain(ctx, e.Path, resolved, path)
+	// Phase 3 — subprocess blame with no locks held.
+	out, err := gitBlamePorcelain(ctx, e.Path, resolved, path)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil, err
 		}
-		// Fall back to go-git so blame keeps working on hosts without
-		// the git binary (or if the exec fails unexpectedly).
+		// Phase 3b — fallback to go-git blame under mu.
+		e.mu.Lock()
+		commit, cerr := e.repo.CommitObject(plumbing.NewHash(resolved))
+		if cerr != nil {
+			e.mu.Unlock()
+			return nil, fmt.Errorf("blame %q: %w", path, cerr)
+		}
 		result, gogitErr := git.Blame(commit, path)
+		e.mu.Unlock()
 		if gogitErr != nil {
 			return nil, fmt.Errorf("blame %q: %w", path, gogitErr)
 		}
@@ -941,12 +987,11 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 		}
 	}
 
-	// Fill in full commit messages in a single pass, then truncate each
-	// line's CommitSha to the 7-char short form the UI expects. We do
-	// CommitObject lookups by full SHA (direct plumbing.NewHash is O(1))
-	// rather than ResolveRevision on a 7-char abbreviation, which does
-	// a prefix scan and turned out to dominate blame latency on deep
-	// histories.
+	// Phase 4 — enrich with commit messages (go-git lookups under mu).
+	// CommitObject by full SHA is O(1); ResolveRevision on a 7-char
+	// abbreviation does a prefix scan, which used to dominate blame
+	// latency on deep histories.
+	e.mu.Lock()
 	msgCache := map[string]string{}
 	for _, bl := range out {
 		full := bl.CommitSha
@@ -960,7 +1005,10 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 		bl.CommitMessage = msg
 		bl.CommitSha = ShortSHA(full)
 	}
+	e.mu.Unlock()
 
+	// Phase 5 — cache store under cacheMu.
+	e.cacheMu.Lock()
 	if e.blameCache == nil {
 		e.blameCache = make(map[string]any, blameCacheCap)
 	}
@@ -974,6 +1022,8 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 		}
 	}
 	e.blameCache[key] = out
+	e.cacheMu.Unlock()
+
 	return out, nil
 }
 
