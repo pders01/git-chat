@@ -1,18 +1,8 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { unsafeHTML } from "lit/directives/unsafe-html.js";
-import { repoClient } from "../lib/transport.js";
 import type { ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
-import { onChange as onSettingsChange } from "../lib/settings.js";
 import "./loading-indicator.js";
-import "./three-pane-view.js";
-import type { SideFilesState } from "../lib/diff-types.js";
-
-let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
-function loadHighlight() {
-  if (!highlightModule) highlightModule = import("../lib/highlight.js");
-  return highlightModule;
-}
+import "./diff-pane.js";
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -32,10 +22,9 @@ function fileName(path: string): string {
   return i >= 0 ? path.slice(i + 1) : path;
 }
 
-// CompareState models the overall comparison (file list + total stats).
-// Before the diff is fetched the view sits at `loading`; once the server
-// answers we land in `ready` even if the list is empty (the UI then
-// shows "no differences" instead of an error).
+// CompareState models the file-list sidebar. Totals sum the per-file
+// stats the pane hands back in gc:diff-files-loaded — no separate
+// compareBranches RPC needed since getDiff already returns the list.
 type CompareState =
   | { phase: "loading" }
   | { phase: "error"; message: string }
@@ -46,14 +35,6 @@ type CompareState =
       totalDeletions: number;
     };
 
-// DiffPaneState models the right-hand diff area. Same shape as in
-// commit-log — single union lets render collapse to one switch.
-type DiffPaneState =
-  | { phase: "empty" } // no file selected and no whole-compare diff yet
-  | { phase: "loading" }
-  | { phase: "error"; message: string }
-  | { phase: "ready"; rawDiff: string; diffHtml: string };
-
 @customElement("gc-compare-view")
 export class GcCompareView extends LitElement {
   @property({ type: String }) repoId = "";
@@ -62,236 +43,51 @@ export class GcCompareView extends LitElement {
 
   @state() private compareState: CompareState = { phase: "loading" };
   @state() private selectedFile = "";
-  @state() private diff: DiffPaneState = { phase: "empty" };
-  @state() private sideFiles: SideFilesState = { phase: "idle" };
-  // Three-pane (before | diff | after) mode. Toggle persists for the
-  // lifetime of the component; when on, selectFile also fetches the
-  // left/right full-file contents for the side panes.
+  // 3-pane (before | diff | after) toggle. Parent-owned because the
+  // button lives in the compare-view header; the pane reads it as a prop.
   @state() private threePane = false;
-  // Cached whole-compare diff so switching back to "all files" after
-  // looking at a single file is instant. Plain struct, not @state.
-  private fullDiff: { rawDiff: string; diffHtml: string } | null = null;
-  private compareGeneration = 0;
+  // Progressive rename-detection trigger. Flipped after the fast first
+  // load when both adds and deletes are present, making <gc-diff-pane>
+  // re-fetch with detectRenames=true.
+  @state() private wantRenameDetection = false;
+  // Reset each time (repoId, baseRef, headRef) changes — lets us ignore
+  // late gc:diff-files-loaded events from a superseded pane identity.
   private lastCompareKey = "";
-  private unsubSettings: (() => void) | null = null;
-  // Abort signal for the progressive-enhancement rename call. Rapid
-  // navigation cancels the in-flight server request so the expensive
-  // similarity-matrix work doesn't pile up after the user moved on.
-  private renameAbort: AbortController | null = null;
-
-  override connectedCallback() {
-    super.connectedCallback();
-    this.unsubSettings = onSettingsChange(() => void this.rehighlight());
-    if (this.repoId && this.baseRef && this.headRef) void this.compare();
-  }
-
-  override disconnectedCallback() {
-    super.disconnectedCallback();
-    this.unsubSettings?.();
-    this.unsubSettings = null;
-    this.renameAbort?.abort();
-    this.renameAbort = null;
-  }
-
-  private async rehighlight() {
-    if (this.diff.phase !== "ready" || !this.diff.rawDiff) return;
-    const raw = this.diff.rawDiff;
-    const { highlight } = await loadHighlight();
-    const highlighted = await highlight(raw, "diff");
-    if (this.diff.phase !== "ready" || this.diff.rawDiff !== raw) return;
-    this.diff = { ...this.diff, diffHtml: highlighted };
-    if (this.selectedFile === "" && this.fullDiff) {
-      this.fullDiff = { ...this.fullDiff, diffHtml: highlighted };
-    }
-  }
 
   override updated(changed: Map<string, unknown>) {
     if (changed.has("repoId") || changed.has("baseRef") || changed.has("headRef")) {
       const key = `${this.repoId}:${this.baseRef}:${this.headRef}`;
       if (key !== this.lastCompareKey && this.repoId && this.baseRef && this.headRef) {
         this.lastCompareKey = key;
-        void this.compare();
+        // Reset state — the pane will refetch on its own when its props
+        // change, firing gc:diff-files-loaded which rehydrates the list.
+        this.compareState = { phase: "loading" };
+        this.selectedFile = "";
+        this.threePane = false;
+        this.wantRenameDetection = false;
       }
     }
   }
 
-  private async compare() {
-    if (!this.baseRef || !this.headRef) return;
-    const gen = ++this.compareGeneration;
-    // Cancel any in-flight rename request from the previous compare —
-    // its result would be dropped anyway (stale-guard), but we'd like
-    // the server to stop doing the work, not just the client to ignore
-    // the answer.
-    this.renameAbort?.abort();
-    this.renameAbort = null;
-    this.selectedFile = "";
-    this.compareState = { phase: "loading" };
-    this.diff = { phase: "loading" };
-    this.sideFiles = { phase: "idle" };
-    this.fullDiff = null;
-    this.threePane = false;
-
-    try {
-      const [cmp, diff] = await Promise.all([
-        repoClient.compareBranches({
-          repoId: this.repoId,
-          baseRef: this.baseRef,
-          headRef: this.headRef,
-        }),
-        repoClient.getDiff({
-          repoId: this.repoId,
-          fromRef: this.baseRef,
-          toRef: this.headRef,
-        }),
-      ]);
-      if (gen !== this.compareGeneration) return;
-      this.compareState = {
-        phase: "ready",
-        files: cmp.files,
-        totalAdditions: cmp.totalAdditions,
-        totalDeletions: cmp.totalDeletions,
-      };
-
-      if (diff.empty) {
-        this.diff = { phase: "ready", rawDiff: "", diffHtml: "" };
-        this.fullDiff = { rawDiff: "", diffHtml: "" };
-      } else {
-        const { highlight } = await loadHighlight();
-        const highlighted = await highlight(diff.unifiedDiff, "diff");
-        if (gen !== this.compareGeneration) return;
-        this.diff = { phase: "ready", rawDiff: diff.unifiedDiff, diffHtml: highlighted };
-        this.fullDiff = { rawDiff: diff.unifiedDiff, diffHtml: highlighted };
-      }
-    } catch (e) {
-      if (gen !== this.compareGeneration) return;
-      this.lastCompareKey = "";
-      const message = e instanceof Error ? e.message : String(e);
-      this.compareState = { phase: "error", message };
-      this.diff = { phase: "error", message };
+  private onDiffFilesLoaded = (
+    e: CustomEvent<{ files: ChangedFile[]; parentSha: string; toCommit: string }>,
+  ) => {
+    const files = e.detail.files;
+    const totalAdditions = files.reduce((a, f) => a + (f.additions || 0), 0);
+    const totalDeletions = files.reduce((a, f) => a + (f.deletions || 0), 0);
+    this.compareState = { phase: "ready", files, totalAdditions, totalDeletions };
+    if (
+      !this.wantRenameDetection &&
+      files.some((f) => f.status === "added") &&
+      files.some((f) => f.status === "deleted")
+    ) {
+      this.wantRenameDetection = true;
     }
+  };
 
-    // Progressive enhancement: the initial fetch skipped rename detection
-    // (expensive on wide diffs). If the file list contains both adds and
-    // deletes, renames are plausible — fire a second request that opts
-    // into detection and swap the list in when it lands. Non-rename rows
-    // stay identical, so the reshuffle is bounded to actual renames.
-    const files = this.compareState.phase === "ready" ? this.compareState.files : [];
-    if (files.some((f) => f.status === "added") && files.some((f) => f.status === "deleted")) {
-      void this.detectRenamesBackground(gen);
-    }
-  }
-
-  private async detectRenamesBackground(gen: number) {
-    const ac = new AbortController();
-    this.renameAbort = ac;
-    try {
-      const cmp = await repoClient.compareBranches(
-        {
-          repoId: this.repoId,
-          baseRef: this.baseRef,
-          headRef: this.headRef,
-          detectRenames: true,
-        },
-        { signal: ac.signal },
-      );
-      if (gen !== this.compareGeneration || this.compareState.phase !== "ready") return;
-      this.compareState = {
-        phase: "ready",
-        files: cmp.files,
-        totalAdditions: cmp.totalAdditions,
-        totalDeletions: cmp.totalDeletions,
-      };
-    } catch {
-      // Silent — aborted or failed; the initial (fast) list is on screen.
-    } finally {
-      if (this.renameAbort === ac) this.renameAbort = null;
-    }
-  }
-
-  private async selectFile(path: string) {
+  private setSelectedFile(path: string) {
     if (this.selectedFile === path) return;
     this.selectedFile = path;
-
-    if (path === "") {
-      // Restore cached whole-compare diff.
-      if (this.fullDiff) {
-        this.diff = { phase: "ready", ...this.fullDiff };
-      } else {
-        this.diff = { phase: "empty" };
-      }
-      this.sideFiles = { phase: "idle" };
-      return;
-    }
-
-    const gen = this.compareGeneration;
-    this.diff = { phase: "loading" };
-    this.sideFiles = { phase: "idle" };
-
-    try {
-      const resp = await repoClient.getDiff({
-        repoId: this.repoId,
-        fromRef: this.baseRef,
-        toRef: this.headRef,
-        path,
-      });
-      if (gen !== this.compareGeneration || this.selectedFile !== path) return;
-      if (resp.empty) {
-        this.diff = { phase: "ready", rawDiff: "", diffHtml: "" };
-      } else {
-        const { highlight } = await loadHighlight();
-        const highlighted = await highlight(resp.unifiedDiff, "diff");
-        if (gen !== this.compareGeneration || this.selectedFile !== path) return;
-        this.diff = { phase: "ready", rawDiff: resp.unifiedDiff, diffHtml: highlighted };
-      }
-    } catch (e) {
-      if (gen !== this.compareGeneration || this.selectedFile !== path) return;
-      this.diff = { phase: "error", message: e instanceof Error ? e.message : String(e) };
-    }
-
-    if (this.threePane) void this.loadSideFiles(path);
-  }
-
-  // Fetch the full old- and new-file contents for the three-pane view.
-  // Errors on either side are non-fatal — the pane just shows "(empty)"
-  // or "(not present)" for that side, which is meaningful for adds and
-  // deletes.
-  private async loadSideFiles(path: string) {
-    if (!path) return;
-    const gen = this.compareGeneration;
-    this.sideFiles = { phase: "loading" };
-    const [leftResp, rightResp] = await Promise.all([
-      repoClient
-        .getFile({
-          repoId: this.repoId,
-          ref: this.baseRef,
-          path,
-          maxBytes: BigInt(512 * 1024),
-        })
-        .catch(() => null),
-      repoClient
-        .getFile({
-          repoId: this.repoId,
-          ref: this.headRef,
-          path,
-          maxBytes: BigInt(512 * 1024),
-        })
-        .catch(() => null),
-    ]);
-    if (gen !== this.compareGeneration || this.selectedFile !== path) return;
-    const td = new TextDecoder();
-    this.sideFiles = {
-      phase: "ready",
-      leftText: leftResp && !leftResp.isBinary ? td.decode(leftResp.content) : "",
-      rightText: rightResp && !rightResp.isBinary ? td.decode(rightResp.content) : "",
-      language: rightResp?.language || leftResp?.language || "plaintext",
-    };
-  }
-
-  private toggleThreePane() {
-    this.threePane = !this.threePane;
-    if (this.threePane && this.selectedFile && this.sideFiles.phase === "idle") {
-      void this.loadSideFiles(this.selectedFile);
-    }
   }
 
   private openInBrowse(path: string) {
@@ -326,7 +122,7 @@ export class GcCompareView extends LitElement {
             <li>
               <button
                 class="file-entry ${this.selectedFile === "" ? "selected" : ""}"
-                @click=${() => this.selectFile("")}
+                @click=${() => this.setSelectedFile("")}
               >
                 <span class="file-status all">∗</span>
                 <span class="file-path">all files</span>
@@ -345,7 +141,7 @@ export class GcCompareView extends LitElement {
                       if (e.metaKey || e.ctrlKey) {
                         this.openInBrowse(f.path);
                       } else {
-                        this.selectFile(f.path);
+                        this.setSelectedFile(f.path);
                       }
                     }}
                     title="${f.fromPath
@@ -412,7 +208,9 @@ export class GcCompareView extends LitElement {
             ${this.selectedFile
               ? html`<button
                   class="pane-toggle ${this.threePane ? "active" : ""}"
-                  @click=${() => this.toggleThreePane()}
+                  @click=${() => {
+                    this.threePane = !this.threePane;
+                  }}
                   aria-label="Toggle 3-pane diff view (before | diff | after)"
                   aria-pressed=${this.threePane ? "true" : "false"}
                   title="Toggle 3-pane view (before | diff | after)"
@@ -421,50 +219,21 @@ export class GcCompareView extends LitElement {
                 </button>`
               : nothing}
           </div>
-          <div class="diff-body">${this.renderDiffPane()}</div>
+          <gc-diff-pane
+            class="diff-body"
+            .repoId=${this.repoId}
+            .fromRef=${this.baseRef}
+            .toRef=${this.headRef}
+            .path=${this.selectedFile}
+            .threePane=${this.threePane}
+            .leftLabel=${this.baseRef}
+            .rightLabel=${this.headRef}
+            .detectRenames=${this.wantRenameDetection}
+            @gc:diff-files-loaded=${this.onDiffFilesLoaded}
+          ></gc-diff-pane>
         </section>
       </div>
     `;
-  }
-
-  private renderDiffPane() {
-    switch (this.diff.phase) {
-      case "empty":
-        return nothing;
-      case "loading":
-        return html`<gc-loading-banner
-          heading="loading diff…"
-          detail="fetching the changed-file patch from git; large ranges or big files can take a few seconds"
-        ></gc-loading-banner>`;
-      case "error":
-        return html`<p class="diff-err">${this.diff.message}</p>`;
-      case "ready": {
-        if (this.threePane && this.selectedFile) return this.renderThreePane(this.diff);
-        if (!this.diff.diffHtml) {
-          return html`<div class="diff-empty">
-            ${this.baseRef === this.headRef ? "same branch selected" : "no differences"}
-          </div>`;
-        }
-        return html`<div class="diff-content">${unsafeHTML(this.diff.diffHtml)}</div>`;
-      }
-    }
-  }
-
-  private renderThreePane(ready: DiffPaneState & { phase: "ready" }) {
-    switch (this.sideFiles.phase) {
-      case "idle":
-      case "loading":
-        return html`<gc-loading-banner heading="loading 3-pane…"></gc-loading-banner>`;
-      case "ready":
-        return html`<gc-three-pane-view
-          .leftText=${this.sideFiles.leftText}
-          .rightText=${this.sideFiles.rightText}
-          .rawDiff=${ready.rawDiff}
-          .language=${this.sideFiles.language}
-          .leftLabel=${this.baseRef}
-          .rightLabel=${this.headRef}
-        ></gc-three-pane-view>`;
-    }
   }
 
   static override styles = css`
@@ -507,7 +276,6 @@ export class GcCompareView extends LitElement {
       border-right: 1px solid var(--surface-4);
       background: var(--surface-0);
     }
-    /* ── File list ──────────────────────────────────────────── */
     .file-list-header {
       display: flex;
       align-items: center;
@@ -607,7 +375,7 @@ export class GcCompareView extends LitElement {
       margin-left: var(--space-1);
     }
 
-    /* ── Right: diff pane ────────────────────────────────────── */
+    /* ── Right: diff pane wrapper ───────────────────────────── */
     .diff-pane {
       display: flex;
       flex-direction: column;
@@ -648,17 +416,9 @@ export class GcCompareView extends LitElement {
       font-size: var(--text-xs);
       flex-shrink: 0;
     }
-    .diff-body {
-      flex: 1;
-      overflow: auto;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .diff-body > gc-three-pane-view {
+    gc-diff-pane.diff-body {
       flex: 1;
       min-height: 0;
-      overflow: hidden;
     }
     .pane-toggle {
       margin-left: auto;
@@ -680,35 +440,6 @@ export class GcCompareView extends LitElement {
     .pane-toggle[disabled] {
       opacity: 0.35;
       cursor: not-allowed;
-    }
-    .diff-loading {
-      padding: var(--space-6);
-      opacity: 0.5;
-    }
-    .diff-err {
-      color: var(--danger);
-      padding: var(--space-4);
-    }
-    .diff-empty {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      opacity: 0.4;
-      font-size: var(--text-sm);
-      font-style: italic;
-    }
-    .diff-content {
-      font-size: var(--text-xs);
-      line-height: 1.55;
-      overflow-x: auto;
-    }
-    .diff-content pre {
-      margin: 0;
-      padding: var(--space-3) var(--space-5);
-    }
-    .diff-content .shiki {
-      background: transparent !important;
     }
 
     @media (prefers-reduced-motion: reduce) {

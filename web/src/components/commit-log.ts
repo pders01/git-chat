@@ -2,24 +2,14 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { repeat } from "lit/directives/repeat.js";
-import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { svg } from "lit";
+import "./diff-pane.js";
 import { repoClient } from "../lib/transport.js";
 import type { CommitEntry, ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { copyText } from "../lib/clipboard.js";
-import { onChange as onSettingsChange } from "../lib/settings.js";
 import "./loading-indicator.js";
-import "./three-pane-view.js";
 import "./commit-log/commit-calendar.js";
 import { readFocus } from "../lib/focus.js";
-import type { SideFilesState } from "../lib/diff-types.js";
-
-// Lazy-load highlight for diff rendering.
-let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
-function loadHighlight() {
-  if (!highlightModule) highlightModule = import("../lib/highlight.js");
-  return highlightModule;
-}
 
 type LogState =
   | { phase: "loading" }
@@ -30,18 +20,6 @@ type LogState =
       offset: number;
     }
   | { phase: "error"; message: string };
-
-// DiffPaneState models the right-hand diff area of the log view. It
-// replaces the earlier cluster of booleans (diffLoading, diffError,
-// diffHtml, rawDiff, parentSha) with a discriminated union so render
-// and mutation sites both stay legible under a single switch. Cached
-// "all files" diff lives separately (see fullDiff below) since it's a
-// plain optimisation, not user-facing state.
-type DiffPaneState =
-  | { phase: "empty" } // no commit selected yet
-  | { phase: "loading" } // fetching the diff for the current selection
-  | { phase: "error"; message: string }
-  | { phase: "ready"; rawDiff: string; diffHtml: string; parentSha: string };
 
 // insertByAuthorTime splices a commit into a desc-sorted commit
 // array at the right chronological position. Used when a commit
@@ -98,6 +76,9 @@ export class GcCommitLog extends LitElement {
   // presence depends on state.hasMore, which changes at runtime.
   @state() private loadingMore = false;
   private listObserver: IntersectionObserver | null = null;
+  // Files list owns the commit-info sidebar (between the commit list and
+  // the diff pane). Populated by gc:diff-files-loaded from <gc-diff-pane>
+  // when it finishes fetching the whole-commit diff.
   @state() private files: ChangedFile[] = [];
   @state() private selectedFile = ""; // "" = all files
   @state() private commitFilter = "";
@@ -106,22 +87,13 @@ export class GcCommitLog extends LitElement {
   // when a single file is selected; toggle is disabled for the "all
   // files" combined view.
   @state() private threePane = false;
-  // Right-hand diff area state. See DiffPaneState above.
-  @state() private diff: DiffPaneState = { phase: "empty" };
-  // Enrichment data for the 3-pane view (before/after file bodies).
-  @state() private sideFiles: SideFilesState = { phase: "idle" };
+  // Progressive-enhancement flag flipped after the initial diff lands
+  // when the file list has both adds and deletes — tells <gc-diff-pane>
+  // to fire a follow-up rename-aware fetch. Parent-controlled so the
+  // pane stays dumb about what the log-specific heuristic is.
+  @state() private wantRenameDetection = false;
   @property({ type: String }) filterPath = "";
-  // Cached whole-commit diff so switching back to "all files" after
-  // looking at a single file is instant. Stays alongside @state as a
-  // plain cache — nothing here drives the view directly.
-  private fullDiff: { rawDiff: string; diffHtml: string; parentSha: string } | null = null;
   private pendingSha = "";
-  private unsubSettings: (() => void) | null = null;
-  // Abort signal for the progressive-enhancement rename call fired at
-  // the tail of selectCommit. Rapid commit switching cancels the
-  // in-flight request so the server's expensive similarity-matrix work
-  // doesn't accumulate after the user moved on.
-  private renameAbort: AbortController | null = null;
 
   private onSelectCommit = ((e: CustomEvent<{ sha: string }>) => {
     if (this.state.phase === "ready") {
@@ -140,7 +112,6 @@ export class GcCommitLog extends LitElement {
     this.addEventListener("gc:select-commit", this.onSelectCommit);
     this.addEventListener("gc:set-filter-path", this.onSetFilterPath);
     this.addEventListener("gc:toggle-focus", this.onSyncFocus);
-    this.unsubSettings = onSettingsChange(() => void this.rehighlight());
     if (this.repoId) void this.load(0);
   }
 
@@ -149,10 +120,6 @@ export class GcCommitLog extends LitElement {
     this.removeEventListener("gc:select-commit", this.onSelectCommit);
     this.removeEventListener("gc:set-filter-path", this.onSetFilterPath);
     this.removeEventListener("gc:toggle-focus", this.onSyncFocus);
-    this.unsubSettings?.();
-    this.unsubSettings = null;
-    this.renameAbort?.abort();
-    this.renameAbort = null;
     this.listObserver?.disconnect();
     this.listObserver = null;
   }
@@ -170,22 +137,6 @@ export class GcCommitLog extends LitElement {
           this.renderRoot.querySelector<HTMLElement>(".commit-list");
         target?.focus();
       });
-    }
-  }
-
-  private async rehighlight() {
-    if (this.diff.phase !== "ready" || !this.diff.rawDiff) return;
-    const raw = this.diff.rawDiff;
-    const { highlight } = await loadHighlight();
-    let highlighted = await highlight(raw, "diff");
-    // Bail if the user navigated away while highlight() was running.
-    if (this.diff.phase !== "ready" || this.diff.rawDiff !== raw) return;
-    highlighted = this.highlightWordDiffs(highlighted);
-    this.diff = { ...this.diff, diffHtml: highlighted };
-    // Keep the "all files" cache in step so toggling back later doesn't
-    // show a stale-themed render.
-    if (this.selectedFile === "" && this.fullDiff) {
-      this.fullDiff = { ...this.fullDiff, diffHtml: highlighted };
     }
   }
 
@@ -456,489 +407,60 @@ export class GcCommitLog extends LitElement {
       }
     }
     if (this.selectedSha === sha) {
-      // Toggle off.
+      // Toggle off — clearing selectedSha unmounts the pane, which
+      // disconnects its settings listener and cancels any in-flight
+      // rename fetch in its disconnectedCallback.
       this.selectedSha = "";
       this.selectedFile = "";
       this.files = [];
-      this.diff = { phase: "empty" };
-      this.sideFiles = { phase: "idle" };
-      this.fullDiff = null;
+      this.wantRenameDetection = false;
       this.threePane = false;
       return;
     }
-    const requestedSha = sha;
-    // Cancel any in-flight rename-detection request from the previous
-    // commit selection. Its result would be stale-guarded anyway, but
-    // we want the server to stop the similarity-matrix work, not just
-    // drop the answer on the client.
-    this.renameAbort?.abort();
-    this.renameAbort = null;
     this.selectedSha = sha;
     this.selectedFile = "";
     this.drawerOpen = false;
     this.files = [];
-    this.fullDiff = null;
-    this.sideFiles = { phase: "idle" };
-    this.diff = { phase: "loading" };
-
-    try {
-      const resp = await repoClient.getDiff({
-        repoId: this.repoId,
-        toRef: sha,
-      });
-      if (this.selectedSha !== requestedSha) return; // stale
-      this.files = resp.files;
-      const parentSha = resp.fromCommit || "";
-      if (resp.empty) {
-        const ready = { phase: "ready" as const, rawDiff: "", diffHtml: "", parentSha };
-        this.diff = ready;
-        this.fullDiff = { rawDiff: "", diffHtml: "", parentSha };
-      } else {
-        const { highlight } = await loadHighlight();
-        let highlighted = await highlight(resp.unifiedDiff, "diff");
-        if (this.selectedSha !== requestedSha) return; // stale
-        highlighted = this.highlightWordDiffs(highlighted);
-        this.diff = {
-          phase: "ready",
-          rawDiff: resp.unifiedDiff,
-          diffHtml: highlighted,
-          parentSha,
-        };
-        this.fullDiff = { rawDiff: resp.unifiedDiff, diffHtml: highlighted, parentSha };
-      }
-    } catch (e) {
-      if (this.selectedSha !== requestedSha) return;
-      this.diff = { phase: "error", message: e instanceof Error ? e.message : String(e) };
-    }
+    this.wantRenameDetection = false;
     this._lastRestoredSha = this.selectedSha;
     this.dispatchNav({ commitSha: this.selectedSha || undefined, logFile: undefined });
+  }
 
-    // Progressive enhancement: fire a rename-aware second request once
-    // the fast list is rendered. If any renames land we swap this.files,
-    // collapsing matching add/delete pairs.
+  // onDiffFilesLoaded runs when <gc-diff-pane> finishes its whole-commit
+  // fetch (and again after rename detection). Populates the file-list
+  // sidebar and gates the progressive rename-aware second fetch.
+  private onDiffFilesLoaded = (
+    e: CustomEvent<{ files: ChangedFile[]; parentSha: string; toCommit: string }>,
+  ) => {
+    this.files = e.detail.files;
+    // Progressive enhancement: if the fast list has both adds and
+    // deletes, ask the pane for a rename-aware refetch. The heuristic
+    // stays log-side so the pane doesn't have to know which contexts
+    // want detection.
     if (
+      !this.wantRenameDetection &&
       this.files.some((f) => f.status === "added") &&
       this.files.some((f) => f.status === "deleted")
     ) {
-      void this.detectRenamesBackground(requestedSha);
+      this.wantRenameDetection = true;
     }
-  }
-
-  private async detectRenamesBackground(requestedSha: string) {
-    const ac = new AbortController();
-    this.renameAbort = ac;
-    try {
-      const resp = await repoClient.getDiff(
-        {
-          repoId: this.repoId,
-          toRef: requestedSha,
-          detectRenames: true,
-        },
-        { signal: ac.signal },
-      );
-      if (this.selectedSha !== requestedSha) return; // stale
-      this.files = resp.files;
-    } catch {
-      // Silent — aborted or failed; fast list is already on screen.
-    } finally {
-      if (this.renameAbort === ac) this.renameAbort = null;
-    }
-  }
+  };
 
   private dispatchNav(detail: Record<string, string | boolean | undefined>) {
     this.dispatchEvent(new CustomEvent("gc:nav", { bubbles: true, composed: true, detail }));
   }
 
-  private async selectFile(path: string) {
+  // setSelectedFile is the file-list onclick target. The pane reacts to
+  // path changes itself via its updated() hook, so all we do here is
+  // flip the state and dispatch the URL update.
+  private setSelectedFile(path: string) {
     if (this.selectedFile === path) return;
     this.selectedFile = path;
-
-    // "All files" — restore cached full diff.
-    if (path === "") {
-      if (this.fullDiff) {
-        this.diff = { phase: "ready", ...this.fullDiff };
-      } else {
-        this.diff = { phase: "empty" };
-      }
-      this.sideFiles = { phase: "idle" };
-      return;
-    }
-
-    const requestedSha = this.selectedSha;
-    this.diff = { phase: "loading" };
-    this.sideFiles = { phase: "idle" };
-
-    try {
-      const resp = await repoClient.getDiff({
-        repoId: this.repoId,
-        toRef: this.selectedSha,
-        path,
-      });
-      if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
-      const parentSha = resp.fromCommit || "";
-      if (resp.empty) {
-        this.diff = { phase: "ready", rawDiff: "", diffHtml: "", parentSha };
-      } else {
-        const { highlight } = await loadHighlight();
-        let highlighted = await highlight(resp.unifiedDiff, "diff");
-        if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
-        highlighted = this.highlightWordDiffs(highlighted);
-        this.diff = {
-          phase: "ready",
-          rawDiff: resp.unifiedDiff,
-          diffHtml: highlighted,
-          parentSha,
-        };
-      }
-    } catch (e) {
-      if (this.selectedSha !== requestedSha || this.selectedFile !== path) return;
-      this.diff = { phase: "error", message: e instanceof Error ? e.message : String(e) };
-    }
     this.dispatchNav({ logFile: this.selectedFile || undefined });
-
-    if (this.threePane) void this.loadSideFiles(path, requestedSha);
-  }
-
-  // Fetch the full old- and new-file contents for the 3-pane view at
-  // the selected commit. Either fetch can legitimately fail (added file
-  // has no parent blob; deleted file has no child blob) — swallow and
-  // leave the side empty so add/delete commits still render sensibly.
-  private async loadSideFiles(path: string, forSha: string) {
-    if (!path || !forSha) return;
-    if (this.diff.phase !== "ready") return; // nothing to pane against yet
-    const parentSha = this.diff.parentSha;
-    this.sideFiles = { phase: "loading" };
-    const [leftResp, rightResp] = await Promise.all([
-      parentSha
-        ? repoClient
-            .getFile({
-              repoId: this.repoId,
-              ref: parentSha,
-              path,
-              maxBytes: BigInt(512 * 1024),
-            })
-            .catch(() => null)
-        : Promise.resolve(null),
-      repoClient
-        .getFile({
-          repoId: this.repoId,
-          ref: forSha,
-          path,
-          maxBytes: BigInt(512 * 1024),
-        })
-        .catch(() => null),
-    ]);
-    if (this.selectedSha !== forSha || this.selectedFile !== path) return;
-    const td = new TextDecoder();
-    this.sideFiles = {
-      phase: "ready",
-      leftText: leftResp && !leftResp.isBinary ? td.decode(leftResp.content) : "",
-      rightText: rightResp && !rightResp.isBinary ? td.decode(rightResp.content) : "",
-      language: rightResp?.language || leftResp?.language || "plaintext",
-    };
-  }
-
-  private toggleThreePane() {
-    this.threePane = !this.threePane;
-    if (this.threePane && this.selectedFile && this.sideFiles.phase === "idle") {
-      void this.loadSideFiles(this.selectedFile, this.selectedSha);
-    }
-  }
-
-  // ── Split diff helpers ──────────────────────────────────────────
-  /**
-   * Parse unified diff HTML into left/right paired line arrays for
-   * side-by-side rendering. Each entry is { left, right } where each
-   * side is an HTML string (or empty if the line doesn't exist on that
-   * side).
-   */
-  private splitDiffHtml(unifiedHtml: string): Array<{ left: string; right: string }> {
-    const tmp = document.createElement("div");
-    tmp.innerHTML = unifiedHtml;
-    const code = tmp.querySelector("code");
-    if (!code) return [{ left: unifiedHtml, right: "" }];
-    const lineEls = code.querySelectorAll(".line");
-    const lines =
-      lineEls.length > 0
-        ? Array.from(lineEls).map((el) => el.innerHTML)
-        : code.innerHTML.split("\n");
-
-    const pairs: Array<{ left: string; right: string }> = [];
-    const delBuf: string[] = [];
-    const addBuf: string[] = [];
-
-    const flushBuffers = () => {
-      const max = Math.max(delBuf.length, addBuf.length);
-      for (let i = 0; i < max; i++) {
-        pairs.push({
-          left: delBuf[i] ?? "",
-          right: addBuf[i] ?? "",
-        });
-      }
-      delBuf.length = 0;
-      addBuf.length = 0;
-    };
-
-    for (const lineHtml of lines) {
-      // Extract the plain text to determine the line type.
-      const tempEl = document.createElement("span");
-      tempEl.innerHTML = lineHtml;
-      const text = tempEl.textContent ?? "";
-
-      if (text.startsWith("-")) {
-        delBuf.push(lineHtml);
-      } else if (text.startsWith("+")) {
-        addBuf.push(lineHtml);
-      } else {
-        flushBuffers();
-        // Context line or header — show on both sides.
-        pairs.push({ left: lineHtml, right: lineHtml });
-      }
-    }
-    flushBuffers();
-    return pairs;
-  }
-
-  // ── Word-level diff highlighting ──────────────────────────────
-  /**
-   * Post-process Shiki diff HTML to add <mark> around changed words
-   * within adjacent -/+ line pairs.
-   */
-  private highlightWordDiffs(htmlStr: string): string {
-    const tmp = document.createElement("div");
-    tmp.innerHTML = htmlStr;
-    const code = tmp.querySelector("code");
-    if (!code) return htmlStr;
-    const lineEls = Array.from(code.querySelectorAll(".line"));
-    if (lineEls.length === 0) return htmlStr;
-
-    // Group adjacent -/+ pairs.
-    let i = 0;
-    while (i < lineEls.length) {
-      const el = lineEls[i];
-      const text = el.textContent ?? "";
-      if (text.startsWith("-")) {
-        // Collect consecutive - lines.
-        const delStart = i;
-        while (i < lineEls.length && (lineEls[i].textContent ?? "").startsWith("-")) i++;
-        // Collect consecutive + lines.
-        const addStart = i;
-        while (i < lineEls.length && (lineEls[i].textContent ?? "").startsWith("+")) i++;
-        const delEnd = addStart;
-        const addEnd = i;
-        // Pair up for word-diff.
-        const pairCount = Math.min(delEnd - delStart, addEnd - addStart);
-        for (let p = 0; p < pairCount; p++) {
-          this.markWordDiffs(lineEls[delStart + p], lineEls[addStart + p]);
-        }
-      } else {
-        i++;
-      }
-    }
-    return tmp.innerHTML;
-  }
-
-  /**
-   * Compare two line elements word-by-word and wrap differing words in <mark>.
-   */
-  private markWordDiffs(delEl: Element, addEl: Element) {
-    const delText = (delEl.textContent ?? "").slice(1); // strip leading -
-    const addText = (addEl.textContent ?? "").slice(1); // strip leading +
-    if (delText === addText) return;
-
-    const delWords = delText.split(/(\s+)/);
-    const addWords = addText.split(/(\s+)/);
-
-    // LCS to find which words are common between the two lines.
-    const lcsSet = (a: string[], b: string[]): { inA: Set<number>; inB: Set<number> } => {
-      const m = a.length,
-        n = b.length;
-      const dp: number[][] = Array.from({ length: m + 1 }, () =>
-        Array.from({ length: n + 1 }, () => 0),
-      );
-      for (let i = 1; i <= m; i++) {
-        for (let j = 1; j <= n; j++) {
-          dp[i][j] =
-            a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
-        }
-      }
-      // Backtrack to find matched indices.
-      const inA = new Set<number>();
-      const inB = new Set<number>();
-      let i = m,
-        j = n;
-      while (i > 0 && j > 0) {
-        if (a[i - 1] === b[j - 1]) {
-          inA.add(i - 1);
-          inB.add(j - 1);
-          i--;
-          j--;
-        } else if (dp[i - 1][j] >= dp[i][j - 1]) {
-          i--;
-        } else {
-          j--;
-        }
-      }
-      return { inA, inB };
-    };
-
-    const { inA: commonDel, inB: commonAdd } = lcsSet(delWords, addWords);
-    const delChanged = new Set<number>();
-    const addChanged = new Set<number>();
-    for (let i = 0; i < delWords.length; i++) if (!commonDel.has(i)) delChanged.add(i);
-    for (let i = 0; i < addWords.length; i++) if (!commonAdd.has(i)) addChanged.add(i);
-
-    // Only apply if there's a meaningful diff (not everything changed).
-    if (delChanged.size > delWords.length * 0.8 && addChanged.size > addWords.length * 0.8) return;
-
-    // Find character ranges that changed.
-    const findChangedRanges = (words: string[], changed: Set<number>): Array<[number, number]> => {
-      const ranges: Array<[number, number]> = [];
-      let pos = 0;
-      for (let i = 0; i < words.length; i++) {
-        if (changed.has(i) && words[i].trim()) {
-          ranges.push([pos, pos + words[i].length]);
-        }
-        pos += words[i].length;
-      }
-      return ranges;
-    };
-
-    const wrapTextNodes = (el: Element, ranges: Array<[number, number]>, cssClass: string) => {
-      if (ranges.length === 0) return;
-      // Walk text nodes, track global offset, wrap ranges in <mark>.
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-      const nodes: Array<{ node: Text; start: number; end: number }> = [];
-      let offset = 0;
-      while (walker.nextNode()) {
-        const t = walker.currentNode as Text;
-        nodes.push({ node: t, start: offset, end: offset + t.length });
-        offset += t.length;
-      }
-      // Skip the first character (- or +) by shifting ranges by 1.
-      const shifted = ranges.map(([s, e]) => [s + 1, e + 1] as [number, number]);
-      // Process ranges right-to-left; within each range, iterate nodes
-      // right-to-left so DOM mutations don't affect nodes we haven't
-      // visited yet. A single range may span multiple Shiki text nodes
-      // (e.g. "console.log" split across tokens).
-      for (const [rs, re] of shifted.reverse()) {
-        for (let ni = nodes.length - 1; ni >= 0; ni--) {
-          const n = nodes[ni];
-          if (rs >= n.end || re <= n.start) continue;
-          const localStart = Math.max(0, rs - n.start);
-          const localEnd = Math.min(n.node.length, re - n.start);
-          if (localStart >= localEnd) continue;
-          const before = n.node.splitText(localStart);
-          before.splitText(localEnd - localStart);
-          const mark = document.createElement("mark");
-          mark.className = cssClass;
-          before.parentNode!.insertBefore(mark, before);
-          mark.appendChild(before);
-        }
-      }
-    };
-
-    wrapTextNodes(delEl, findChangedRanges(delWords, delChanged), "word-del");
-    wrapTextNodes(addEl, findChangedRanges(addWords, addChanged), "word-add");
   }
 
   private selectedFileEntry(): ChangedFile | undefined {
     return this.files.find((f) => f.path === this.selectedFile);
-  }
-
-  private renderDiffPane() {
-    switch (this.diff.phase) {
-      case "empty":
-        return nothing;
-      case "loading":
-        return html`<gc-loading-banner
-          heading="loading diff…"
-          detail="fetching the commit's changes from git; large commits can take a second"
-        ></gc-loading-banner>`;
-      case "error":
-        return html`<p style="color:var(--danger);padding:var(--space-4)">${this.diff.message}</p>`;
-      case "ready": {
-        if (this.threePane && this.selectedFile) return this.renderThreePane(this.diff);
-        if (!this.diff.diffHtml) return html`<div class="diff-empty">no changes</div>`;
-        if (this.selectedFile && this.diff.rawDiff.includes("@@ placeholder-diff @@")) {
-          return this.renderPlaceholderDiff(this.diff.rawDiff);
-        }
-        return this.splitView
-          ? this.renderSplitDiff()
-          : html`<div class="diff-content">${unsafeHTML(this.diff.diffHtml)}</div>`;
-      }
-    }
-  }
-
-  // Parse the backend's placeholder patch (renderPlaceholderPatch in
-  // reader.go) and show a banner instead of the raw sentinel text.
-  // Triggered when either side crossed the inline-diff size cap or is
-  // binary — both cases where a unified patch isn't meaningful.
-  private renderPlaceholderDiff(raw: string) {
-    const parse = (line: string) => {
-      const m = line.match(/kind="([^"]*)" size=(\d+)/);
-      return m ? { kind: m[1], size: Number(m[2]) } : { kind: "unknown", size: 0 };
-    };
-    const lines = raw.split("\n");
-    const from = parse(lines.find((l) => l.startsWith("# from:")) ?? "");
-    const to = parse(lines.find((l) => l.startsWith("# to:")) ?? "");
-    const reason =
-      from.kind === "binary" || to.kind === "binary"
-        ? "binary file"
-        : from.kind === "too-large" || to.kind === "too-large"
-          ? "file too large for inline diff"
-          : "inline diff unavailable";
-    const fmt = (n: number) => (n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`);
-    return html`<div class="diff-placeholder">
-      <div class="diff-placeholder-title">${reason}</div>
-      <div class="diff-placeholder-sizes">before: ${fmt(from.size)} · after: ${fmt(to.size)}</div>
-      <div class="diff-placeholder-hint">
-        raise <code>GITCHAT_MAX_DIFF_BYTES</code> on the server to inline, or switch to 3-pane for
-        side-by-side file bodies.
-      </div>
-    </div>`;
-  }
-
-  private renderThreePane(ready: DiffPaneState & { phase: "ready" }) {
-    switch (this.sideFiles.phase) {
-      case "idle":
-      case "loading":
-        return html`<gc-loading-banner heading="loading 3-pane…"></gc-loading-banner>`;
-      case "ready":
-        return html`<gc-three-pane-view
-          .leftText=${this.sideFiles.leftText}
-          .rightText=${this.sideFiles.rightText}
-          .rawDiff=${ready.rawDiff}
-          .language=${this.sideFiles.language}
-          .leftLabel=${ready.parentSha ? ready.parentSha.slice(0, 12) + " (before)" : "(no parent)"}
-          .rightLabel=${this.selectedSha.slice(0, 12) + " (after)"}
-        ></gc-three-pane-view>`;
-    }
-  }
-
-  private renderSplitDiff() {
-    const diffHtml = this.diff.phase === "ready" ? this.diff.diffHtml : "";
-    const pairs = this.splitDiffHtml(diffHtml);
-    return html`
-      <div class="diff-content split-diff">
-        <table class="split-table">
-          <colgroup>
-            <col class="split-col" />
-            <col class="split-col" />
-          </colgroup>
-          <tbody>
-            ${pairs.map(
-              ({ left, right }) => html`
-                <tr>
-                  <td class="split-cell del-cell">${left ? unsafeHTML(left) : nothing}</td>
-                  <td class="split-cell add-cell">${right ? unsafeHTML(right) : nothing}</td>
-                </tr>
-              `,
-            )}
-          </tbody>
-        </table>
-      </div>
-    `;
   }
 
   private selectedCommit(): CommitEntry | undefined {
@@ -1291,7 +813,7 @@ export class GcCommitLog extends LitElement {
                                 <li>
                                   <button
                                     class="file-entry ${this.selectedFile === "" ? "selected" : ""}"
-                                    @click=${() => this.selectFile("")}
+                                    @click=${() => this.setSelectedFile("")}
                                   >
                                     <span class="file-status all">∗</span>
                                     <span class="file-path">all files</span>
@@ -1314,7 +836,7 @@ export class GcCommitLog extends LitElement {
                                           if (e.metaKey || e.ctrlKey) {
                                             this.openInBrowse(f.path);
                                           } else {
-                                            this.selectFile(f.path);
+                                            this.setSelectedFile(f.path);
                                           }
                                         }}
                                         title="${f.fromPath
@@ -1395,7 +917,9 @@ export class GcCommitLog extends LitElement {
                           ${this.selectedFile
                             ? html`<button
                                 class="split-toggle ${this.threePane ? "active" : ""}"
-                                @click=${() => this.toggleThreePane()}
+                                @click=${() => {
+                                  this.threePane = !this.threePane;
+                                }}
                                 aria-label="Toggle 3-pane diff view (before | diff | after)"
                                 aria-pressed=${this.threePane ? "true" : "false"}
                                 title="Toggle 3-pane view (before | diff | after)"
@@ -1404,7 +928,16 @@ export class GcCommitLog extends LitElement {
                               </button>`
                             : nothing}
                         </div>
-                        <div class="diff-body">${this.renderDiffPane()}</div>`
+                        <gc-diff-pane
+                          class="diff-body"
+                          .repoId=${this.repoId}
+                          .toRef=${this.selectedSha}
+                          .path=${this.selectedFile}
+                          .splitView=${this.splitView}
+                          .threePane=${this.threePane}
+                          .detectRenames=${this.wantRenameDetection}
+                          @gc:diff-files-loaded=${this.onDiffFilesLoaded}
+                        ></gc-diff-pane>`
                     : html`<div class="empty-detail">
                         <p class="empty-sub">click a commit to view its diff</p>
                       </div>`}
@@ -2036,72 +1569,8 @@ export class GcCommitLog extends LitElement {
       padding: var(--space-6);
       opacity: 0.5;
     }
-    .diff-empty {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      opacity: 0.4;
-      font-size: var(--text-sm);
-      font-style: italic;
-    }
-    /* Shown when the backend emits a placeholder patch — the file's
-       blob exceeds the inline-diff size cap or is binary. Distinct from
-       .diff-empty ("no changes") so the user knows there IS a change,
-       we just can't render it as a unified diff here. */
-    .diff-placeholder {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-2);
-      padding: var(--space-6);
-      text-align: center;
-      height: 100%;
-      font-size: var(--text-sm);
-    }
-    .diff-placeholder-title {
-      font-weight: 600;
-      opacity: 0.75;
-    }
-    .diff-placeholder-sizes {
-      opacity: 0.55;
-      font-size: var(--text-xs);
-      letter-spacing: 0.02em;
-    }
-    .diff-placeholder-hint {
-      opacity: 0.45;
-      font-size: var(--text-xs);
-      max-width: 52ch;
-    }
-    .diff-placeholder-hint code {
-      font-family: var(--font-mono, ui-monospace, monospace);
-      background: var(--surface-3);
-      padding: 1px 4px;
-      border-radius: var(--radius-sm);
-    }
-    .diff-content {
-      font-size: var(--text-xs);
-      line-height: 1.55;
-      overflow-x: auto;
-    }
-    .diff-content pre {
-      margin: 0;
-      padding: var(--space-3) var(--space-5);
-    }
-    .diff-content .shiki {
-      background: transparent !important;
-    }
-    .diff-content mark.word-del {
-      background: rgba(248, 81, 73, 0.4);
-      border-radius: 2px;
-      padding: 0 1px;
-    }
-    .diff-content mark.word-add {
-      background: rgba(63, 185, 80, 0.4);
-      border-radius: 2px;
-      padding: 0 1px;
-    }
+    /* Diff rendering (.diff-empty, .diff-content, .diff-placeholder,
+       .split-*, .word-*) lives inside gc-diff-pane's shadow DOM now. */
 
     /* ── Commit filter input ───────────────────────────────────── */
     .commit-filter-input {
@@ -2185,36 +1654,6 @@ export class GcCommitLog extends LitElement {
       border-color: var(--accent-user);
     }
 
-    /* ── Split diff table ──────────────────────────────────────── */
-    .split-diff {
-      overflow-x: auto;
-    }
-    .split-table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-      font-size: var(--text-xs);
-      line-height: 1.55;
-    }
-    .split-col {
-      width: 50%;
-    }
-    .split-cell {
-      padding: 0 var(--space-3);
-      white-space: pre;
-      vertical-align: top;
-      border-right: 1px solid var(--surface-4);
-      overflow: hidden;
-    }
-    .split-cell:last-child {
-      border-right: none;
-    }
-    .del-cell:not(:empty) {
-      background: rgba(255, 100, 100, 0.04);
-    }
-    .add-cell:not(:empty) {
-      background: rgba(100, 255, 100, 0.04);
-    }
     .empty-detail {
       display: flex;
       flex-direction: column;
