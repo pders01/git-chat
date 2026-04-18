@@ -1035,6 +1035,7 @@ export class GcApp extends LitElement {
                   ? html`<gc-combobox
                       .options=${suggestions}
                       .value=${entry.value}
+                      empty-hint="type a value or fetch the catalog"
                       @gc-select=${(e: CustomEvent) => {
                         this.updateConfigEntry(entry.key, e.detail.value);
                       }}

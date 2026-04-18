@@ -44,6 +44,7 @@ export class GcCombobox extends LitElement {
   @property({ type: Array }) options: ComboboxOption[] = [];
   @property({ type: String }) value = "";
   @property({ type: String }) placeholder = "";
+  @property({ type: String, attribute: "empty-hint" }) emptyHint = "";
 
   @state() private open = false;
   @state() private activeIndex = -1;
@@ -234,6 +235,9 @@ export class GcCombobox extends LitElement {
           @focus=${this.onFocus}
           @blur=${this.onBlur}
         />
+        ${this.open && items.length === 0 && this.emptyHint && this.filter
+          ? html`<div class="listbox empty-hint">${this.emptyHint}</div>`
+          : nothing}
         ${this.open && items.length > 0
           ? html`
               <ul
@@ -307,6 +311,13 @@ export class GcCombobox extends LitElement {
       max-height: 240px;
       overflow-y: auto;
       list-style: none;
+    }
+    .empty-hint {
+      padding: var(--space-2, 8px);
+      font-size: var(--text-xs, 0.75rem);
+      color: var(--text, #e0e0e0);
+      opacity: 0.5;
+      font-style: italic;
     }
     .option {
       display: flex;

@@ -1369,7 +1369,7 @@ export class GcChatView extends LitElement {
                   type="file"
                   class="attach-input"
                   multiple
-                  accept="image/png,image/jpeg,image/gif,image/webp,text/plain"
+                  accept=${[...ALLOWED_ATTACHMENT_MIMES].join(",")}
                   @change=${(e: Event) => void this.onPickFiles(e)}
                   aria-hidden="true"
                   tabindex="-1"
