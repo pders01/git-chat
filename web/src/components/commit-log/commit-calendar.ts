@@ -142,15 +142,37 @@ export class GcCommitCalendar extends LitElement {
     if (changed.has("armedSha") && this.armedSha) {
       void this.revealArmedCommit();
     }
+    // Kalendus ships a built-in "export as .ics" button in its
+    // detail menu. That's useful for real calendar events but
+    // nonsensical for git commits, so we inject a scoped stylesheet
+    // into the lms-menu shadow root to hide it. Idempotent — the
+    // sheet is only added once per menu instance.
+    this.hideExportButtonOnce();
   }
 
-  // Navigate to the armed commit's date, switch to day view, and
-  // open kalendus's built-in detail menu anchored to the entry
-  // chip so the user sees the same popup they'd get from clicking
-  // the chip directly. Three steps: setActiveDate + switchToDayView
-  // via the (private-prefix) controller, await kalendus's render
-  // so the entry chip exists in the day-view DOM, then openMenu
-  // with a best-effort anchor.
+  private exportStyleInjected = false;
+  private hideExportButtonOnce() {
+    if (this.exportStyleInjected) return;
+    const cal = this.renderRoot.querySelector("lms-calendar");
+    const menuRoot = cal?.shadowRoot?.querySelector("lms-menu")?.shadowRoot;
+    if (!menuRoot) return;
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(".export-btn { display: none !important; }");
+    menuRoot.adoptedStyleSheets = [...menuRoot.adoptedStyleSheets, sheet];
+    this.exportStyleInjected = true;
+  }
+
+  // Navigate to the armed commit's date, switch to day view, scroll
+  // the entry chip into view, and click it to trigger kalendus's
+  // native selection flow (highlight + open-menu anchored to the
+  // chip). We prefer simulating the click over calling openMenu
+  // directly because kalendus's click handler:
+  //   - sets the chip's _highlighted state → visible focus ring
+  //   - dispatches open-menu with the chip's own getBoundingClientRect
+  //     so the tooltip positions correctly beside the chip
+  //   - re-triggers our own onOpenMenu as a no-op harmless echo
+  // Fallback: if no matching chip is found (e.g., the entry got
+  // consolidated), center-anchor the menu on the calendar host.
   private async revealArmedCommit() {
     const commit = this.commits.find((c) => c.sha === this.armedSha);
     if (!commit) return;
@@ -164,15 +186,19 @@ export class GcCommitCalendar extends LitElement {
     };
     cal._viewState.setActiveDate(date);
     cal._viewState.switchToDayView();
-    // Wait for kalendus to paint the day view so the entry chip
-    // exists and getBoundingClientRect returns a real rect.
+    // Wait for kalendus to render the day view so the entry chip
+    // exists in its shadow DOM.
     await cal.updateComplete;
     const heading = `${commit.shortSha} ${commit.message}`;
-    const entryNodes = cal.shadowRoot?.querySelectorAll<HTMLElement>("lms-calendar-entry");
-    let anchor: HTMLElement | undefined;
-    entryNodes?.forEach((node) => {
-      if ((node as unknown as { heading?: string }).heading === heading) anchor = node;
-    });
+    const entry = this.findEntryByHeading(cal, heading);
+    if (entry) {
+      // Instant (non-smooth) so the chip is at its final position
+      // before click() reads getBoundingClientRect.
+      entry.scrollIntoView({ block: "center", behavior: "auto" });
+      entry.click();
+      return;
+    }
+    // Fallback — no chip matched, center the menu on the calendar.
     const hh = d.getHours().toString().padStart(2, "0");
     const mm = d.getMinutes().toString().padStart(2, "0");
     cal.openMenu({
@@ -184,8 +210,17 @@ export class GcCommitCalendar extends LitElement {
       },
       displayTime: `${hh}:${mm}`,
       date,
-      anchorRect: anchor?.getBoundingClientRect(),
+      anchorRect: cal.getBoundingClientRect(),
     });
+  }
+
+  private findEntryByHeading(cal: KalendusAPI, heading: string): HTMLElement | undefined {
+    const entryNodes = cal.shadowRoot?.querySelectorAll<HTMLElement>("lms-calendar-entry");
+    let match: HTMLElement | undefined;
+    entryNodes?.forEach((node) => {
+      if ((node as unknown as { heading?: string }).heading === heading) match = node;
+    });
+    return match;
   }
 
   private onOpenMenu = (e: Event) => {
