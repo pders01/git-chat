@@ -15,6 +15,7 @@ interface FileNode {
   deletions: number;
   lastModified: number;
   size: number;
+  topAuthor: string;
 }
 
 interface DirNode {
@@ -656,6 +657,7 @@ export class GcCodeCity extends LitElement {
         deletions: Number(f.totalDeletions ?? f.total_deletions ?? 0),
         lastModified: Number(f.lastModified ?? f.last_modified ?? 0),
         size: Number(f.size ?? 1),
+        topAuthor: f.topAuthor ?? f.top_author ?? "",
       }));
 
       this.allFiles = files;
@@ -1030,13 +1032,22 @@ export class GcCodeCity extends LitElement {
     const netLabel =
       netChange >= 0 ? `+${formatNumber(netChange)}` : `-${formatNumber(-netChange)}`;
 
-    return [
-      f.path,
-      ``,
-      `${f.commitCount} commits · ${formatRelativeTime(f.lastModified)}`,
+    // Split the full path so the filename reads prominently on the
+    // first line and the directory lives below it as context. Files at
+    // the repo root have no directory part; skip that row entirely.
+    const lastSlash = f.path.lastIndexOf("/");
+    const dir = lastSlash >= 0 ? f.path.slice(0, lastSlash) : "";
+
+    const lines: string[] = [f.name];
+    if (dir) lines.push(dir);
+    lines.push("");
+    lines.push(`${f.commitCount} commits · ${formatRelativeTime(f.lastModified)}`);
+    lines.push(
       `${formatBytes(f.size)} · +${formatNumber(f.additions)}/-${formatNumber(f.deletions)}`,
-      `${netLabel} net · ${activity > 0 ? formatNumber(activity) : 0} churned`,
-    ].join("\n");
+    );
+    lines.push(`${netLabel} net · ${activity > 0 ? formatNumber(activity) : 0} churned`);
+    if (f.topAuthor) lines.push(`top: ${f.topAuthor}`);
+    return lines.join("\n");
   }
 
   private onClick = (event: MouseEvent) => {

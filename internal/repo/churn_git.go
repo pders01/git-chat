@@ -63,9 +63,11 @@ func gitLsTreeSizes(ctx context.Context, repoDir, ref string) (map[string]int64,
 }
 
 // churnRawEntry is the per-commit payload the churn aggregator consumes:
-// author time plus the numstat lines git emitted for that commit.
+// author time, author name, plus the numstat lines git emitted for
+// that commit.
 type churnRawEntry struct {
 	authorTime int64
+	authorName string
 	// stats rows: each [adds, dels, path]. Binary files have -1/-1.
 	rows []churnStatRow
 }
@@ -85,10 +87,13 @@ type churnStatRow struct {
 // responsible for any default windowing. maxCommits bounds the walk
 // (git's `-n`); zero means unbounded.
 func gitLogChurn(ctx context.Context, repoDir, ref string, since, until int64, maxCommits int) ([]churnRawEntry, error) {
-	// Each commit: \x01<author-time>\x02<blank-line><numstat>\n\n<next>
+	// Each commit: \x01<author-time>\x1f<author-name>\x02<blank-line><numstat>\n\n<next>
+	// \x1f (US — unit separator) splits fields inside the metadata block;
+	// \x02 closes the block. Author name is captured for the top-author
+	// aggregation; see parseChurnStream for the decoder.
 	args := []string{
 		"log",
-		"--format=" + string([]byte{logCommitStart}) + "%at" + string([]byte{logCommitEnd}),
+		"--format=" + string([]byte{logCommitStart}) + "%at\x1f%an" + string([]byte{logCommitEnd}),
 		"--numstat",
 	}
 	if maxCommits > 0 {
@@ -141,7 +146,17 @@ func parseChurnStream(r io.Reader) ([]churnRawEntry, error) {
 		}
 		end += start + 1
 
-		ts, _ := strconv.ParseInt(strings.TrimSpace(string(raw[start+1:end])), 10, 64)
+		// Metadata block layout: "<ts>\x1f<author-name>". Old formats
+		// that predate the unit-separator still parse as just "<ts>"
+		// because strconv stops at the non-digit.
+		metaRaw := raw[start+1 : end]
+		tsPart := metaRaw
+		var authorName string
+		if sep := bytes.IndexByte(metaRaw, 0x1f); sep >= 0 {
+			tsPart = metaRaw[:sep]
+			authorName = string(metaRaw[sep+1:])
+		}
+		ts, _ := strconv.ParseInt(strings.TrimSpace(string(tsPart)), 10, 64)
 
 		tail := raw[end+1:]
 		nextStart := bytes.IndexByte(tail, logCommitStart)
@@ -153,7 +168,7 @@ func parseChurnStream(r io.Reader) ([]churnRawEntry, error) {
 			block = tail[:nextStart]
 			i = end + 1 + nextStart
 		}
-		entry := churnRawEntry{authorTime: ts}
+		entry := churnRawEntry{authorTime: ts, authorName: authorName}
 		// Scan the in-memory block directly — previously we wrapped it
 		// in a fresh bufio.Scanner + 64 KiB buffer per commit, which on
 		// a 5k-commit walk was 5k allocations for no reason.

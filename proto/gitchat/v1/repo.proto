@@ -335,6 +335,11 @@ message FileChurn {
   int64 total_deletions = 4;
   int64 last_modified = 5;
   int64 size = 6;
+  // Most-frequent author across the churn window for this file.
+  // Populated when GetFileChurnMap was served by the git-log fast
+  // path; empty when it fell back to go-git (we don't pay extra
+  // object lookups for the author in the fallback).
+  string top_author = 7;
 }
 
 message GetFileChurnMapResponse {

@@ -501,12 +501,38 @@ func churnCacheKey(tipSHA string, since, until int64, maxCommits int) string {
 
 // churnAcc accumulates per-path churn numbers during a single call.
 // Hoisted out of GetFileChurnMap so the subprocess and go-git paths
-// can share the type without nesting.
+// can share the type without nesting. authors tracks the commit count
+// per author for this file; the top-by-count author is surfaced as
+// top_author in the proto response. Left nil by the go-git fallback
+// because author lookup there would cost an extra object read per commit.
 type churnAcc struct {
 	commits   int
 	additions int64
 	deletions int64
 	lastMod   int64
+	authors   map[string]int
+}
+
+func (a *churnAcc) recordAuthor(name string) {
+	if name == "" {
+		return
+	}
+	if a.authors == nil {
+		a.authors = make(map[string]int, 2)
+	}
+	a.authors[name]++
+}
+
+func (a *churnAcc) topAuthor() string {
+	var best string
+	var bestCount int
+	for name, n := range a.authors {
+		if n > bestCount || (n == bestCount && name < best) {
+			best = name
+			bestCount = n
+		}
+	}
+	return best
 }
 
 func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until int64, maxCommitsOverride int) (*ChurnMapResult, error) {
@@ -589,6 +615,7 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 				if ts > acc.lastMod {
 					acc.lastMod = ts
 				}
+				acc.recordAuthor(entry.authorName)
 			}
 		}
 	} else {
@@ -618,6 +645,7 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 			TotalDeletions: acc.deletions,
 			LastModified:   acc.lastMod,
 			Size:           sizeMap[path],
+			TopAuthor:      acc.topAuthor(),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {

@@ -2141,8 +2141,13 @@ type FileChurn struct {
 	TotalDeletions int64                  `protobuf:"varint,4,opt,name=total_deletions,json=totalDeletions,proto3" json:"total_deletions,omitempty"`
 	LastModified   int64                  `protobuf:"varint,5,opt,name=last_modified,json=lastModified,proto3" json:"last_modified,omitempty"`
 	Size           int64                  `protobuf:"varint,6,opt,name=size,proto3" json:"size,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Most-frequent author across the churn window for this file.
+	// Populated when GetFileChurnMap was served by the git-log fast
+	// path; empty when it fell back to go-git (we don't pay extra
+	// object lookups for the author in the fallback).
+	TopAuthor     string `protobuf:"bytes,7,opt,name=top_author,json=topAuthor,proto3" json:"top_author,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FileChurn) Reset() {
@@ -2215,6 +2220,13 @@ func (x *FileChurn) GetSize() int64 {
 		return x.Size
 	}
 	return 0
+}
+
+func (x *FileChurn) GetTopAuthor() string {
+	if x != nil {
+		return x.TopAuthor
+	}
+	return ""
 }
 
 type GetFileChurnMapResponse struct {
@@ -3473,14 +3485,16 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x0fsince_timestamp\x18\x03 \x01(\x03R\x0esinceTimestamp\x12'\n" +
 	"\x0funtil_timestamp\x18\x04 \x01(\x03R\x0euntilTimestamp\x12\x1f\n" +
 	"\vmax_commits\x18\x05 \x01(\x05R\n" +
-	"maxCommits\"\xcd\x01\n" +
+	"maxCommits\"\xec\x01\n" +
 	"\tFileChurn\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12!\n" +
 	"\fcommit_count\x18\x02 \x01(\x05R\vcommitCount\x12'\n" +
 	"\x0ftotal_additions\x18\x03 \x01(\x03R\x0etotalAdditions\x12'\n" +
 	"\x0ftotal_deletions\x18\x04 \x01(\x03R\x0etotalDeletions\x12#\n" +
 	"\rlast_modified\x18\x05 \x01(\x03R\flastModified\x12\x12\n" +
-	"\x04size\x18\x06 \x01(\x03R\x04size\"\xe6\x02\n" +
+	"\x04size\x18\x06 \x01(\x03R\x04size\x12\x1d\n" +
+	"\n" +
+	"top_author\x18\a \x01(\tR\ttopAuthor\"\xe6\x02\n" +
 	"\x17GetFileChurnMapResponse\x12+\n" +
 	"\x05files\x18\x01 \x03(\v2\x15.gitchat.v1.FileChurnR\x05files\x124\n" +
 	"\x16first_commit_timestamp\x18\x02 \x01(\x03R\x14firstCommitTimestamp\x122\n" +
