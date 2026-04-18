@@ -4,14 +4,68 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 )
+
+// guardDialControl rejects connections to address ranges that have no
+// legitimate use as an LLM endpoint and would let a local-principal
+// caller exfiltrate sensitive data via the discovery probe. The
+// notable target here is the cloud metadata service at
+// 169.254.169.254, which sits in the IPv4 link-local range.
+//
+// We deliberately allow loopback (users commonly run Ollama/LM Studio
+// on 127.0.0.1) and RFC-1918 private ranges (LAN-hosted servers).
+// Callers that want to go further can layer additional checks.
+func guardDialControl(network, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("parse dial address: %w", err)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("dial target %q is not an IP after resolution", host)
+	}
+	switch {
+	case ip.IsUnspecified():
+		return fmt.Errorf("refusing to dial unspecified address %s", ip)
+	case ip.IsLinkLocalUnicast(), ip.IsLinkLocalMulticast():
+		return fmt.Errorf("refusing to dial link-local address %s (blocks cloud instance metadata)", ip)
+	case ip.IsMulticast():
+		return fmt.Errorf("refusing to dial multicast address %s", ip)
+	}
+	return nil
+}
+
+// guardedClient returns an http.Client whose transport refuses to
+// connect to link-local, unspecified, and multicast targets. The
+// guard runs after DNS resolution, so it catches attempts to reach
+// blocked ranges via a hostname that resolves to them.
+func guardedClient(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 30 * time.Second,
+		Control:   guardDialControl,
+	}
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			DialContext:           dialer.DialContext,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          10,
+			IdleConnTimeout:       30 * time.Second,
+			TLSHandshakeTimeout:   5 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
+}
 
 // knownLocalPorts maps localhost ports to likely tool names.
 var knownLocalPorts = []struct {
@@ -41,7 +95,7 @@ func DiscoverModels(ctx context.Context, baseURL, apiKey string) ([]string, erro
 		return nil, fmt.Errorf("base URL is required")
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := guardedClient(10 * time.Second)
 
 	// Normalize: strip trailing slash, ensure /models path.
 	modelsURL := strings.TrimRight(baseURL, "/") + "/models"
