@@ -63,10 +63,8 @@ type Registry struct {
 	handlers map[string]Handler
 }
 
-// Default returns the production registry: read_file, list_tree,
-// search_paths, search_code, outline, get_diff. Callers should not
-// mutate the returned registry — it is safe to share across
-// goroutines.
+// Default returns the production registry. Callers should not mutate
+// the returned registry — it is safe to share across goroutines.
 func Default() *Registry {
 	r := &Registry{handlers: map[string]Handler{}}
 	r.Register(readFileSpec, handleReadFile)
@@ -75,6 +73,8 @@ func Default() *Registry {
 	r.Register(searchCodeSpec, handleSearchCode)
 	r.Register(outlineSpec, handleOutline)
 	r.Register(getDiffSpec, handleGetDiff)
+	r.Register(listBranchesSpec, handleListBranches)
+	r.Register(getBlameSpec, handleGetBlame)
 	return r
 }
 
@@ -590,6 +590,81 @@ func isInterestingKind(k string) bool {
 	}
 	return false
 }
+
+// ── list_branches ──────────────────────────────────────────────────
+
+var listBranchesSpec = Spec{
+	Name:        "list_branches",
+	Description: "List local git branches sorted by most recent commit. Returns branch name, short SHA, and subject.",
+	InputSchema: json.RawMessage(`{
+		"type": "object",
+		"properties": {}
+	}`),
+}
+
+func handleListBranches(ctx context.Context, entry *repo.Entry, _ json.RawMessage) (string, error) {
+	branches, err := entry.ListBranches(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list_branches: %w", err)
+	}
+	if len(branches) == 0 {
+		return "(no branches)", nil
+	}
+	var sb strings.Builder
+	for _, b := range branches {
+		fmt.Fprintf(&sb, "%s %s %s\n", b.Name, shortSHA(b.Commit), b.Subject)
+	}
+	return sb.String(), nil
+}
+
+// ── get_blame ──────────────────────────────────────────────────────
+
+const blameMaxBytes = 64 * 1024
+
+var getBlameSpec = Spec{
+	Name: "get_blame",
+	Description: "Get per-line blame annotation for a file. Shows commit SHA, " +
+		"author, and line content. Useful for understanding who changed what.",
+	InputSchema: json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"path": {"type": "string", "description": "File path relative to repo root."},
+			"ref":  {"type": "string", "description": "Git ref (branch, tag, SHA). Empty = HEAD."}
+		},
+		"required": ["path"]
+	}`),
+}
+
+type getBlameArgs struct {
+	Path string `json:"path"`
+	Ref  string `json:"ref"`
+}
+
+func handleGetBlame(ctx context.Context, entry *repo.Entry, raw json.RawMessage) (string, error) {
+	var args getBlameArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return "", fmt.Errorf("get_blame: %w", err)
+	}
+	if args.Path == "" {
+		return "", errors.New("get_blame: path is required")
+	}
+	lines, err := entry.GetBlame(ctx, args.Ref, args.Path)
+	if err != nil {
+		return "", fmt.Errorf("get_blame: %w", err)
+	}
+	var sb strings.Builder
+	for i, l := range lines {
+		fmt.Fprintf(&sb, "%s %-16s %4d: %s\n",
+			shortSHA(l.CommitSha), l.AuthorName, i+1, l.Text)
+	}
+	out := sb.String()
+	if len(out) > blameMaxBytes {
+		out = out[:blameMaxBytes] + "\n…(truncated)"
+	}
+	return out, nil
+}
+
+func shortSHA(s string) string { return repo.ShortSHA(s) }
 
 func firstNonEmpty(a, b string) string {
 	if a != "" {
