@@ -21,11 +21,12 @@ test.describe("composer keyboard input", () => {
 
   test("can type forward slash in composer", async () => {
     // Click the composer to focus it
-    await waitForShadowElement(page, "gc-app gc-chat-view", "textarea");
+    await waitForShadowElement(page, "gc-app gc-chat-view gc-composer", "textarea");
     await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const textarea = chat?.shadowRoot?.querySelector("textarea") as HTMLTextAreaElement;
+      const composer = chat?.shadowRoot?.querySelector("gc-composer");
+      const textarea = composer?.shadowRoot?.querySelector("textarea") as HTMLTextAreaElement;
       textarea?.focus();
     });
 
@@ -36,7 +37,8 @@ test.describe("composer keyboard input", () => {
     const content = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const textarea = chat?.shadowRoot?.querySelector("textarea") as HTMLTextAreaElement;
+      const composer = chat?.shadowRoot?.querySelector("gc-composer");
+      const textarea = composer?.shadowRoot?.querySelector("textarea") as HTMLTextAreaElement;
       return textarea?.value ?? "";
     });
 
@@ -53,12 +55,15 @@ test.describe("composer keyboard input", () => {
     // Press slash to focus composer
     await page.keyboard.press("/");
 
-    // Verify composer is focused
+    // Verify composer is focused. Focus retargets at shadow-root
+    // boundaries: chat-view's activeElement is gc-composer, and
+    // gc-composer's activeElement is the textarea.
     const isFocused = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const textarea = chat?.shadowRoot?.querySelector("textarea");
-      return chat?.shadowRoot?.activeElement === textarea;
+      const composer = chat?.shadowRoot?.querySelector("gc-composer");
+      const textarea = composer?.shadowRoot?.querySelector("textarea");
+      return composer?.shadowRoot?.activeElement === textarea;
     });
 
     expect(isFocused).toBe(true);

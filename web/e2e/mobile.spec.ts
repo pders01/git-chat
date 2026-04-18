@@ -74,7 +74,8 @@ test.describe("mobile", () => {
     const w = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const c = chat?.shadowRoot?.querySelector(".composer-inner");
+      const composer = chat?.shadowRoot?.querySelector("gc-composer");
+      const c = composer?.shadowRoot?.querySelector(".composer-inner");
       return c?.getBoundingClientRect().width ?? 0;
     });
     expect(w).toBeGreaterThan(250);

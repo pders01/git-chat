@@ -28,8 +28,12 @@ test.describe("layout", () => {
       const chat = app?.shadowRoot?.querySelector("gc-chat-view");
       if (!chat?.shadowRoot) return null;
       const sr = chat.shadowRoot;
-      const inner = sr.querySelector(".messages-inner");
-      const composer = sr.querySelector(".composer-inner");
+      const inner = sr
+        .querySelector("gc-message-list")
+        ?.shadowRoot?.querySelector(".messages-inner");
+      const composer = sr
+        .querySelector("gc-composer")
+        ?.shadowRoot?.querySelector(".composer-inner");
       return {
         inner: inner ? { x: Math.round(inner.getBoundingClientRect().x), w: Math.round(inner.getBoundingClientRect().width) } : null,
         composer: composer ? { x: Math.round(composer.getBoundingClientRect().x), w: Math.round(composer.getBoundingClientRect().width) } : null,
@@ -119,7 +123,8 @@ test.describe("layout", () => {
     const count = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      return chat?.shadowRoot?.querySelectorAll(".example")?.length ?? 0;
+      const dashboard = chat?.shadowRoot?.querySelector("gc-chat-dashboard");
+      return dashboard?.shadowRoot?.querySelectorAll(".example")?.length ?? 0;
     });
     expect(count).toBeGreaterThanOrEqual(1);
   });

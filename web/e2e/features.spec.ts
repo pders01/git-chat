@@ -89,7 +89,8 @@ test.describe("features", () => {
     const attrs = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const ta = chat?.shadowRoot?.querySelector("textarea");
+      const composer = chat?.shadowRoot?.querySelector("gc-composer");
+      const ta = composer?.shadowRoot?.querySelector("textarea");
       if (!ta) return null;
       return {
         ariaLabel: ta.getAttribute("aria-label"),
@@ -107,7 +108,8 @@ test.describe("features", () => {
     const role = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const hint = chat?.shadowRoot?.querySelector("#composer-status");
+      const composer = chat?.shadowRoot?.querySelector("gc-composer");
+      const hint = composer?.shadowRoot?.querySelector("#composer-status");
       return hint?.getAttribute("role");
     });
     expect(role).toBe("status");
