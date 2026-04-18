@@ -40,6 +40,10 @@ export class GcChatView extends LitElement {
   @property({ type: String }) repoId = "";
   @property({ type: String }) branch = "";
   @property({ type: String }) initialSessionId = "";
+  @property({ attribute: false }) pendingPrefill: { text: string; nonce: number } | null = null;
+  @property({ attribute: false }) pendingFileMention: { path: string; nonce: number } | null = null;
+  @property({ type: Number }) newChatNonce = 0;
+  @property({ type: Number }) focusNonce = 0;
 
   @state() private state: ViewState = { phase: "loading" };
   @state() private turns: Turn[] = [];
@@ -52,6 +56,10 @@ export class GcChatView extends LitElement {
   @state() private sessionTokensOut = 0;
 
   private _lastRestoredSession = "";
+  private _lastPrefillNonce = 0;
+  private _lastFileMentionNonce = 0;
+  private _lastNewChatNonce = 0;
+  private _lastFocusNonce = 0;
 
   private toggleFocus = () => {
     this.focused = !this.focused;
@@ -73,6 +81,44 @@ export class GcChatView extends LitElement {
         void this.selectSession(this.initialSessionId);
       }
     }
+    if (
+      changed.has("pendingPrefill") &&
+      this.pendingPrefill &&
+      this.pendingPrefill.nonce !== this._lastPrefillNonce
+    ) {
+      this._lastPrefillNonce = this.pendingPrefill.nonce;
+      const text = this.pendingPrefill.text;
+      this.newChat();
+      requestAnimationFrame(() => {
+        const composer = this.getComposer();
+        composer?.setInput(text);
+        composer?.focusInput();
+      });
+    }
+    if (
+      changed.has("pendingFileMention") &&
+      this.pendingFileMention &&
+      this.pendingFileMention.nonce !== this._lastFileMentionNonce
+    ) {
+      this._lastFileMentionNonce = this.pendingFileMention.nonce;
+      this.getComposer()?.insertFileMention(this.pendingFileMention.path);
+    }
+    if (
+      changed.has("newChatNonce") &&
+      this.newChatNonce > 0 &&
+      this.newChatNonce !== this._lastNewChatNonce
+    ) {
+      this._lastNewChatNonce = this.newChatNonce;
+      this.newChat();
+    }
+    if (
+      changed.has("focusNonce") &&
+      this.focusNonce > 0 &&
+      this.focusNonce !== this._lastFocusNonce
+    ) {
+      this._lastFocusNonce = this.focusNonce;
+      this.focused = readFocus();
+    }
   }
 
   override connectedCallback() {
@@ -80,36 +126,11 @@ export class GcChatView extends LitElement {
     if (this.repoId) {
       void this.loadSessions();
     }
-    // Listen for global shortcut events from gc-app.
-    this.addEventListener("gc:new-chat", this.onNewChat);
-    this.addEventListener("gc:toggle-focus", this.onSyncFocus);
-    this.addEventListener("gc:select-session", this.onSelectSession as EventListener);
-    this.addEventListener("gc:prefill", this.onPrefill as EventListener);
     this.addEventListener("keydown", this.onKeydownLocal);
   }
 
-  private onNewChat = () => this.newChat();
-  private onSyncFocus = () => {
-    this.focused = readFocus();
-  };
-  private onSelectSession = ((e: CustomEvent<{ sessionId: string }>) => {
-    void this.selectSession(e.detail.sessionId);
-  }) as EventListener;
-  private onPrefill = ((e: CustomEvent<{ text: string }>) => {
-    this.newChat();
-    requestAnimationFrame(() => {
-      const composer = this.getComposer();
-      composer?.setInput(e.detail.text);
-      composer?.focusInput();
-    });
-  }) as EventListener;
-
   override disconnectedCallback() {
     super.disconnectedCallback();
-    this.removeEventListener("gc:new-chat", this.onNewChat);
-    this.removeEventListener("gc:toggle-focus", this.onSyncFocus);
-    this.removeEventListener("gc:select-session", this.onSelectSession as EventListener);
-    this.removeEventListener("gc:prefill", this.onPrefill as EventListener);
     this.removeEventListener("keydown", this.onKeydownLocal);
   }
 
@@ -136,12 +157,6 @@ export class GcChatView extends LitElement {
   }
   private getSidebar(): GcSessionSidebar | null {
     return this.renderRoot.querySelector<GcSessionSidebar>("gc-session-sidebar");
-  }
-
-  /** Public: inserts a file mention at the composer's cursor position.
-   * Called by app.ts on `gc:explain-in-chat` from the code-city view. */
-  insertFileMention(path: string) {
-    this.getComposer()?.insertFileMention(path);
   }
 
   private async loadSessions() {

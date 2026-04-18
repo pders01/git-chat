@@ -41,6 +41,7 @@ export class GcCommitLog extends LitElement {
   @property({ type: String }) initialLogFile = "";
   @property({ type: Boolean }) initialSplitView = false;
   @property({ type: String }) initialLogView: "commits" | "calendar" = "commits";
+  @property({ type: Number }) focusNonce = 0;
   @state() private state: LogState = { phase: "loading" };
   @state() private selectedSha = "";
   @state() private drawerOpen = false;
@@ -111,7 +112,6 @@ export class GcCommitLog extends LitElement {
     super.connectedCallback();
     this.addEventListener("gc:select-commit", this.onSelectCommit);
     this.addEventListener("gc:set-filter-path", this.onSetFilterPath);
-    this.addEventListener("gc:toggle-focus", this.onSyncFocus);
     if (this.repoId) void this.load(0);
   }
 
@@ -119,14 +119,9 @@ export class GcCommitLog extends LitElement {
     super.disconnectedCallback();
     this.removeEventListener("gc:select-commit", this.onSelectCommit);
     this.removeEventListener("gc:set-filter-path", this.onSetFilterPath);
-    this.removeEventListener("gc:toggle-focus", this.onSyncFocus);
     this.listObserver?.disconnect();
     this.listObserver = null;
   }
-
-  private onSyncFocus = () => {
-    this.focused = readFocus();
-  };
 
   private toggleDrawer() {
     this.drawerOpen = !this.drawerOpen;
@@ -146,6 +141,7 @@ export class GcCommitLog extends LitElement {
   }
 
   private _lastRestoredSha = "";
+  private _lastFocusNonce = 0;
 
   override updated(changed: Map<string, unknown>) {
     if (
@@ -158,6 +154,14 @@ export class GcCommitLog extends LitElement {
       this.calendarCommits = [];
       this.calendarLoaded = false;
       this.calendarArmedSha = "";
+    }
+    if (
+      changed.has("focusNonce") &&
+      this.focusNonce > 0 &&
+      this.focusNonce !== this._lastFocusNonce
+    ) {
+      this._lastFocusNonce = this.focusNonce;
+      this.focused = readFocus();
     }
     // Kick off the full-history fetch the first time the user
     // switches into calendar view. Cached until the invalidation

@@ -58,6 +58,16 @@ export class GcApp extends LitElement {
   @state() private currentBranch = ""; // empty = repo default branch
   @state() private branches: Array<{ name: string }> = [];
 
+  // Parent→child command bindings (properties-down per Lit guidance).
+  // Each carries a monotonic nonce so the same payload can re-fire;
+  // the child reacts in updated() when the nonce changes.
+  @state() private pendingPrefill: { text: string; nonce: number } | null = null;
+  @state() private pendingFileMention: { path: string; nonce: number } | null = null;
+  @state() private newChatNonce = 0;
+  @state() private focusNonce = 0;
+  private prefillNonce = 0;
+  private fileMentionNonce = 0;
+
   // Deep-link routing state
   private currentRoute: ParsedRoute = { repoId: "", tab: "chat" };
   private _routing = false;
@@ -102,12 +112,7 @@ export class GcApp extends LitElement {
   private onAskAbout = (e: CustomEvent<{ prompt: string }>) => {
     if (this.state.phase !== "authenticated") return;
     this.switchTab("chat");
-    const chatView = this.renderRoot.querySelector("gc-chat-view");
-    chatView?.dispatchEvent(
-      new CustomEvent("gc:prefill", {
-        detail: { text: e.detail.prompt },
-      }),
-    );
+    this.prefillChat(e.detail.prompt);
   };
 
   // Bridge: blame tooltip "view in log" dispatches gc:view-commit
@@ -136,19 +141,7 @@ export class GcApp extends LitElement {
   private onExplainInChat = (e: CustomEvent<{ path: string }>) => {
     if (this.state.phase !== "authenticated") return;
     this.navigateTo({ tab: "chat" });
-    // Wait for Lit's render cycle to complete so gc-chat-view exists,
-    // then wait one frame for the child component to be ready.
-    void this.updateComplete.then(() => {
-      requestAnimationFrame(() => {
-        const chatView =
-          this.renderRoot.querySelector<import("./components/chat-view").GcChatView>(
-            "gc-chat-view",
-          );
-        if (chatView) {
-          chatView.insertFileMention(e.detail.path);
-        }
-      });
-    });
+    this.pendingFileMention = { path: e.detail.path, nonce: ++this.fileMentionNonce };
   };
 
   // Previously-focused element for each overlay, captured when opened
@@ -291,25 +284,18 @@ export class GcApp extends LitElement {
   };
 
   // Toggle focus mode across all views that support it.
+  // lib/focus.ts is the source of truth (shared across tabs via
+  // localStorage and also written by an in-chat button). The nonce
+  // signals focus-aware children to re-read on the next render.
   private toggleFocus() {
-    const next = !readFocus();
-    writeFocus(next);
-    // Notify all focus-aware components to re-read the shared state.
-    // gc-compare-view lives inside gc-repo-browser's shadow root and
-    // is handled by repo-browser itself forwarding the event.
-    for (const sel of ["gc-chat-view", "gc-repo-browser", "gc-commit-log"] as const) {
-      const el = this.renderRoot.querySelector(sel);
-      el?.dispatchEvent(new CustomEvent("gc:toggle-focus", { bubbles: false }));
-    }
+    writeFocus(!readFocus());
+    this.focusNonce++;
   }
 
   // Create a new chat session.
   private newChat() {
     this.switchTab("chat");
-    requestAnimationFrame(() => {
-      const chat = this.renderRoot.querySelector("gc-chat-view");
-      chat?.dispatchEvent(new CustomEvent("gc:new-chat", { bubbles: false }));
-    });
+    this.newChatNonce++;
   }
 
   // boot decides which auth flow applies: if the URL carries a ?t= param,
@@ -642,6 +628,10 @@ export class GcApp extends LitElement {
             .repoId=${selectedRepo}
             .branch=${this.currentBranch}
             .initialSessionId=${this.currentRoute.sessionId ?? ""}
+            .pendingPrefill=${this.pendingPrefill}
+            .pendingFileMention=${this.pendingFileMention}
+            .newChatNonce=${this.newChatNonce}
+            .focusNonce=${this.focusNonce}
             class="tab-panel"
             ?hidden=${tab !== "chat"}
           ></gc-chat-view>
@@ -653,6 +643,7 @@ export class GcApp extends LitElement {
             .initialBrowseView=${this.currentRoute.browseView ?? "file"}
             .initialCompareBase=${this.currentRoute.compareBase ?? ""}
             .initialCompareHead=${this.currentRoute.compareHead ?? ""}
+            .focusNonce=${this.focusNonce}
             class="tab-panel"
             ?hidden=${tab !== "browse"}
           ></gc-repo-browser>
@@ -664,6 +655,7 @@ export class GcApp extends LitElement {
             .initialSplitView=${this.currentRoute.splitView ?? false}
             .initialLogView=${this.currentRoute.logView ?? "commits"}
             .filterPath=${this.currentRoute.filterPath ?? ""}
+            .focusNonce=${this.focusNonce}
             class="tab-panel"
             ?hidden=${tab !== "log"}
           ></gc-commit-log>
@@ -791,38 +783,22 @@ export class GcApp extends LitElement {
     this.showSearch = false;
     if (this.state.phase !== "authenticated") return;
 
-    if (r.source === "file") {
-      this.switchTab("browse");
-      requestAnimationFrame(() => {
-        const browser = this.renderRoot.querySelector("gc-repo-browser");
-        browser?.dispatchEvent(
-          new CustomEvent("gc:open-file", {
-            detail: { path: r.id },
-          }),
-        );
-      });
-    } else if (r.source === "message") {
-      this.switchTab("chat");
-      requestAnimationFrame(() => {
-        const chatView = this.renderRoot.querySelector("gc-chat-view");
-        chatView?.dispatchEvent(
-          new CustomEvent("gc:select-session", {
-            detail: { sessionId: r.id },
-          }),
-        );
-      });
-    } else if (r.source === "card") {
-      // Show card answer in chat via prefill.
-      this.switchTab("chat");
-      requestAnimationFrame(() => {
-        const chatView = this.renderRoot.querySelector("gc-chat-view");
-        chatView?.dispatchEvent(
-          new CustomEvent("gc:prefill", {
-            detail: { text: r.title },
-          }),
-        );
-      });
+    switch (r.source) {
+      case "file":
+        this.navigateTo({ tab: "browse", filePath: r.id, browseView: "file" });
+        break;
+      case "message":
+        this.navigateTo({ tab: "chat", sessionId: r.id });
+        break;
+      case "card":
+        this.switchTab("chat");
+        this.prefillChat(r.title);
+        break;
     }
+  }
+
+  private prefillChat(text: string) {
+    this.pendingPrefill = { text, nonce: ++this.prefillNonce };
   }
 
   // ── Command palette ──────────────────────────────────────────

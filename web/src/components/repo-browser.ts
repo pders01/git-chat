@@ -36,6 +36,7 @@ export class GcRepoBrowser extends LitElement {
   @property({ type: String }) initialBrowseView: BrowseView = "file";
   @property({ type: String }) initialCompareBase = "";
   @property({ type: String }) initialCompareHead = "";
+  @property({ type: Number }) focusNonce = 0;
 
   @state() private state: BrowserState = { phase: "loading" };
   @state() private selectedFile = "";
@@ -55,10 +56,6 @@ export class GcRepoBrowser extends LitElement {
   private onToggleFocus = () => {
     this.focused = !this.focused;
     writeFocus(this.focused);
-  };
-
-  private onSyncFocus = () => {
-    this.focused = readFocus();
   };
 
   private toggleDrawer() {
@@ -183,17 +180,16 @@ export class GcRepoBrowser extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
     if (this.repoId) void this.boot();
-    this.addEventListener("gc:toggle-focus", this.onSyncFocus);
     this.addEventListener("gc:open-file", this.onOpenFile);
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
-    this.removeEventListener("gc:toggle-focus", this.onSyncFocus);
     this.removeEventListener("gc:open-file", this.onOpenFile);
   }
 
   private _lastRestoredFile = "";
+  private _lastFocusNonce = 0;
 
   override updated(changed: Map<string, unknown>) {
     if ((changed.has("repoId") || changed.has("branch")) && this.repoId) {
@@ -211,6 +207,14 @@ export class GcRepoBrowser extends LitElement {
       } else {
         this.pendingFile = this.initialFilePath;
       }
+    }
+    if (
+      changed.has("focusNonce") &&
+      this.focusNonce > 0 &&
+      this.focusNonce !== this._lastFocusNonce
+    ) {
+      this._lastFocusNonce = this.focusNonce;
+      this.focused = readFocus();
     }
     // Sync view mode from URL (enables back/forward navigation).
     if (changed.has("initialBrowseView")) {

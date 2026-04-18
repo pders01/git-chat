@@ -466,10 +466,14 @@ export class GcSettingsPanel extends LitElement {
   }
 
   private renderSettingsSection() {
-    const section = this.settingsSection;
-    if (section === "appearance") return this.renderAppearance();
-    if (section === "llm") return this.renderLLMSection();
-    return this.renderConfigGroup(section);
+    switch (this.settingsSection) {
+      case "appearance":
+        return this.renderAppearance();
+      case "llm":
+        return this.renderLLMSection();
+      default:
+        return this.renderConfigGroup(this.settingsSection);
+    }
   }
 
   private renderLLMSection() {
