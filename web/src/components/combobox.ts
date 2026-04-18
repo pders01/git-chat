@@ -336,8 +336,9 @@ export class GcCombobox extends LitElement {
     .empty-hint {
       padding: var(--space-2, 8px);
       font-size: var(--text-xs, 0.75rem);
-      color: var(--text, #e0e0e0);
-      opacity: 0.5;
+      /* Muted via color, not opacity — opacity would fade the .listbox
+         background too, making the dropdown see-through. */
+      color: var(--text-muted, #888);
       font-style: italic;
     }
     .option {
