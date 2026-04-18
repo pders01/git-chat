@@ -21,14 +21,21 @@ var providerBaseURLs = map[catwalk.Type]string{
 	"groq":      "https://api.groq.com/openai/v1",
 }
 
+// catalogStaleTTL is how long a cached catalog is considered fresh.
+// Beyond this, Get still serves the cache (so the UI keeps working
+// offline) but logs a warning so operators notice that a refresh is
+// overdue.
+const catalogStaleTTL = 24 * time.Hour
+
 // Catalog provides the provider/model catalog for the settings UI.
 // The catalog is fetched on-demand (user clicks "refresh") and cached
 // in SQLite so it works offline and doesn't phone home silently.
 type Catalog struct {
-	mu     sync.Mutex
-	client *catwalk.Client
-	db     *storage.DB
-	cached []*gitchatv1.CatalogProvider
+	mu       sync.Mutex
+	client   *catwalk.Client
+	db       *storage.DB
+	cached   []*gitchatv1.CatalogProvider
+	cachedAt time.Time
 }
 
 // NewCatalog creates a catalog backed by SQLite for persistence.
@@ -40,20 +47,32 @@ func NewCatalog(db *storage.DB) *Catalog {
 }
 
 // Get returns the cached catalog from memory or SQLite. Never fetches
-// from the network — call Refresh for that.
+// from the network — call Refresh for that. When the cached data is
+// older than catalogStaleTTL, a warning is logged but the data is
+// still returned so the UI remains usable offline.
 func (c *Catalog) Get(ctx context.Context) []*gitchatv1.CatalogProvider {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.cached != nil {
-		return c.cached
-	}
-	// Try loading from SQLite cache.
-	if cached, err := c.db.GetCatalogCache(ctx); err == nil && len(cached) > 0 {
+	if c.cached == nil {
+		cached, err := c.db.GetCatalogCache(ctx)
+		if err != nil || len(cached) == 0 {
+			return nil
+		}
+		ts, _ := c.db.GetCatalogCacheTime(ctx)
 		c.cached = cached
-		return c.cached
+		c.cachedAt = ts
 	}
-	return nil
+	if !c.cachedAt.IsZero() {
+		age := time.Since(c.cachedAt)
+		if age > catalogStaleTTL {
+			slog.Warn("serving stale catalog; user should refresh", "age", age.Round(time.Hour))
+		}
+	} else {
+		// Legacy cache written before timestamp tracking — treat as stale.
+		slog.Warn("serving catalog without a timestamp; user should refresh")
+	}
+	return c.cached
 }
 
 // Refresh fetches the latest catalog from catwalk.charm.sh and caches
@@ -72,6 +91,7 @@ func (c *Catalog) Refresh(ctx context.Context) ([]*gitchatv1.CatalogProvider, er
 
 	c.mu.Lock()
 	c.cached = out
+	c.cachedAt = time.Now()
 	c.mu.Unlock()
 
 	// Persist to SQLite for offline use.

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"time"
 
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 )
@@ -74,7 +76,7 @@ func (d *DB) SetConfigOverrides(ctx context.Context, kvs map[string]string) erro
 
 // ListConfigOverrides returns all persisted overrides as a map.
 func (d *DB) ListConfigOverrides(ctx context.Context) (map[string]string, error) {
-	rows, err := d.QueryContext(ctx, `SELECT key, value FROM config WHERE key != ?`, catalogCacheKey)
+	rows, err := d.QueryContext(ctx, `SELECT key, value FROM config WHERE key NOT IN (?, ?)`, catalogCacheKey, catalogCacheTSKey)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +92,10 @@ func (d *DB) ListConfigOverrides(ctx context.Context) (map[string]string, error)
 	return out, rows.Err()
 }
 
-const catalogCacheKey = "__catalog_cache__"
+const (
+	catalogCacheKey   = "__catalog_cache__"
+	catalogCacheTSKey = "__catalog_cache_ts__"
+)
 
 // GetCatalogCache loads the cached provider catalog from SQLite.
 func (d *DB) GetCatalogCache(ctx context.Context) ([]*gitchatv1.CatalogProvider, error) {
@@ -109,15 +114,34 @@ func (d *DB) GetCatalogCache(ctx context.Context) ([]*gitchatv1.CatalogProvider,
 	return out, nil
 }
 
-// SetCatalogCache persists the provider catalog to SQLite.
+// GetCatalogCacheTime returns when the catalog cache was last written,
+// or a zero time if unknown (legacy pre-TTL cache or no cache at all).
+func (d *DB) GetCatalogCacheTime(ctx context.Context) (time.Time, error) {
+	var raw string
+	err := d.QueryRowContext(ctx, `SELECT value FROM config WHERE key = ?`, catalogCacheTSKey).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) || raw == "" {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return time.Time{}, nil
+	}
+	return time.Unix(n, 0), nil
+}
+
+// SetCatalogCache persists the provider catalog to SQLite and records
+// the write time. Both rows are written in a single transaction so a
+// partial failure can't leave a blob without its timestamp.
 func (d *DB) SetCatalogCache(ctx context.Context, providers []*gitchatv1.CatalogProvider) error {
 	data, err := json.Marshal(providers)
 	if err != nil {
 		return err
 	}
-	_, err = d.ExecContext(ctx, `
-		INSERT INTO config (key, value) VALUES (?, ?)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-		catalogCacheKey, string(data))
-	return err
+	return d.SetConfigOverrides(ctx, map[string]string{
+		catalogCacheKey:   string(data),
+		catalogCacheTSKey: strconv.FormatInt(time.Now().Unix(), 10),
+	})
 }
