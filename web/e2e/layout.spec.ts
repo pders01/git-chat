@@ -23,14 +23,21 @@ test.describe("layout", () => {
   test("chat: messages and composer aligned", async () => {
     const vw = page.viewportSize()?.width ?? 1440;
     if (vw <= 768) return;
+    // The chat pane renders either gc-message-list (when turns exist)
+    // or gc-chat-dashboard (empty state). Both apply the same
+    // max-width: var(--content-max-width); margin: auto centering that
+    // gc-composer uses, so they should share x/w with the composer
+    // regardless of which view is active. Fresh auth lands on the
+    // empty dashboard; populated sessions exercise the message-list
+    // branch.
     const rects = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const chat = app?.shadowRoot?.querySelector("gc-chat-view");
       if (!chat?.shadowRoot) return null;
       const sr = chat.shadowRoot;
-      const inner = sr
-        .querySelector("gc-message-list")
-        ?.shadowRoot?.querySelector(".messages-inner");
+      const inner =
+        sr.querySelector("gc-message-list")?.shadowRoot?.querySelector(".messages-inner") ??
+        sr.querySelector("gc-chat-dashboard")?.shadowRoot?.querySelector(".empty-chat");
       const composer = sr
         .querySelector("gc-composer")
         ?.shadowRoot?.querySelector(".composer-inner");
@@ -40,6 +47,8 @@ test.describe("layout", () => {
       };
     });
     expect(rects).not.toBeNull();
+    expect(rects!.inner).not.toBeNull();
+    expect(rects!.composer).not.toBeNull();
     expect(rects!.inner!.x).toBe(rects!.composer!.x);
     expect(rects!.inner!.w).toBe(rects!.composer!.w);
   });
