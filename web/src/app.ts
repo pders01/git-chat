@@ -993,15 +993,37 @@ export class GcApp extends LitElement {
     if (key === "LLM_MODEL") {
       const backend = this.configEntries.find((e: any) => e.key === "LLM_BACKEND")?.value;
       const baseUrl = this.configEntries.find((e: any) => e.key === "LLM_BASE_URL")?.value;
-      // Local models for the currently configured base URL.
+
+      // 1. Local models for the currently configured base URL.
       const localEp = this.localEndpoints.find((ep: any) => ep.url === baseUrl);
-      const localModels: ComboboxOption[] = (localEp?.models ?? []).map((id: string) => ({
-        value: id,
-        label: id,
-        description: localEp?.name ?? "local",
-      }));
-      // Catalog models filtered by backend type.
-      const catalogModels: ComboboxOption[] = this.catalog
+      if (localEp?.models?.length) {
+        return localEp.models.map((id: string) => ({
+          value: id,
+          label: id,
+          description: `${localEp.name} (local)`,
+        }));
+      }
+
+      // 2. Catalog provider matching by base URL — most specific.
+      const byUrl = this.catalog.find(
+        (c: any) => c.defaultBaseUrl && baseUrl?.startsWith(c.defaultBaseUrl),
+      );
+      if (byUrl?.models?.length) {
+        return byUrl.models.map((m: any) => ({
+          value: m.id,
+          label: m.name,
+          description: [
+            byUrl.name,
+            m.contextWindow ? `${Math.round(Number(m.contextWindow) / 1000)}K` : "",
+          ].filter(Boolean).join(" · "),
+        }));
+      }
+
+      // 3. Fallback: if base URL is set but unrecognised, don't show
+      //    misleading models from other providers. If no base URL is
+      //    set, show all models for the backend type as a starting point.
+      if (baseUrl) return [];
+      return this.catalog
         .filter((c: any) => c.type === backend)
         .flatMap((c: any) =>
           (c.models ?? []).map((m: any) => ({
@@ -1013,7 +1035,6 @@ export class GcApp extends LitElement {
             ].filter(Boolean).join(" · "),
           })),
         );
-      return [...localModels, ...catalogModels];
     }
 
     // LLM_ACTIVE_PROFILE and other keys with no suggestions.
