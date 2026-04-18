@@ -10,6 +10,8 @@ import "./components/commit-log.js";
 import "./components/toast.js";
 import "./components/kb-view.js";
 import "./components/loading-indicator.js";
+import "./components/combobox.js";
+import type { ComboboxOption } from "./components/combobox.js";
 import * as settings from "./lib/settings.js";
 import { readFocus, writeFocus } from "./lib/focus.js";
 import {
@@ -816,6 +818,52 @@ export class GcApp extends LitElement {
     return p?.models ?? [];
   }
 
+  /** Sorted combobox options for providers. */
+  private get providerOptions(): ComboboxOption[] {
+    if (this.catalog.length === 0) {
+      return [
+        { value: "openai", label: "openai" },
+        { value: "anthropic", label: "anthropic" },
+      ];
+    }
+    return [...this.catalog]
+      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+      .map((c: any) => ({
+        value: c.id,
+        label: c.name,
+        description: `${c.type} · ${c.models?.length ?? 0} models`,
+      }));
+  }
+
+  /** Sorted combobox options for models of a given provider. */
+  private modelOptionsFor(providerId: string): ComboboxOption[] {
+    return this.catalogModelsFor(providerId)
+      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+      .map((m: any) => ({
+        value: m.id,
+        label: m.name,
+        description: [
+          m.contextWindow ? `${Math.round(m.contextWindow / 1000)}K ctx` : "",
+          m.costPer1MIn ? `$${m.costPer1MIn}/$${m.costPer1MOut} per 1M` : "",
+          m.canReason ? "reasoning" : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      }));
+  }
+
+  /** Combobox options for base URLs. */
+  private get baseUrlOptions(): ComboboxOption[] {
+    const urls = new Set([
+      "http://localhost:1234/v1",
+      "http://localhost:11434/v1",
+      ...this.catalog
+        .filter((c: any) => c.defaultBaseUrl)
+        .map((c: any) => c.defaultBaseUrl as string),
+    ]);
+    return [...urls].sort().map((u) => ({ value: u, label: u }));
+  }
+
   private async activateProfile(id: string) {
     try {
       await (repoClient as any).activateProfile({ id });
@@ -1190,95 +1238,61 @@ export class GcApp extends LitElement {
           </label>
           <label class="profile-field">
             <span>Provider</span>
-            <input
-              type="text"
-              class="config-input"
-              list="dl-profile-provider"
+            <gc-combobox
+              .options=${this.providerOptions}
+              .value=${p._providerId || p.backend || ""}
               placeholder="e.g. openai, anthropic"
-              .value=${p._providerLabel || p.backend || ""}
-              @input=${(e: Event) => {
-                const val = (e.target as HTMLInputElement).value;
-                p._providerLabel = val;
-                const prov = this.catalog.find(
-                  (c: any) => `${c.name} (${c.type})` === val || c.id === val,
-                );
+              @gc-select=${(e: CustomEvent) => {
+                const opt = e.detail;
+                p._providerId = opt.value;
+                const prov = this.catalog.find((c: any) => c.id === opt.value);
                 if (prov) {
-                  p._providerId = prov.id;
                   p.backend = prov.type;
                   p.baseUrl = prov.defaultBaseUrl || p.baseUrl || "";
                   p.model = prov.defaultModelId || "";
                 } else {
-                  p._providerId = "";
-                  // Allow raw backend type as input.
-                  if (val === "openai" || val === "anthropic") {
-                    p.backend = val;
-                  }
+                  p.backend = opt.value;
                 }
                 this.requestUpdate();
               }}
-            />
-            <datalist id="dl-profile-provider">
-              ${[...this.catalog]
-                .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                .map(
-                  (c: any) =>
-                    html`<option value="${c.name} (${c.type})"></option>`,
-                )}
-              ${this.catalog.length === 0
-                ? html`<option value="openai"></option>
-                    <option value="anthropic"></option>`
-                : nothing}
-            </datalist>
+              @gc-input=${(e: CustomEvent) => {
+                const val = e.detail;
+                if (val === "openai" || val === "anthropic") {
+                  p.backend = val;
+                  p._providerId = "";
+                }
+              }}
+            ></gc-combobox>
           </label>
           ${p.backend !== "anthropic"
             ? html`<label class="profile-field">
                 <span>Base URL</span>
-                <input
-                  type="text"
-                  class="config-input"
-                  list="dl-profile-baseurl"
+                <gc-combobox
+                  .options=${this.baseUrlOptions}
                   .value=${p.baseUrl}
-                  @input=${(e: Event) => {
-                    p.baseUrl = (e.target as HTMLInputElement).value;
+                  placeholder="http://localhost:1234/v1"
+                  @gc-select=${(e: CustomEvent) => {
+                    p.baseUrl = e.detail.value;
                   }}
-                />
-                <datalist id="dl-profile-baseurl">
-                  ${[...new Set([
-                    "http://localhost:1234/v1",
-                    "http://localhost:11434/v1",
-                    ...this.catalog
-                      .filter((c: any) => c.defaultBaseUrl)
-                      .map((c: any) => c.defaultBaseUrl),
-                  ])].map((u) => html`<option value=${u}></option>`)}
-                </datalist>
+                  @gc-input=${(e: CustomEvent) => {
+                    p.baseUrl = e.detail;
+                  }}
+                ></gc-combobox>
               </label>`
             : nothing}
           <label class="profile-field">
             <span>Model</span>
-            <input
-              type="text"
-              class="config-input"
-              list="dl-profile-model"
-              placeholder="(backend default)"
+            <gc-combobox
+              .options=${this.modelOptionsFor(p._providerId || "")}
               .value=${p.model}
-              @input=${(e: Event) => {
-                p.model = (e.target as HTMLInputElement).value;
+              placeholder="(backend default)"
+              @gc-select=${(e: CustomEvent) => {
+                p.model = e.detail.value;
               }}
-            />
-            <datalist id="dl-profile-model">
-              ${(p._providerId
-                ? this.catalogModelsFor(p._providerId)
-                : []
-              )
-                .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                .map(
-                  (m: any) =>
-                    html`<option
-                      value=${m.id}
-                      label="${m.name}${m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}K` : ""}${m.costPer1MIn ? ` · $${m.costPer1MIn}/$${m.costPer1MOut}` : ""}"
-                    ></option>`,
-                )}
-            </datalist>
+              @gc-input=${(e: CustomEvent) => {
+                p.model = e.detail;
+              }}
+            ></gc-combobox>
           </label>
           <label class="profile-field">
             <span>API Key</span>
