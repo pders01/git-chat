@@ -28,8 +28,17 @@ func loadOrCreateKey(dbPath string) ([]byte, error) {
 	keyPath := filepath.Join(dir, keyFileName)
 
 	data, err := os.ReadFile(keyPath)
-	if err == nil && len(data) == 32 {
+	if err == nil {
+		if len(data) != 32 {
+			// Refuse to overwrite: a wrong-size key file typically means
+			// corruption or a botched backup restore. Silently regenerating
+			// would permanently destroy all previously-encrypted secrets.
+			return nil, fmt.Errorf("encryption key at %s has %d bytes, expected 32; restore from backup or delete the file to regenerate", keyPath, len(data))
+		}
 		return data, nil
+	}
+	if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read encryption key: %w", err)
 	}
 
 	// Generate a new key.
