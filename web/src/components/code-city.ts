@@ -391,6 +391,12 @@ export class GcCodeCity extends LitElement {
   private animFrameId = 0;
   private _resizeObserver: ResizeObserver | null = null;
   private blockMeshes: Map<string, InstanceType<THREE["Mesh"]>> = new Map();
+  /** Ordered list of file paths for keyboard building navigation. */
+  private buildingKeys: string[] = [];
+  /** Index into buildingKeys for the currently keyboard-focused building, or -1. */
+  private kbFocusIndex = -1;
+  /** Stashed original color of the keyboard-focused building so we can restore it. */
+  private kbFocusOriginalColor: number | null = null;
   private _maxValues: Record<ColorMode, number> = {
     churn: 1,
     activity: 1,
@@ -415,6 +421,7 @@ export class GcCodeCity extends LitElement {
     canvas?.removeEventListener("click", this.onClick);
     canvas?.removeEventListener("mousemove", this.onHover);
     canvas?.removeEventListener("mouseleave", this.onCanvasLeave);
+    canvas?.removeEventListener("keydown", this.onCanvasKeydown);
     window.removeEventListener("keydown", this.onKeydown);
     this._resizeObserver?.disconnect();
     this.controls?.dispose();
@@ -425,15 +432,177 @@ export class GcCodeCity extends LitElement {
     this.churnAbort = null;
   }
 
-  // Esc closes the click-detail dialog. Scoped to fire only when a
-  // file is actually selected so it doesn't compete with other Esc
-  // handlers elsewhere (overlays, drawers, etc.).
+  // Global Esc closes the click-detail dialog. Scoped to fire only
+  // when a file is actually selected so it doesn't compete with other
+  // Esc handlers elsewhere (overlays, drawers, etc.).
   private onKeydown = (e: KeyboardEvent) => {
     if (e.key === "Escape" && this.selectedFile) {
       e.stopPropagation();
       this.selectedFile = null;
     }
   };
+
+  /* ---- keyboard navigation on the canvas ---- */
+
+  private static readonly KB_ROTATE_STEP = Math.PI / 36; // 5 degrees
+  private static readonly KB_ZOOM_STEP = 2;
+  private static readonly KB_HIGHLIGHT_COLOR = 0xffff00;
+
+  private onCanvasKeydown = (e: KeyboardEvent) => {
+    const controls = this.controls;
+    const camera = this.camera;
+    if (!controls || !camera) return;
+
+    switch (e.key) {
+      // --- orbit rotation ---
+      case "ArrowLeft":
+        e.preventDefault();
+        this.rotateOrbit(-GcCodeCity.KB_ROTATE_STEP, 0);
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        this.rotateOrbit(GcCodeCity.KB_ROTATE_STEP, 0);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        this.rotateOrbit(0, -GcCodeCity.KB_ROTATE_STEP);
+        break;
+      case "ArrowDown":
+        e.preventDefault();
+        this.rotateOrbit(0, GcCodeCity.KB_ROTATE_STEP);
+        break;
+
+      // --- zoom ---
+      case "+":
+      case "=":
+        e.preventDefault();
+        this.zoomOrbit(-GcCodeCity.KB_ZOOM_STEP);
+        break;
+      case "-":
+      case "_":
+        e.preventDefault();
+        this.zoomOrbit(GcCodeCity.KB_ZOOM_STEP);
+        break;
+
+      // --- building cycling ---
+      case "Tab": {
+        if (this.buildingKeys.length === 0) break;
+        e.preventDefault();
+        const dir = e.shiftKey ? -1 : 1;
+        this.cycleBuilding(dir);
+        break;
+      }
+
+      // --- select the focused building ---
+      case "Enter":
+        e.preventDefault();
+        if (this.kbFocusIndex >= 0 && this.kbFocusIndex < this.buildingKeys.length) {
+          const path = this.buildingKeys[this.kbFocusIndex];
+          const mesh = this.blockMeshes.get(path);
+          if (mesh?.userData?.file) {
+            this.selectedFile = mesh.userData.file as FileNode;
+          }
+        }
+        break;
+
+      // --- deselect ---
+      case "Escape":
+        e.preventDefault();
+        if (this.selectedFile) {
+          this.selectedFile = null;
+        } else {
+          this.clearKbFocus();
+        }
+        break;
+
+      default:
+        return; // don't stop propagation for unhandled keys
+    }
+  };
+
+  /** Rotate the orbit camera by the given azimuthal and polar deltas (radians). */
+  private rotateOrbit(azimuthDelta: number, polarDelta: number) {
+    if (!this.controls || !this.camera) return;
+    const target = this.controls.target;
+    const offset = this.camera.position.clone().sub(target);
+    const radius = offset.length();
+
+    // Spherical coords (Three.js convention: phi from Y-axis, theta around Y)
+    let theta = Math.atan2(offset.x, offset.z);
+    let phi = Math.acos(Math.min(1, Math.max(-1, offset.y / radius)));
+
+    theta += azimuthDelta;
+    phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi + polarDelta));
+
+    offset.x = radius * Math.sin(phi) * Math.sin(theta);
+    offset.y = radius * Math.cos(phi);
+    offset.z = radius * Math.sin(phi) * Math.cos(theta);
+
+    this.camera.position.copy(target).add(offset);
+    this.camera.lookAt(target);
+    this.controls.update();
+  }
+
+  /** Dolly the camera closer/further from the orbit target. */
+  private zoomOrbit(delta: number) {
+    if (!this.controls || !this.camera) return;
+    const target = this.controls.target;
+    const dir = this.camera.position.clone().sub(target).normalize();
+    const dist = this.camera.position.distanceTo(target);
+    const newDist = Math.max(1, dist + delta);
+    this.camera.position.copy(target).addScaledVector(dir, newDist);
+    this.controls.update();
+  }
+
+  /** Cycle keyboard focus to the next/previous building. */
+  private cycleBuilding(direction: 1 | -1) {
+    if (this.buildingKeys.length === 0) return;
+    this.restoreKbFocusColor();
+
+    if (this.kbFocusIndex < 0) {
+      this.kbFocusIndex = direction === 1 ? 0 : this.buildingKeys.length - 1;
+    } else {
+      this.kbFocusIndex =
+        (this.kbFocusIndex + direction + this.buildingKeys.length) % this.buildingKeys.length;
+    }
+
+    const path = this.buildingKeys[this.kbFocusIndex];
+    const mesh = this.blockMeshes.get(path);
+    if (!mesh || !this.three) return;
+
+    const mat = mesh.material as InstanceType<(typeof this.three)["MeshStandardMaterial"]>;
+    this.kbFocusOriginalColor = mat.color.getHex();
+    mat.color.setHex(GcCodeCity.KB_HIGHLIGHT_COLOR);
+
+    // Show a tooltip for the focused building
+    const file = mesh.userData?.file as FileNode | undefined;
+    if (file) {
+      this.tooltipText = this.renderTooltipContent(file);
+      // Place tooltip at a fixed position when navigating via keyboard
+      this.tooltipX = 80;
+      this.tooltipY = 80;
+    }
+  }
+
+  /** Restore the color of the currently keyboard-focused building. */
+  private restoreKbFocusColor() {
+    if (this.kbFocusIndex < 0 || this.kbFocusOriginalColor === null) return;
+    const path = this.buildingKeys[this.kbFocusIndex];
+    const mesh = this.blockMeshes.get(path);
+    if (mesh && this.three) {
+      (mesh.material as InstanceType<(typeof this.three)["MeshStandardMaterial"]>).color.setHex(
+        this.kbFocusOriginalColor,
+      );
+    }
+    this.kbFocusOriginalColor = null;
+  }
+
+  /** Clear keyboard focus entirely. */
+  private clearKbFocus() {
+    this.restoreKbFocusColor();
+    this.kbFocusIndex = -1;
+    this.tooltipText = "";
+  }
 
   override updated(changed: Map<string, unknown>) {
     if ((changed.has("repoId") || changed.has("branch")) && this.repoId) {
@@ -639,6 +808,7 @@ export class GcCodeCity extends LitElement {
     canvas.addEventListener("click", this.onClick);
     canvas.addEventListener("mousemove", this.onHover);
     canvas.addEventListener("mouseleave", this.onCanvasLeave);
+    canvas.addEventListener("keydown", this.onCanvasKeydown);
 
     this._resizeObserver = new ResizeObserver(() => {
       const { width: w, height: h } = container.getBoundingClientRect();
@@ -682,6 +852,10 @@ export class GcCodeCity extends LitElement {
 
     this.camera!.position.set(citySize * 0.8, citySize * 0.8, citySize * 0.8);
     this.camera!.lookAt(0, 0, 0);
+
+    // Rebuild the ordered list of building keys for keyboard navigation
+    this.buildingKeys = [...this.blockMeshes.keys()];
+    this.clearKbFocus();
   }
 
   private layoutDir(dir: DirNode, rect: Rect, depth: number) {
@@ -1344,8 +1518,9 @@ export class GcCodeCity extends LitElement {
       <div class="city-container">
         <canvas
           class="city-canvas"
+          tabindex="0"
           role="img"
-          aria-label="Code city visualization — file activity as 3D buildings"
+          aria-label="Code city visualization — file activity as 3D buildings. Use arrow keys to rotate, plus/minus to zoom, Tab to cycle buildings, Enter to select."
         ></canvas>
         ${this.loading
           ? html`<div class="city-loading">
@@ -1455,6 +1630,10 @@ export class GcCodeCity extends LitElement {
       min-height: 0;
       display: block;
       width: 100%;
+    }
+    .city-canvas:focus-visible {
+      outline: 2px solid var(--accent-user);
+      outline-offset: -2px;
     }
     .city-loading {
       position: absolute;
