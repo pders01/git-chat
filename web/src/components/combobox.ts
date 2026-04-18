@@ -75,7 +75,9 @@ export class GcCombobox extends LitElement {
   private hide() {
     this.open = false;
     this.activeIndex = -1;
-    window.removeEventListener("scroll", this._scrollListener, { capture: true } as EventListenerOptions);
+    window.removeEventListener("scroll", this._scrollListener, {
+      capture: true,
+    } as EventListenerOptions);
   }
 
   private select(opt: ComboboxOption) {
@@ -95,9 +97,7 @@ export class GcCombobox extends LitElement {
     this.filter = val;
     this.value = val;
     this.show();
-    this.dispatchEvent(
-      new CustomEvent("gc-input", { detail: val, bubbles: true, composed: true }),
-    );
+    this.dispatchEvent(new CustomEvent("gc-input", { detail: val, bubbles: true, composed: true }));
   }
 
   private onKeydown(e: KeyboardEvent) {
@@ -211,7 +211,9 @@ export class GcCombobox extends LitElement {
 
   override disconnectedCallback() {
     super.disconnectedCallback();
-    window.removeEventListener("scroll", this._scrollListener, { capture: true } as EventListenerOptions);
+    window.removeEventListener("scroll", this._scrollListener, {
+      capture: true,
+    } as EventListenerOptions);
   }
 
   override render() {
@@ -240,12 +242,7 @@ export class GcCombobox extends LitElement {
           : nothing}
         ${this.open && items.length > 0
           ? html`
-              <ul
-                id=${listId}
-                role="listbox"
-                class="listbox"
-                aria-label="Suggestions"
-              >
+              <ul id=${listId} role="listbox" class="listbox" aria-label="Suggestions">
                 ${items.map(
                   (opt, i) => html`
                     <li

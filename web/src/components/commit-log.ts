@@ -732,7 +732,9 @@ export class GcCommitLog extends LitElement {
                             </div>
                             <div class="commit-line2">
                               <span class="commit-author">${c.authorName}</span>
-                              <span class="commit-age">${formatAge(Number(c.authorTime), true)}</span>
+                              <span class="commit-age"
+                                >${formatAge(Number(c.authorTime), true)}</span
+                              >
                               ${c.filesChanged
                                 ? html`<span class="commit-stats">
                                     <span class="adds">+${c.additions}</span>

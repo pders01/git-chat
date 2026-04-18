@@ -468,18 +468,14 @@ export class GcDiffPane extends LitElement {
 // pure DOM transforms that can be unit-tested in isolation once the
 // harness exists.
 
-export function splitDiffHtml(
-  unifiedHtml: string,
-): Array<{ left: string; right: string }> {
+export function splitDiffHtml(unifiedHtml: string): Array<{ left: string; right: string }> {
   const tmp = document.createElement("div");
   tmp.innerHTML = unifiedHtml;
   const code = tmp.querySelector("code");
   if (!code) return [{ left: unifiedHtml, right: "" }];
   const lineEls = code.querySelectorAll(".line");
   const lines =
-    lineEls.length > 0
-      ? Array.from(lineEls).map((el) => el.innerHTML)
-      : code.innerHTML.split("\n");
+    lineEls.length > 0 ? Array.from(lineEls).map((el) => el.innerHTML) : code.innerHTML.split("\n");
   const pairs: Array<{ left: string; right: string }> = [];
   const delBuf: string[] = [];
   const addBuf: string[] = [];

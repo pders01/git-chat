@@ -226,9 +226,7 @@ export class GcConnectionWizard extends LitElement {
   }
 
   private cancel() {
-    this.dispatchEvent(
-      new CustomEvent("gc-profile-cancel", { bubbles: true, composed: true }),
-    );
+    this.dispatchEvent(new CustomEvent("gc-profile-cancel", { bubbles: true, composed: true }));
   }
 
   // ── Render ──────────────────────────────────────────────────
@@ -239,13 +237,9 @@ export class GcConnectionWizard extends LitElement {
       <div class="wizard">
         <div class="wizard-header">
           <h4 class="wizard-title">${this.profile ? "Edit Profile" : "New Connection"}</h4>
-          <button class="mode-toggle" @click=${() => (this.manual = true)}>
-            manual entry
-          </button>
+          <button class="mode-toggle" @click=${() => (this.manual = true)}>manual entry</button>
         </div>
-        <div class="steps">
-          ${this.renderStepIndicator()}
-        </div>
+        <div class="steps">${this.renderStepIndicator()}</div>
         <div class="step-content">
           ${this.step === "provider" ? this.renderProviderStep() : nothing}
           ${this.step === "auth" ? this.renderAuthStep() : nothing}
@@ -273,14 +267,22 @@ export class GcConnectionWizard extends LitElement {
     const order: Step[] = ["provider", "auth", "model", "save"];
     const current = order.indexOf(this.step);
     return html`
-      ${steps.map((s, i) => html`
-        <button
-          class=${classMap({ "step-dot": true, done: i <= current, active: this.step === s.id })}
-          @click=${() => { if (i <= current) this.step = s.id; }}
-          ?disabled=${i > current}
-        >${s.label}</button>
-        ${i < steps.length - 1 ? html`<span class="step-line ${i < current ? "done" : ""}"></span>` : nothing}
-      `)}
+      ${steps.map(
+        (s, i) => html`
+          <button
+            class=${classMap({ "step-dot": true, done: i <= current, active: this.step === s.id })}
+            @click=${() => {
+              if (i <= current) this.step = s.id;
+            }}
+            ?disabled=${i > current}
+          >
+            ${s.label}
+          </button>
+          ${i < steps.length - 1
+            ? html`<span class="step-line ${i < current ? "done" : ""}"></span>`
+            : nothing}
+        `,
+      )}
     `;
   }
 
@@ -294,9 +296,17 @@ export class GcConnectionWizard extends LitElement {
                 <span class="quick-label">Local</span>
                 ${this.localEndpoints.map(
                   (ep) => html`
-                    <button class="quick-btn" @click=${() =>
-                      this.selectProvider({ value: `local:${ep.url}`, label: ep.name, description: "" })
-                    }>${ep.name}</button>
+                    <button
+                      class="quick-btn"
+                      @click=${() =>
+                        this.selectProvider({
+                          value: `local:${ep.url}`,
+                          label: ep.name,
+                          description: "",
+                        })}
+                    >
+                      ${ep.name}
+                    </button>
                   `,
                 )}
               </div>
@@ -330,17 +340,23 @@ export class GcConnectionWizard extends LitElement {
           />
         </label>
         ${this.baseUrl
-          ? html`<button class="btn primary" @click=${() => {
-              this.providerName = "";
-              this.step = "auth";
-            }}>next</button>`
+          ? html`<button
+              class="btn primary"
+              @click=${() => {
+                this.providerName = "";
+                this.step = "auth";
+              }}
+            >
+              next
+            </button>`
           : nothing}
       </div>
     `;
   }
 
   private renderAuthStep() {
-    const isLocal = this.baseUrl.startsWith("http://localhost") || this.baseUrl.startsWith("http://127.");
+    const isLocal =
+      this.baseUrl.startsWith("http://localhost") || this.baseUrl.startsWith("http://127.");
     return html`
       <div class="step-body">
         <p class="step-desc">
@@ -354,9 +370,8 @@ export class GcConnectionWizard extends LitElement {
           ? html`
               ${this.uiIsPlaintext
                 ? html`<p class="warn">
-                    This page is served over plain HTTP. Your API key will be
-                    sent to the server in the clear — use HTTPS or a localhost
-                    deployment before entering a real key.
+                    This page is served over plain HTTP. Your API key will be sent to the server in
+                    the clear — use HTTPS or a localhost deployment before entering a real key.
                   </p>`
                 : nothing}
               <label class="field">
@@ -365,7 +380,9 @@ export class GcConnectionWizard extends LitElement {
                   type="password"
                   class="input"
                   autocomplete="off"
-                  placeholder=${this.profile?.apiKey === "••••••••" ? "current key preserved" : "sk-..."}
+                  placeholder=${this.profile?.apiKey === "••••••••"
+                    ? "current key preserved"
+                    : "sk-..."}
                   .value=${this.apiKey}
                   @input=${(e: Event) => {
                     this.apiKey = (e.target as HTMLInputElement).value;
@@ -381,11 +398,11 @@ export class GcConnectionWizard extends LitElement {
         >
           ${this.discovering ? "connecting…" : "test connection"}
         </button>
-        ${this.discoverError
-          ? html`<p class="error">${this.discoverError}</p>`
-          : nothing}
+        ${this.discoverError ? html`<p class="error">${this.discoverError}</p>` : nothing}
         ${this.discoveredModels.length > 0
-          ? html`<p class="success">Connected · ${this.discoveredModels.length} models available</p>`
+          ? html`<p class="success">
+              Connected · ${this.discoveredModels.length} models available
+            </p>`
           : nothing}
       </div>
     `;
@@ -413,14 +430,26 @@ export class GcConnectionWizard extends LitElement {
           <summary>Advanced</summary>
           <label class="field">
             <span>Temperature</span>
-            <input type="text" class="input" placeholder="0" .value=${this.temperature}
-              @input=${(e: Event) => { this.temperature = (e.target as HTMLInputElement).value; }}
+            <input
+              type="text"
+              class="input"
+              placeholder="0"
+              .value=${this.temperature}
+              @input=${(e: Event) => {
+                this.temperature = (e.target as HTMLInputElement).value;
+              }}
             />
           </label>
           <label class="field">
             <span>Max Tokens</span>
-            <input type="text" class="input" placeholder="0 (default)" .value=${this.maxTokens}
-              @input=${(e: Event) => { this.maxTokens = (e.target as HTMLInputElement).value; }}
+            <input
+              type="text"
+              class="input"
+              placeholder="0 (default)"
+              .value=${this.maxTokens}
+              @input=${(e: Event) => {
+                this.maxTokens = (e.target as HTMLInputElement).value;
+              }}
             />
           </label>
         </details>
@@ -437,8 +466,13 @@ export class GcConnectionWizard extends LitElement {
         <p class="step-desc">Save this configuration</p>
         <label class="field">
           <span>Profile name</span>
-          <input type="text" class="input" .value=${this.name}
-            @input=${(e: Event) => { this.name = (e.target as HTMLInputElement).value; }}
+          <input
+            type="text"
+            class="input"
+            .value=${this.name}
+            @input=${(e: Event) => {
+              this.name = (e.target as HTMLInputElement).value;
+            }}
           />
         </label>
         <label class="field">
@@ -448,9 +482,13 @@ export class GcConnectionWizard extends LitElement {
             rows="3"
             placeholder="Additional instructions appended to the base prompt…"
             .value=${this.systemPrompt}
-            @input=${(e: Event) => { this.systemPrompt = (e.target as HTMLTextAreaElement).value; }}
+            @input=${(e: Event) => {
+              this.systemPrompt = (e.target as HTMLTextAreaElement).value;
+            }}
           ></textarea>
-          <span class="field-hint">e.g. "respond concisely", "use German", model-specific instructions</span>
+          <span class="field-hint"
+            >e.g. "respond concisely", "use German", model-specific instructions</span
+          >
         </label>
         <div class="save-actions">
           <button class="btn primary" @click=${() => this.save(true)}>save & activate</button>
@@ -465,52 +503,106 @@ export class GcConnectionWizard extends LitElement {
       <div class="wizard">
         <div class="wizard-header">
           <h4 class="wizard-title">${this.profile ? "Edit Profile" : "Manual Entry"}</h4>
-          <button class="mode-toggle" @click=${() => (this.manual = false)}>
-            guided setup
-          </button>
+          <button class="mode-toggle" @click=${() => (this.manual = false)}>guided setup</button>
         </div>
         <div class="step-body">
-          <label class="field"><span>Name</span>
-            <input type="text" class="input" .value=${this.name}
-              @input=${(e: Event) => { this.name = (e.target as HTMLInputElement).value; }} />
+          <label class="field"
+            ><span>Name</span>
+            <input
+              type="text"
+              class="input"
+              .value=${this.name}
+              @input=${(e: Event) => {
+                this.name = (e.target as HTMLInputElement).value;
+              }}
+            />
           </label>
-          <label class="field"><span>Backend</span>
+          <label class="field"
+            ><span>Backend</span>
             <gc-combobox
               .options=${[
                 { value: "openai", label: "openai" },
                 { value: "anthropic", label: "anthropic" },
               ]}
               .value=${this.backend}
-              @gc-select=${(e: CustomEvent) => { this.backend = e.detail.value; this.requestUpdate(); }}
-              @gc-input=${(e: CustomEvent) => { this.backend = e.detail; }}
+              @gc-select=${(e: CustomEvent) => {
+                this.backend = e.detail.value;
+                this.requestUpdate();
+              }}
+              @gc-input=${(e: CustomEvent) => {
+                this.backend = e.detail;
+              }}
             ></gc-combobox>
           </label>
-          <label class="field"><span>Base URL</span>
-            <input type="text" class="input" .value=${this.baseUrl}
-              @input=${(e: Event) => { this.baseUrl = (e.target as HTMLInputElement).value; }} />
+          <label class="field"
+            ><span>Base URL</span>
+            <input
+              type="text"
+              class="input"
+              .value=${this.baseUrl}
+              @input=${(e: Event) => {
+                this.baseUrl = (e.target as HTMLInputElement).value;
+              }}
+            />
           </label>
-          <label class="field"><span>Model</span>
-            <input type="text" class="input" .value=${this.model}
-              @input=${(e: Event) => { this.model = (e.target as HTMLInputElement).value; }} />
+          <label class="field"
+            ><span>Model</span>
+            <input
+              type="text"
+              class="input"
+              .value=${this.model}
+              @input=${(e: Event) => {
+                this.model = (e.target as HTMLInputElement).value;
+              }}
+            />
           </label>
-          <label class="field"><span>API Key</span>
-            <input type="password" class="input" autocomplete="off"
+          <label class="field"
+            ><span>API Key</span>
+            <input
+              type="password"
+              class="input"
+              autocomplete="off"
               placeholder=${this.profile?.apiKey === "••••••••" ? "current key preserved" : ""}
               .value=${this.apiKey}
-              @input=${(e: Event) => { this.apiKey = (e.target as HTMLInputElement).value; }} />
+              @input=${(e: Event) => {
+                this.apiKey = (e.target as HTMLInputElement).value;
+              }}
+            />
           </label>
-          <label class="field"><span>Temperature</span>
-            <input type="text" class="input" placeholder="0" .value=${this.temperature}
-              @input=${(e: Event) => { this.temperature = (e.target as HTMLInputElement).value; }} />
+          <label class="field"
+            ><span>Temperature</span>
+            <input
+              type="text"
+              class="input"
+              placeholder="0"
+              .value=${this.temperature}
+              @input=${(e: Event) => {
+                this.temperature = (e.target as HTMLInputElement).value;
+              }}
+            />
           </label>
-          <label class="field"><span>Max Tokens</span>
-            <input type="text" class="input" placeholder="0" .value=${this.maxTokens}
-              @input=${(e: Event) => { this.maxTokens = (e.target as HTMLInputElement).value; }} />
+          <label class="field"
+            ><span>Max Tokens</span>
+            <input
+              type="text"
+              class="input"
+              placeholder="0"
+              .value=${this.maxTokens}
+              @input=${(e: Event) => {
+                this.maxTokens = (e.target as HTMLInputElement).value;
+              }}
+            />
           </label>
-          <label class="field"><span>System Prompt</span>
-            <textarea class="input textarea" rows="3" placeholder="Optional additional instructions…"
+          <label class="field"
+            ><span>System Prompt</span>
+            <textarea
+              class="input textarea"
+              rows="3"
+              placeholder="Optional additional instructions…"
               .value=${this.systemPrompt}
-              @input=${(e: Event) => { this.systemPrompt = (e.target as HTMLTextAreaElement).value; }}
+              @input=${(e: Event) => {
+                this.systemPrompt = (e.target as HTMLTextAreaElement).value;
+              }}
             ></textarea>
           </label>
         </div>
@@ -530,7 +622,9 @@ export class GcConnectionWizard extends LitElement {
   }
 
   static override styles = css`
-    :host { display: block; }
+    :host {
+      display: block;
+    }
     .wizard {
       border: 1px solid var(--border-default);
       border-radius: var(--radius-md);
@@ -559,7 +653,9 @@ export class GcConnectionWizard extends LitElement {
       cursor: pointer;
       opacity: 0.6;
     }
-    .mode-toggle:hover { opacity: 1; }
+    .mode-toggle:hover {
+      opacity: 1;
+    }
 
     /* Step indicator */
     .steps {
@@ -580,20 +676,26 @@ export class GcConnectionWizard extends LitElement {
       border-radius: var(--radius-sm);
       transition: opacity 0.1s;
     }
-    .step-dot.done { opacity: 0.6; }
+    .step-dot.done {
+      opacity: 0.6;
+    }
     .step-dot.active {
       opacity: 1;
       background: var(--surface-3);
       font-weight: 500;
     }
-    .step-dot:disabled { cursor: default; }
+    .step-dot:disabled {
+      cursor: default;
+    }
     .step-line {
       flex: 1;
       height: 1px;
       background: var(--border-default);
       min-width: 12px;
     }
-    .step-line.done { background: var(--accent-assistant); }
+    .step-line.done {
+      background: var(--accent-assistant);
+    }
 
     /* Step content */
     .step-body {
@@ -614,7 +716,9 @@ export class GcConnectionWizard extends LitElement {
       gap: 2px;
       font-size: var(--text-xs);
     }
-    .field > span { font-weight: 500; }
+    .field > span {
+      font-weight: 500;
+    }
     .field-hint {
       font-size: 0.65rem;
       opacity: 0.4;
@@ -631,8 +735,13 @@ export class GcConnectionWizard extends LitElement {
       font-size: var(--text-xs);
       outline: none;
     }
-    .input:focus { border-color: var(--accent-assistant); }
-    .textarea { resize: vertical; min-height: 3em; }
+    .input:focus {
+      border-color: var(--accent-assistant);
+    }
+    .textarea {
+      resize: vertical;
+      min-height: 3em;
+    }
 
     /* Quick connect */
     .quick-connect {
@@ -656,7 +765,9 @@ export class GcConnectionWizard extends LitElement {
       padding: var(--space-1) var(--space-3);
       cursor: pointer;
     }
-    .quick-btn:hover { border-color: var(--accent-assistant); }
+    .quick-btn:hover {
+      border-color: var(--accent-assistant);
+    }
 
     /* Connection info */
     .connection-info {
@@ -666,7 +777,9 @@ export class GcConnectionWizard extends LitElement {
       font-size: var(--text-xs);
       opacity: 0.7;
     }
-    .info-label { font-weight: 500; }
+    .info-label {
+      font-weight: 500;
+    }
     code {
       background: var(--surface-2);
       padding: 1px 6px;
@@ -707,7 +820,9 @@ export class GcConnectionWizard extends LitElement {
       cursor: pointer;
       opacity: 0.6;
     }
-    details.advanced[open] summary { margin-bottom: var(--space-2); }
+    details.advanced[open] summary {
+      margin-bottom: var(--space-2);
+    }
 
     /* Buttons */
     .btn {
@@ -720,13 +835,18 @@ export class GcConnectionWizard extends LitElement {
       padding: var(--space-1) var(--space-3);
       cursor: pointer;
     }
-    .btn:hover { border-color: var(--border-strong); }
+    .btn:hover {
+      border-color: var(--border-strong);
+    }
     .btn.primary {
       background: var(--accent-assistant);
       color: #fff;
       border-color: var(--accent-assistant);
     }
-    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
 
     /* Footer */
     .wizard-footer {
@@ -736,7 +856,9 @@ export class GcConnectionWizard extends LitElement {
       padding-top: var(--space-3);
       border-top: 1px solid var(--border-default);
     }
-    .spacer { flex: 1; }
+    .spacer {
+      flex: 1;
+    }
 
     .save-actions {
       display: flex;
