@@ -4,20 +4,30 @@
 //
 // Tools:
 //   - search_knowledge: FTS5 search over cached KB cards
-//   - get_file: retrieve file content at HEAD
+//   - get_file: retrieve file content at any ref
 //   - get_diff: unified diff between two refs
 //   - list_commits: recent commit log
 //   - search_files: grep file names in the repo tree
+//   - search_code: regex search via ripgrep
+//   - outline: symbol extraction via ctags
+//   - list_tree: directory listing at any ref
+//   - list_branches: local branches with commit info
+//   - get_blame: per-line blame annotation
 package mcp
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
+	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 	"github.com/pders01/git-chat/internal/repo"
 	"github.com/pders01/git-chat/internal/storage"
 )
@@ -85,11 +95,12 @@ func NewServer(cfg Config) *server.MCPServer {
 	s.AddTool(
 		mcp.Tool{
 			Name:        "get_file",
-			Description: "Get the contents of a file from the repository at HEAD.",
+			Description: "Get the contents of a file from the repository. Supports reading at any ref (branch, tag, SHA). Defaults to HEAD.",
 			InputSchema: mcp.ToolInputSchema{
 				Type: "object",
 				Properties: map[string]any{
 					"path":    map[string]any{"type": "string", "description": "File path relative to repo root"},
+					"ref":     map[string]any{"type": "string", "description": "Git ref (branch, tag, SHA). Empty = HEAD."},
 					"repo_id": map[string]any{"type": "string", "description": "Repository ID (optional)"},
 				},
 				Required: []string{"path"},
@@ -97,19 +108,24 @@ func NewServer(cfg Config) *server.MCPServer {
 		},
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			path, _ := req.GetArguments()["path"].(string)
+			ref, _ := req.GetArguments()["ref"].(string)
 			repoID, _ := req.GetArguments()["repo_id"].(string)
 			r := getRepo(repoID)
 			if r == nil {
 				return mcp.NewToolResultError("repo not found"), nil
 			}
-			resp, err := r.GetFile("", path, 32*1024)
+			resp, err := r.GetFile(ref, path, 64*1024)
 			if err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("file not found: %s", path)), nil
 			}
 			if resp.IsBinary {
 				return mcp.NewToolResultText(fmt.Sprintf("Binary file: %s (%d bytes)", path, resp.Size)), nil
 			}
-			return mcp.NewToolResultText(string(resp.Content)), nil
+			trunc := ""
+			if resp.Truncated {
+				trunc = "\n\n…[truncated]"
+			}
+			return mcp.NewToolResultText(string(resp.Content) + trunc), nil
 		},
 	)
 
@@ -226,6 +242,258 @@ func NewServer(cfg Config) *server.MCPServer {
 				matches = matches[:50]
 			}
 			return mcp.NewToolResultText(strings.Join(matches, "\n")), nil
+		},
+	)
+
+	// ── search_code ──────────────────────────────────────────
+	s.AddTool(
+		mcp.Tool{
+			Name:        "search_code",
+			Description: "Search file contents using ripgrep (PCRE2 regex). Returns matching lines as path:line:text.",
+			InputSchema: mcp.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]any{
+					"query":          map[string]any{"type": "string", "description": "PCRE2 regex pattern (or literal if literal=true)"},
+					"path":           map[string]any{"type": "string", "description": "Directory to scope search (optional)"},
+					"glob":           map[string]any{"type": "string", "description": "Glob filter, e.g. '**/*.go' (optional)"},
+					"literal":        map[string]any{"type": "boolean", "description": "Treat query as literal string (default false)"},
+					"case_sensitive": map[string]any{"type": "boolean", "description": "Case-sensitive match (default false, smart-case)"},
+					"repo_id":        map[string]any{"type": "string", "description": "Repository ID (optional)"},
+				},
+				Required: []string{"query"},
+			},
+		},
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			query, _ := req.GetArguments()["query"].(string)
+			path, _ := req.GetArguments()["path"].(string)
+			glob, _ := req.GetArguments()["glob"].(string)
+			literal, _ := req.GetArguments()["literal"].(bool)
+			caseSensitive, _ := req.GetArguments()["case_sensitive"].(bool)
+			repoID, _ := req.GetArguments()["repo_id"].(string)
+			if query == "" {
+				return mcp.NewToolResultError("query is required"), nil
+			}
+			r := getRepo(repoID)
+			if r == nil {
+				return mcp.NewToolResultError("repo not found"), nil
+			}
+			if _, err := exec.LookPath("rg"); err != nil {
+				return mcp.NewToolResultError("ripgrep (rg) not installed"), nil
+			}
+			cli := []string{
+				"--no-heading", "--line-number", "--color=never",
+				"--max-columns=240", "--max-count=80", "--pcre2",
+			}
+			if literal {
+				cli = append(cli, "--fixed-strings")
+			}
+			if caseSensitive {
+				cli = append(cli, "--case-sensitive")
+			} else {
+				cli = append(cli, "--smart-case")
+			}
+			if glob != "" {
+				cli = append(cli, "--glob", glob)
+			}
+			cli = append(cli, "--", query)
+			scope := "."
+			if path != "" {
+				clean := filepath.Clean(path)
+				if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") {
+					return mcp.NewToolResultError("path must be relative to repo root"), nil
+				}
+				scope = clean
+			}
+			cli = append(cli, scope)
+			cmd := exec.CommandContext(ctx, "rg", cli...)
+			cmd.Dir = r.Path
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			if err != nil {
+				// rg exits 1 when no matches, 2+ on real errors.
+				var exitErr *exec.ExitError
+				if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+					return mcp.NewToolResultText(fmt.Sprintf("(no matches for %q)", query)), nil
+				}
+				if stdout.Len() == 0 {
+					return mcp.NewToolResultError(fmt.Sprintf("rg failed: %s", strings.TrimSpace(stderr.String()))), nil
+				}
+			}
+			out := stdout.String()
+			if len(out) > 32*1024 {
+				out = out[:32*1024] + "\n…(truncated)"
+			}
+			return mcp.NewToolResultText(out), nil
+		},
+	)
+
+	// ── outline ──────────────────────────────────────────────
+	s.AddTool(
+		mcp.Tool{
+			Name:        "outline",
+			Description: "Extract code symbols (functions, types, classes) from a file or directory using ctags. Returns line, kind, and name for each symbol.",
+			InputSchema: mcp.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]any{
+					"path":    map[string]any{"type": "string", "description": "File or directory path relative to repo root"},
+					"repo_id": map[string]any{"type": "string", "description": "Repository ID (optional)"},
+				},
+				Required: []string{"path"},
+			},
+		},
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			path, _ := req.GetArguments()["path"].(string)
+			repoID, _ := req.GetArguments()["repo_id"].(string)
+			if path == "" {
+				return mcp.NewToolResultError("path is required"), nil
+			}
+			clean := filepath.Clean(path)
+			if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") {
+				return mcp.NewToolResultError("path must be relative to repo root"), nil
+			}
+			r := getRepo(repoID)
+			if r == nil {
+				return mcp.NewToolResultError("repo not found"), nil
+			}
+			if _, err := exec.LookPath("ctags"); err != nil {
+				return mcp.NewToolResultError("ctags not installed (install universal-ctags)"), nil
+			}
+			cmd := exec.CommandContext(ctx, "ctags",
+				"--output-format=json", "--fields=+nKs", "--extras=", "--sort=no",
+				"-R", "--languages=Go,TypeScript,JavaScript,Python,Rust,C,C++,Java,Ruby",
+				"-f", "-", clean,
+			)
+			cmd.Dir = r.Path
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			if err := cmd.Run(); err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("ctags failed: %s", strings.TrimSpace(stderr.String()))), nil
+			}
+			out := stdout.String()
+			if len(out) > 32*1024 {
+				out = out[:32*1024] + "\n…(truncated)"
+			}
+			return mcp.NewToolResultText(out), nil
+		},
+	)
+
+	// ── list_tree ────────────────────────────────────────────
+	s.AddTool(
+		mcp.Tool{
+			Name:        "list_tree",
+			Description: "List files and directories at a path in the repository. Supports reading at any ref.",
+			InputSchema: mcp.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]any{
+					"path":    map[string]any{"type": "string", "description": "Directory path (empty = repo root)"},
+					"ref":     map[string]any{"type": "string", "description": "Git ref (branch, tag, SHA). Empty = HEAD."},
+					"repo_id": map[string]any{"type": "string", "description": "Repository ID (optional)"},
+				},
+			},
+		},
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			path, _ := req.GetArguments()["path"].(string)
+			ref, _ := req.GetArguments()["ref"].(string)
+			repoID, _ := req.GetArguments()["repo_id"].(string)
+			r := getRepo(repoID)
+			if r == nil {
+				return mcp.NewToolResultError("repo not found"), nil
+			}
+			entries, _, err := r.ListTree(ref, path)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("list_tree: %v", err)), nil
+			}
+			if len(entries) == 0 {
+				return mcp.NewToolResultText(fmt.Sprintf("(empty directory %q)", path)), nil
+			}
+			var sb strings.Builder
+			for i, e := range entries {
+				if i >= 200 {
+					sb.WriteString("…(truncated)\n")
+					break
+				}
+				suffix := ""
+				if e.Type == gitchatv1.EntryType_ENTRY_TYPE_DIR {
+					suffix = "/"
+				}
+				sb.WriteString(e.Name)
+				sb.WriteString(suffix)
+				sb.WriteString("\n")
+			}
+			return mcp.NewToolResultText(sb.String()), nil
+		},
+	)
+
+	// ── list_branches ────────────────────────────────────────
+	s.AddTool(
+		mcp.Tool{
+			Name:        "list_branches",
+			Description: "List local branches sorted by most recent commit.",
+			InputSchema: mcp.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]any{
+					"repo_id": map[string]any{"type": "string", "description": "Repository ID (optional)"},
+				},
+			},
+		},
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			repoID, _ := req.GetArguments()["repo_id"].(string)
+			r := getRepo(repoID)
+			if r == nil {
+				return mcp.NewToolResultError("repo not found"), nil
+			}
+			branches, err := r.ListBranches(ctx)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("error: %v", err)), nil
+			}
+			var sb strings.Builder
+			for _, b := range branches {
+				fmt.Fprintf(&sb, "%s %s %s\n", b.Name, shortSHA(b.Commit), b.Subject)
+			}
+			return mcp.NewToolResultText(sb.String()), nil
+		},
+	)
+
+	// ── get_blame ────────────────────────────────────────────
+	s.AddTool(
+		mcp.Tool{
+			Name:        "get_blame",
+			Description: "Get per-line blame annotation for a file. Shows author, date, and commit SHA for each line.",
+			InputSchema: mcp.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]any{
+					"path":    map[string]any{"type": "string", "description": "File path relative to repo root"},
+					"ref":     map[string]any{"type": "string", "description": "Git ref (branch, tag, SHA). Empty = HEAD."},
+					"repo_id": map[string]any{"type": "string", "description": "Repository ID (optional)"},
+				},
+				Required: []string{"path"},
+			},
+		},
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			path, _ := req.GetArguments()["path"].(string)
+			ref, _ := req.GetArguments()["ref"].(string)
+			repoID, _ := req.GetArguments()["repo_id"].(string)
+			r := getRepo(repoID)
+			if r == nil {
+				return mcp.NewToolResultError("repo not found"), nil
+			}
+			lines, err := r.GetBlame(ctx, ref, path)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("blame error: %v", err)), nil
+			}
+			var sb strings.Builder
+			for i, l := range lines {
+				fmt.Fprintf(&sb, "%s %-16s %4d: %s\n",
+					shortSHA(l.CommitSha), l.AuthorName, i+1, l.Text)
+			}
+			out := sb.String()
+			if len(out) > 64*1024 {
+				out = out[:64*1024] + "\n…(truncated)"
+			}
+			return mcp.NewToolResultText(out), nil
 		},
 	)
 
