@@ -4,7 +4,6 @@ package rpc
 
 import (
 	"encoding/json"
-	"io/fs"
 	"net/http"
 	"time"
 
@@ -71,12 +70,9 @@ func NewHTTPServer(cfg Config) *http.Server {
 	)
 	mux.Handle(chatPath, chatHandler)
 
-	// Static SPA (everything else).
-	sub, err := fs.Sub(assets.DistFS, "dist")
-	if err != nil {
-		panic("assets: dist subtree missing: " + err.Error())
-	}
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	// Static SPA (everything else). DistFS picks dist/ when populated,
+	// stub/ on fresh clones before `make all`.
+	mux.Handle("/", http.FileServer(http.FS(assets.DistFS())))
 
 	// Session middleware wraps the entire mux so both the API and the
 	// static handler see the principal in context (useful when

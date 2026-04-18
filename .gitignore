@@ -8,9 +8,11 @@
 /vendor/
 
 # Web build output (embedded into Go binary at build time).
-# We commit only the stub index.html so `go build` works on a fresh clone.
+# Vite owns this directory fully; we keep only .gitkeep committed so
+# //go:embed has a file to match on fresh clones. The user-facing
+# fallback HTML lives in internal/assets/stub/.
 /internal/assets/dist/*
-!/internal/assets/dist/index.html
+!/internal/assets/dist/.gitkeep
 
 # Web dev
 /web/node_modules

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>git-chat</title>
+  <style>
+    html { color-scheme: dark light; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: #0b0d11;
+      color: #e8e8e8;
+      max-width: 44rem;
+      margin: 6rem auto;
+      padding: 0 1.25rem;
+      line-height: 1.55;
+    }
+    h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 1rem; }
+    p { margin: 0.75rem 0; color: #cfd3d9; }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.875rem;
+    }
+    code { background: #161a22; padding: 0.1em 0.35em; border-radius: 3px; }
+    pre { background: #10131a; padding: 0.75rem 1rem; border-radius: 4px; overflow-x: auto; }
+    @media (prefers-color-scheme: light) {
+      body { background: #ffffff; color: #1a1a1a; }
+      p { color: #3a3a3a; }
+      code { background: #f2f2f2; }
+      pre { background: #f7f7f7; }
+    }
+  </style>
+</head>
+<body>
+  <h1>git-chat frontend not built</h1>
+  <p>The Go binary is running, but the embedded SPA bundle is a placeholder. From the repo root, build the frontend:</p>
+  <pre><code>make all</code></pre>
+  <p>Or iterate with HMR:</p>
+  <pre><code>make dev</code></pre>
+</body>
+</html>
