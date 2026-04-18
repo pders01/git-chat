@@ -211,7 +211,7 @@ func (s *Service) GetSession(
 	}), nil
 }
 
-// ─── DeleteSession ──────────────────────────────────────────────────────
+// ─── Search ─────────────────────────────────────────────────────────────
 func (s *Service) Search(
 	ctx context.Context,
 	req *connect.Request[gitchatv1.SearchRequest],
@@ -838,7 +838,10 @@ func (s *Service) GetCard(
 		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	provRows, _ := s.DB.ListProvenance(ctx, req.Msg.CardId)
+	provRows, err := s.DB.ListProvenance(ctx, req.Msg.CardId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
 	prov := make([]*gitchatv1.CardProvenance, 0, len(provRows))
 	for _, p := range provRows {
 		prov = append(prov, &gitchatv1.CardProvenance{
@@ -1292,21 +1295,6 @@ func stripImageHistory(m map[string][]*storage.AttachmentRow) map[string][]*stor
 // storageToLLMAttachments adapts storage rows to the adapter-facing
 // shape. Called while building the prompt to hydrate historical user
 // turns with their images.
-func storageToLLMAttachments(atts []*storage.AttachmentRow) []llm.Attachment {
-	if len(atts) == 0 {
-		return nil
-	}
-	out := make([]llm.Attachment, 0, len(atts))
-	for _, a := range atts {
-		out = append(out, llm.Attachment{
-			MimeType: a.MimeType,
-			Filename: a.Filename,
-			Data:     a.Data,
-		})
-	}
-	return out
-}
-
 func protoRole(s string) gitchatv1.MessageRole {
 	switch s {
 	case "user":

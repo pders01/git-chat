@@ -120,6 +120,7 @@ func validateWebhookURL(raw string) error {
 func ssrfSafeTransport() *http.Transport {
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
 	return &http.Transport{
+		DisableKeepAlives: true, // prevent keepalive reuse bypassing per-dial SSRF check
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(addr)
 			if err != nil {

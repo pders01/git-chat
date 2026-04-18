@@ -97,13 +97,11 @@ func isEncrypted(v string) bool {
 }
 
 // maskSecret returns a masked representation of a secret value for
-// display. Shows the last 4 characters if the value is long enough.
+// display. Returns a fixed placeholder to avoid leaking any part of
+// the secret to non-local principals via the GetConfig API.
 func maskSecret(v string) string {
 	if v == "" {
 		return ""
 	}
-	if len(v) <= 4 {
-		return "••••"
-	}
-	return "••••" + v[len(v)-4:]
+	return "••••••••"
 }

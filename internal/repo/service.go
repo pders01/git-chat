@@ -250,8 +250,8 @@ func (s *Service) UpdateConfig(
 	// Restricted keys (API keys, base URLs, webhooks) can only be
 	// changed by the local principal to prevent multi-user escalation.
 	if s.Config.IsRestricted(req.Msg.Key) {
-		principal, _, _ := auth.PrincipalFromContext(ctx)
-		if principal != "local" {
+		principal, _, ok := auth.PrincipalFromContext(ctx)
+		if !ok || principal != "local" {
 			return nil, connect.NewError(connect.CodePermissionDenied,
 				fmt.Errorf("key %q can only be changed by the server operator", req.Msg.Key))
 		}
