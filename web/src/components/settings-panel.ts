@@ -30,15 +30,26 @@ export class GcSettingsPanel extends LitElement {
   @state() private localEndpoints: LocalEndpoint[] = [];
   @state() private localDiscovering = false;
 
+  // Models discovered by hitting /v1/models (or similar) on a specific
+  // base URL entered in advanced-config. Keyed by URL so that switching
+  // between providers re-uses cached results.
+  @state() private discoveredModelsByUrl: Map<string, string[]> = new Map();
+  @state() private discoveringModelsForUrl = "";
+  private discoverModelsDebounce: ReturnType<typeof setTimeout> | null = null;
+
   override disconnectedCallback() {
     super.disconnectedCallback();
     for (const t of this.configDebounceTimers.values()) clearTimeout(t);
     this.configDebounceTimers.clear();
+    if (this.discoverModelsDebounce) {
+      clearTimeout(this.discoverModelsDebounce);
+      this.discoverModelsDebounce = null;
+    }
   }
 
   override updated(changed: Map<string, unknown>) {
     if (changed.has("open") && this.open) {
-      void this.loadConfig();
+      void this.loadConfig().then(() => this.discoverModelsForCurrentBaseUrl());
       void this.loadProfiles();
       void this.loadCatalog();
     }
@@ -174,6 +185,51 @@ export class GcSettingsPanel extends LitElement {
         this.configDebounceTimers.delete(key);
       }, 300),
     );
+    // Any change to LLM_BASE_URL (or the API key used with it) kicks a
+    // model discovery against the new endpoint so the model combobox
+    // below populates automatically — mirrors what the connection wizard
+    // does for saved profiles, but works for one-off ad-hoc providers.
+    if (key === "LLM_BASE_URL" || key === "LLM_API_KEY") {
+      this.scheduleModelDiscovery();
+    }
+  }
+
+  private scheduleModelDiscovery() {
+    if (this.discoverModelsDebounce) clearTimeout(this.discoverModelsDebounce);
+    this.discoverModelsDebounce = setTimeout(() => {
+      void this.discoverModelsForCurrentBaseUrl();
+    }, 400);
+  }
+
+  private async discoverModelsForCurrentBaseUrl() {
+    const baseUrl = this.configEntries.find((e) => e.key === "LLM_BASE_URL")?.value?.trim() ?? "";
+    if (!baseUrl) return;
+    // Skip catalog/local — those already populate suggestions.
+    const inCatalog = this.catalog.some(
+      (c) => c.defaultBaseUrl && baseUrl.startsWith(c.defaultBaseUrl),
+    );
+    const inLocal = this.localEndpoints.some((ep) => ep.url === baseUrl);
+    if (inCatalog || inLocal) return;
+    if (this.discoveredModelsByUrl.has(baseUrl)) return;
+    const apiKey = this.configEntries.find((e) => e.key === "LLM_API_KEY")?.value ?? "";
+    this.discoveringModelsForUrl = baseUrl;
+    try {
+      const resp = await repoClient.discoverModels({ baseUrl, apiKey });
+      if (!resp.error && resp.modelIds?.length) {
+        this.discoveredModelsByUrl = new Map(this.discoveredModelsByUrl).set(
+          baseUrl,
+          resp.modelIds,
+        );
+      } else {
+        // Cache the empty result so we don't retry on every keystroke —
+        // user gets "no suggestions" until they change the URL or key.
+        this.discoveredModelsByUrl = new Map(this.discoveredModelsByUrl).set(baseUrl, []);
+      }
+    } catch {
+      this.discoveredModelsByUrl = new Map(this.discoveredModelsByUrl).set(baseUrl, []);
+    } finally {
+      if (this.discoveringModelsForUrl === baseUrl) this.discoveringModelsForUrl = "";
+    }
   }
 
   private async resetConfigEntry(entry: ConfigEntry) {
@@ -209,6 +265,21 @@ export class GcSettingsPanel extends LitElement {
       { value: "8192", label: "8192" },
     ],
   };
+
+  /** Pick a contextual empty-hint for the combobox. LLM_MODEL surfaces
+   * the discovery state so the user knows why the dropdown is empty
+   * (fetching vs genuinely no matches). */
+  private comboboxEmptyHint(key: string): string {
+    if (key !== "LLM_MODEL") return "type a value or fetch the catalog";
+    const baseUrl = this.configEntries.find((e) => e.key === "LLM_BASE_URL")?.value ?? "";
+    if (this.discoveringModelsForUrl && this.discoveringModelsForUrl === baseUrl) {
+      return "discovering models…";
+    }
+    if (baseUrl && this.discoveredModelsByUrl.get(baseUrl)?.length === 0) {
+      return "no models found at this base URL — type a model ID manually";
+    }
+    return "type a model ID or fetch the catalog";
+  }
 
   /** Build combobox suggestions for a config key from catalog + local discovery. */
   private configSuggestionsFor(key: string): ComboboxOption[] {
@@ -263,10 +334,23 @@ export class GcSettingsPanel extends LitElement {
         }));
       }
 
-      // 3. Fallback: if base URL is set but unrecognised, don't show
-      //    misleading models from other providers. If no base URL is
-      //    set, show all models for the backend type as a starting point.
-      if (baseUrl) return [];
+      // 3. Live-discovered models for an ad-hoc base URL (not in the
+      //    catalog, not a known local endpoint). The user gets the
+      //    same dynamic /v1/models-style discovery that the connection
+      //    wizard does for saved profiles.
+      if (baseUrl) {
+        const discovered = this.discoveredModelsByUrl.get(baseUrl);
+        if (discovered && discovered.length > 0) {
+          return discovered.map((id) => ({
+            value: id,
+            label: id,
+            description: "discovered",
+          }));
+        }
+        // Base URL set but unrecognised and no discovery hits — don't
+        // show misleading models from other providers.
+        return [];
+      }
       return this.catalog
         .filter((c) => c.type === backend)
         .flatMap((c) =>
@@ -349,11 +433,11 @@ export class GcSettingsPanel extends LitElement {
                       if (v) this.updateConfigEntry(entry.key, v);
                     }}
                   />`
-                : suggestions.length > 0
+                : suggestions.length > 0 || this.comboboxEmptyHint(entry.key)
                   ? html`<gc-combobox
                       .options=${suggestions}
                       .value=${entry.value}
-                      empty-hint="type a value or fetch the catalog"
+                      empty-hint=${this.comboboxEmptyHint(entry.key)}
                       @gc-select=${(e: CustomEvent) => {
                         this.updateConfigEntry(entry.key, e.detail.value);
                       }}
