@@ -72,6 +72,12 @@ service RepoService {
   // UpdateConfig writes a configuration override into SQLite. The new
   // value takes effect immediately for future Get() calls.
   rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
+
+  // LLM profile management.
+  rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
+  rpc SaveProfile(SaveProfileRequest) returns (SaveProfileResponse);
+  rpc DeleteProfile(DeleteProfileRequest) returns (DeleteProfileResponse);
+  rpc ActivateProfile(ActivateProfileRequest) returns (ActivateProfileResponse);
 }
 
 // ─── Repo ───────────────────────────────────────────────────────────────
@@ -345,4 +351,32 @@ message GetFileChurnMapResponse {
   // about showing all history while the server silently truncated.
   int64 effective_since_timestamp = 7;
 }
+
+// ─── LLM Profiles ─────────────────────────────────────────────────────
+
+message LLMProfile {
+  string id = 1;
+  string name = 2;
+  string backend = 3;
+  string base_url = 4;
+  string model = 5;
+  string api_key = 6;     // masked in list responses, plaintext in save requests
+  string temperature = 7;
+  string max_tokens = 8;
+}
+
+message ListProfilesRequest {}
+message ListProfilesResponse {
+  repeated LLMProfile profiles = 1;
+  string active_profile_id = 2;
+}
+
+message SaveProfileRequest { LLMProfile profile = 1; }
+message SaveProfileResponse { string id = 1; }
+
+message DeleteProfileRequest { string id = 1; }
+message DeleteProfileResponse {}
+
+message ActivateProfileRequest { string id = 1; }
+message ActivateProfileResponse {}
 

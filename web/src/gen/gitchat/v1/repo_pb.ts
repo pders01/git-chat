@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file gitchat/v1/repo.proto.
  */
 export const file_gitchat_v1_repo: GenFile = /*@__PURE__*/
-  fileDesc("ChVnaXRjaGF0L3YxL3JlcG8ucHJvdG8SCmdpdGNoYXQudjEiTgoEUmVwbxIKCgJpZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIWCg5kZWZhdWx0X2JyYW5jaBgDIAEoCRITCgtoZWFkX2NvbW1pdBgEIAEoCSISChBMaXN0UmVwb3NSZXF1ZXN0IjQKEUxpc3RSZXBvc1Jlc3BvbnNlEh8KBXJlcG9zGAEgAygLMhAuZ2l0Y2hhdC52MS5SZXBvIiYKE0xpc3RCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCSJeChRMaXN0QnJhbmNoZXNSZXNwb25zZRIkCghicmFuY2hlcxgBIAMoCzISLmdpdGNoYXQudjEuQnJhbmNoEiAKBHRhZ3MYAiADKAsyEi5naXRjaGF0LnYxLkJyYW5jaCJPCgZCcmFuY2gSDAoEbmFtZRgBIAEoCRIOCgZjb21taXQYAiABKAkSFgoOY29tbWl0dGVyX3RpbWUYAyABKAMSDwoHc3ViamVjdBgEIAEoCSI9Cg9MaXN0VHJlZVJlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRILCgNyZWYYAiABKAkSDAoEcGF0aBgDIAEoCSJQChBMaXN0VHJlZVJlc3BvbnNlEiYKB2VudHJpZXMYASADKAsyFS5naXRjaGF0LnYxLlRyZWVFbnRyeRIUCgxyZWZfcmVzb2x2ZWQYAiABKAkiXgoJVHJlZUVudHJ5EgwKBG5hbWUYASABKAkSIwoEdHlwZRgCIAEoDjIVLmdpdGNoYXQudjEuRW50cnlUeXBlEgwKBHNpemUYAyABKAMSEAoIYmxvYl9zaGEYBCABKAkiTwoOR2V0RmlsZVJlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRILCgNyZWYYAiABKAkSDAoEcGF0aBgDIAEoCRIRCgltYXhfYnl0ZXMYBCABKAMiegoPR2V0RmlsZVJlc3BvbnNlEg8KB2NvbnRlbnQYASABKAwSDAoEc2l6ZRgCIAEoAxIRCgl0cnVuY2F0ZWQYAyABKAgSEQoJaXNfYmluYXJ5GAQgASgIEhAKCGJsb2Jfc2hhGAUgASgJEhAKCGxhbmd1YWdlGAYgASgJIl8KEkxpc3RDb21taXRzUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRINCgVsaW1pdBgDIAEoBRIOCgZvZmZzZXQYBCABKAUSDAoEcGF0aBgFIAEoCSJRChNMaXN0Q29tbWl0c1Jlc3BvbnNlEigKB2NvbW1pdHMYASADKAsyFy5naXRjaGF0LnYxLkNvbW1pdEVudHJ5EhAKCGhhc19tb3JlGAIgASgIIt4BCgtDb21taXRFbnRyeRILCgNzaGEYASABKAkSEQoJc2hvcnRfc2hhGAIgASgJEg8KB21lc3NhZ2UYAyABKAkSEwoLYXV0aG9yX25hbWUYBCABKAkSFAoMYXV0aG9yX2VtYWlsGAUgASgJEhMKC2F1dGhvcl90aW1lGAYgASgDEhUKDWZpbGVzX2NoYW5nZWQYByABKAUSEQoJYWRkaXRpb25zGAggASgFEhEKCWRlbGV0aW9ucxgJIAEoBRIMCgRib2R5GAogASgJEhMKC3BhcmVudF9zaGFzGAsgAygJIj0KD0dldEJsYW1lUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIjgKEEdldEJsYW1lUmVzcG9uc2USJAoFbGluZXMYASADKAsyFS5naXRjaGF0LnYxLkJsYW1lTGluZSJ+CglCbGFtZUxpbmUSDAoEdGV4dBgBIAEoCRITCgthdXRob3JfbmFtZRgCIAEoCRIUCgxhdXRob3JfZW1haWwYAyABKAkSDAoEZGF0ZRgEIAEoAxISCgpjb21taXRfc2hhGAUgASgJEhYKDmNvbW1pdF9tZXNzYWdlGAYgASgJImUKFkNvbXBhcmVCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRIQCghiYXNlX3JlZhgCIAEoCRIQCghoZWFkX3JlZhgDIAEoCRIWCg5kZXRlY3RfcmVuYW1lcxgEIAEoCCJzChdDb21wYXJlQnJhbmNoZXNSZXNwb25zZRImCgVmaWxlcxgBIAMoCzIXLmdpdGNoYXQudjEuQ2hhbmdlZEZpbGUSFwoPdG90YWxfYWRkaXRpb25zGAIgASgFEhcKD3RvdGFsX2RlbGV0aW9ucxgDIAEoBSJkCgtDaGFuZ2VkRmlsZRIMCgRwYXRoGAEgASgJEg4KBnN0YXR1cxgCIAEoCRIRCglhZGRpdGlvbnMYAyABKAUSEQoJZGVsZXRpb25zGAQgASgFEhEKCWZyb21fcGF0aBgFIAEoCSJpCg5HZXREaWZmUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEhAKCGZyb21fcmVmGAIgASgJEg4KBnRvX3JlZhgDIAEoCRIMCgRwYXRoGAQgASgJEhYKDmRldGVjdF9yZW5hbWVzGAUgASgIIoYBCg9HZXREaWZmUmVzcG9uc2USFAoMdW5pZmllZF9kaWZmGAEgASgJEhMKC2Zyb21fY29tbWl0GAIgASgJEhEKCXRvX2NvbW1pdBgDIAEoCRINCgVlbXB0eRgEIAEoCBImCgVmaWxlcxgFIAMoCzIXLmdpdGNoYXQudjEuQ2hhbmdlZEZpbGUiIwoQR2V0U3RhdHVzUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJIpABChFHZXRTdGF0dXNSZXNwb25zZRImCgZzdGFnZWQYASADKAsyFi5naXRjaGF0LnYxLlN0YXR1c0ZpbGUSKAoIdW5zdGFnZWQYAiADKAsyFi5naXRjaGF0LnYxLlN0YXR1c0ZpbGUSKQoJdW50cmFja2VkGAMgAygLMhYuZ2l0Y2hhdC52MS5TdGF0dXNGaWxlIioKClN0YXR1c0ZpbGUSDAoEcGF0aBgBIAEoCRIOCgZzdGF0dXMYAiABKAkiOgoZR2V0V29ya2luZ1RyZWVEaWZmUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiQQoaR2V0V29ya2luZ1RyZWVEaWZmUmVzcG9uc2USFAoMdW5pZmllZF9kaWZmGAEgASgJEg0KBWVtcHR5GAIgASgIIhIKEEdldENvbmZpZ1JlcXVlc3QidAoLQ29uZmlnRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJEhUKDWRlZmF1bHRfdmFsdWUYAyABKAkSEwoLZGVzY3JpcHRpb24YBCABKAkSDQoFZ3JvdXAYBSABKAkSDgoGc2VjcmV0GAYgASgIIj0KEUdldENvbmZpZ1Jlc3BvbnNlEigKB2VudHJpZXMYASADKAsyFy5naXRjaGF0LnYxLkNvbmZpZ0VudHJ5IjEKE1VwZGF0ZUNvbmZpZ1JlcXVlc3QSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJIhYKFFVwZGF0ZUNvbmZpZ1Jlc3BvbnNlIn0KFkdldEZpbGVDaHVybk1hcFJlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRILCgNyZWYYAiABKAkSFwoPc2luY2VfdGltZXN0YW1wGAMgASgDEhcKD3VudGlsX3RpbWVzdGFtcBgEIAEoAxITCgttYXhfY29tbWl0cxgFIAEoBSKGAQoJRmlsZUNodXJuEgwKBHBhdGgYASABKAkSFAoMY29tbWl0X2NvdW50GAIgASgFEhcKD3RvdGFsX2FkZGl0aW9ucxgDIAEoAxIXCg90b3RhbF9kZWxldGlvbnMYBCABKAMSFQoNbGFzdF9tb2RpZmllZBgFIAEoAxIMCgRzaXplGAYgASgDIuwBChdHZXRGaWxlQ2h1cm5NYXBSZXNwb25zZRIkCgVmaWxlcxgBIAMoCzIVLmdpdGNoYXQudjEuRmlsZUNodXJuEh4KFmZpcnN0X2NvbW1pdF90aW1lc3RhbXAYAiABKAMSHQoVbGFzdF9jb21taXRfdGltZXN0YW1wGAMgASgDEhcKD2NvbW1pdHNfc2Nhbm5lZBgEIAEoBRITCgtjYXBfcmVhY2hlZBgFIAEoCBIbChNtYXhfY29tbWl0c19zY2FubmVkGAYgASgFEiEKGWVmZmVjdGl2ZV9zaW5jZV90aW1lc3RhbXAYByABKAMqggEKCUVudHJ5VHlwZRIaChZFTlRSWV9UWVBFX1VOU1BFQ0lGSUVEEAASEwoPRU5UUllfVFlQRV9GSUxFEAESEgoORU5UUllfVFlQRV9ESVIQAhIWChJFTlRSWV9UWVBFX1NZTUxJTksQAxIYChRFTlRSWV9UWVBFX1NVQk1PRFVMRRAEMpQICgtSZXBvU2VydmljZRJICglMaXN0UmVwb3MSHC5naXRjaGF0LnYxLkxpc3RSZXBvc1JlcXVlc3QaHS5naXRjaGF0LnYxLkxpc3RSZXBvc1Jlc3BvbnNlElEKDExpc3RCcmFuY2hlcxIfLmdpdGNoYXQudjEuTGlzdEJyYW5jaGVzUmVxdWVzdBogLmdpdGNoYXQudjEuTGlzdEJyYW5jaGVzUmVzcG9uc2USRQoITGlzdFRyZWUSGy5naXRjaGF0LnYxLkxpc3RUcmVlUmVxdWVzdBocLmdpdGNoYXQudjEuTGlzdFRyZWVSZXNwb25zZRJCCgdHZXRGaWxlEhouZ2l0Y2hhdC52MS5HZXRGaWxlUmVxdWVzdBobLmdpdGNoYXQudjEuR2V0RmlsZVJlc3BvbnNlEk4KC0xpc3RDb21taXRzEh4uZ2l0Y2hhdC52MS5MaXN0Q29tbWl0c1JlcXVlc3QaHy5naXRjaGF0LnYxLkxpc3RDb21taXRzUmVzcG9uc2USRQoIR2V0QmxhbWUSGy5naXRjaGF0LnYxLkdldEJsYW1lUmVxdWVzdBocLmdpdGNoYXQudjEuR2V0QmxhbWVSZXNwb25zZRJaCg9Db21wYXJlQnJhbmNoZXMSIi5naXRjaGF0LnYxLkNvbXBhcmVCcmFuY2hlc1JlcXVlc3QaIy5naXRjaGF0LnYxLkNvbXBhcmVCcmFuY2hlc1Jlc3BvbnNlEkIKB0dldERpZmYSGi5naXRjaGF0LnYxLkdldERpZmZSZXF1ZXN0GhsuZ2l0Y2hhdC52MS5HZXREaWZmUmVzcG9uc2USSAoJR2V0U3RhdHVzEhwuZ2l0Y2hhdC52MS5HZXRTdGF0dXNSZXF1ZXN0Gh0uZ2l0Y2hhdC52MS5HZXRTdGF0dXNSZXNwb25zZRJjChJHZXRXb3JraW5nVHJlZURpZmYSJS5naXRjaGF0LnYxLkdldFdvcmtpbmdUcmVlRGlmZlJlcXVlc3QaJi5naXRjaGF0LnYxLkdldFdvcmtpbmdUcmVlRGlmZlJlc3BvbnNlEloKD0dldEZpbGVDaHVybk1hcBIiLmdpdGNoYXQudjEuR2V0RmlsZUNodXJuTWFwUmVxdWVzdBojLmdpdGNoYXQudjEuR2V0RmlsZUNodXJuTWFwUmVzcG9uc2USSAoJR2V0Q29uZmlnEhwuZ2l0Y2hhdC52MS5HZXRDb25maWdSZXF1ZXN0Gh0uZ2l0Y2hhdC52MS5HZXRDb25maWdSZXNwb25zZRJRCgxVcGRhdGVDb25maWcSHy5naXRjaGF0LnYxLlVwZGF0ZUNvbmZpZ1JlcXVlc3QaIC5naXRjaGF0LnYxLlVwZGF0ZUNvbmZpZ1Jlc3BvbnNlQp0BCg5jb20uZ2l0Y2hhdC52MUIJUmVwb1Byb3RvUAFaN2dpdGh1Yi5jb20vcGRlcnMwMS9naXQtY2hhdC9nZW4vZ28vZ2l0Y2hhdC92MTtnaXRjaGF0djGiAgNHWFiqAgpHaXRjaGF0LlYxygIKR2l0Y2hhdFxWMeICFkdpdGNoYXRcVjFcR1BCTWV0YWRhdGHqAgtHaXRjaGF0OjpWMWIGcHJvdG8z");
+  fileDesc("ChVnaXRjaGF0L3YxL3JlcG8ucHJvdG8SCmdpdGNoYXQudjEiTgoEUmVwbxIKCgJpZBgBIAEoCRINCgVsYWJlbBgCIAEoCRIWCg5kZWZhdWx0X2JyYW5jaBgDIAEoCRITCgtoZWFkX2NvbW1pdBgEIAEoCSISChBMaXN0UmVwb3NSZXF1ZXN0IjQKEUxpc3RSZXBvc1Jlc3BvbnNlEh8KBXJlcG9zGAEgAygLMhAuZ2l0Y2hhdC52MS5SZXBvIiYKE0xpc3RCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCSJeChRMaXN0QnJhbmNoZXNSZXNwb25zZRIkCghicmFuY2hlcxgBIAMoCzISLmdpdGNoYXQudjEuQnJhbmNoEiAKBHRhZ3MYAiADKAsyEi5naXRjaGF0LnYxLkJyYW5jaCJPCgZCcmFuY2gSDAoEbmFtZRgBIAEoCRIOCgZjb21taXQYAiABKAkSFgoOY29tbWl0dGVyX3RpbWUYAyABKAMSDwoHc3ViamVjdBgEIAEoCSI9Cg9MaXN0VHJlZVJlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRILCgNyZWYYAiABKAkSDAoEcGF0aBgDIAEoCSJQChBMaXN0VHJlZVJlc3BvbnNlEiYKB2VudHJpZXMYASADKAsyFS5naXRjaGF0LnYxLlRyZWVFbnRyeRIUCgxyZWZfcmVzb2x2ZWQYAiABKAkiXgoJVHJlZUVudHJ5EgwKBG5hbWUYASABKAkSIwoEdHlwZRgCIAEoDjIVLmdpdGNoYXQudjEuRW50cnlUeXBlEgwKBHNpemUYAyABKAMSEAoIYmxvYl9zaGEYBCABKAkiTwoOR2V0RmlsZVJlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRILCgNyZWYYAiABKAkSDAoEcGF0aBgDIAEoCRIRCgltYXhfYnl0ZXMYBCABKAMiegoPR2V0RmlsZVJlc3BvbnNlEg8KB2NvbnRlbnQYASABKAwSDAoEc2l6ZRgCIAEoAxIRCgl0cnVuY2F0ZWQYAyABKAgSEQoJaXNfYmluYXJ5GAQgASgIEhAKCGJsb2Jfc2hhGAUgASgJEhAKCGxhbmd1YWdlGAYgASgJIl8KEkxpc3RDb21taXRzUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRINCgVsaW1pdBgDIAEoBRIOCgZvZmZzZXQYBCABKAUSDAoEcGF0aBgFIAEoCSJRChNMaXN0Q29tbWl0c1Jlc3BvbnNlEigKB2NvbW1pdHMYASADKAsyFy5naXRjaGF0LnYxLkNvbW1pdEVudHJ5EhAKCGhhc19tb3JlGAIgASgIIt4BCgtDb21taXRFbnRyeRILCgNzaGEYASABKAkSEQoJc2hvcnRfc2hhGAIgASgJEg8KB21lc3NhZ2UYAyABKAkSEwoLYXV0aG9yX25hbWUYBCABKAkSFAoMYXV0aG9yX2VtYWlsGAUgASgJEhMKC2F1dGhvcl90aW1lGAYgASgDEhUKDWZpbGVzX2NoYW5nZWQYByABKAUSEQoJYWRkaXRpb25zGAggASgFEhEKCWRlbGV0aW9ucxgJIAEoBRIMCgRib2R5GAogASgJEhMKC3BhcmVudF9zaGFzGAsgAygJIj0KD0dldEJsYW1lUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgsKA3JlZhgCIAEoCRIMCgRwYXRoGAMgASgJIjgKEEdldEJsYW1lUmVzcG9uc2USJAoFbGluZXMYASADKAsyFS5naXRjaGF0LnYxLkJsYW1lTGluZSJ+CglCbGFtZUxpbmUSDAoEdGV4dBgBIAEoCRITCgthdXRob3JfbmFtZRgCIAEoCRIUCgxhdXRob3JfZW1haWwYAyABKAkSDAoEZGF0ZRgEIAEoAxISCgpjb21taXRfc2hhGAUgASgJEhYKDmNvbW1pdF9tZXNzYWdlGAYgASgJImUKFkNvbXBhcmVCcmFuY2hlc1JlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRIQCghiYXNlX3JlZhgCIAEoCRIQCghoZWFkX3JlZhgDIAEoCRIWCg5kZXRlY3RfcmVuYW1lcxgEIAEoCCJzChdDb21wYXJlQnJhbmNoZXNSZXNwb25zZRImCgVmaWxlcxgBIAMoCzIXLmdpdGNoYXQudjEuQ2hhbmdlZEZpbGUSFwoPdG90YWxfYWRkaXRpb25zGAIgASgFEhcKD3RvdGFsX2RlbGV0aW9ucxgDIAEoBSJkCgtDaGFuZ2VkRmlsZRIMCgRwYXRoGAEgASgJEg4KBnN0YXR1cxgCIAEoCRIRCglhZGRpdGlvbnMYAyABKAUSEQoJZGVsZXRpb25zGAQgASgFEhEKCWZyb21fcGF0aBgFIAEoCSJpCg5HZXREaWZmUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEhAKCGZyb21fcmVmGAIgASgJEg4KBnRvX3JlZhgDIAEoCRIMCgRwYXRoGAQgASgJEhYKDmRldGVjdF9yZW5hbWVzGAUgASgIIoYBCg9HZXREaWZmUmVzcG9uc2USFAoMdW5pZmllZF9kaWZmGAEgASgJEhMKC2Zyb21fY29tbWl0GAIgASgJEhEKCXRvX2NvbW1pdBgDIAEoCRINCgVlbXB0eRgEIAEoCBImCgVmaWxlcxgFIAMoCzIXLmdpdGNoYXQudjEuQ2hhbmdlZEZpbGUiIwoQR2V0U3RhdHVzUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJIpABChFHZXRTdGF0dXNSZXNwb25zZRImCgZzdGFnZWQYASADKAsyFi5naXRjaGF0LnYxLlN0YXR1c0ZpbGUSKAoIdW5zdGFnZWQYAiADKAsyFi5naXRjaGF0LnYxLlN0YXR1c0ZpbGUSKQoJdW50cmFja2VkGAMgAygLMhYuZ2l0Y2hhdC52MS5TdGF0dXNGaWxlIioKClN0YXR1c0ZpbGUSDAoEcGF0aBgBIAEoCRIOCgZzdGF0dXMYAiABKAkiOgoZR2V0V29ya2luZ1RyZWVEaWZmUmVxdWVzdBIPCgdyZXBvX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiQQoaR2V0V29ya2luZ1RyZWVEaWZmUmVzcG9uc2USFAoMdW5pZmllZF9kaWZmGAEgASgJEg0KBWVtcHR5GAIgASgIIhIKEEdldENvbmZpZ1JlcXVlc3QidAoLQ29uZmlnRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJEhUKDWRlZmF1bHRfdmFsdWUYAyABKAkSEwoLZGVzY3JpcHRpb24YBCABKAkSDQoFZ3JvdXAYBSABKAkSDgoGc2VjcmV0GAYgASgIIj0KEUdldENvbmZpZ1Jlc3BvbnNlEigKB2VudHJpZXMYASADKAsyFy5naXRjaGF0LnYxLkNvbmZpZ0VudHJ5IjEKE1VwZGF0ZUNvbmZpZ1JlcXVlc3QSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJIhYKFFVwZGF0ZUNvbmZpZ1Jlc3BvbnNlIn0KFkdldEZpbGVDaHVybk1hcFJlcXVlc3QSDwoHcmVwb19pZBgBIAEoCRILCgNyZWYYAiABKAkSFwoPc2luY2VfdGltZXN0YW1wGAMgASgDEhcKD3VudGlsX3RpbWVzdGFtcBgEIAEoAxITCgttYXhfY29tbWl0cxgFIAEoBSKGAQoJRmlsZUNodXJuEgwKBHBhdGgYASABKAkSFAoMY29tbWl0X2NvdW50GAIgASgFEhcKD3RvdGFsX2FkZGl0aW9ucxgDIAEoAxIXCg90b3RhbF9kZWxldGlvbnMYBCABKAMSFQoNbGFzdF9tb2RpZmllZBgFIAEoAxIMCgRzaXplGAYgASgDIuwBChdHZXRGaWxlQ2h1cm5NYXBSZXNwb25zZRIkCgVmaWxlcxgBIAMoCzIVLmdpdGNoYXQudjEuRmlsZUNodXJuEh4KFmZpcnN0X2NvbW1pdF90aW1lc3RhbXAYAiABKAMSHQoVbGFzdF9jb21taXRfdGltZXN0YW1wGAMgASgDEhcKD2NvbW1pdHNfc2Nhbm5lZBgEIAEoBRITCgtjYXBfcmVhY2hlZBgFIAEoCBIbChNtYXhfY29tbWl0c19zY2FubmVkGAYgASgFEiEKGWVmZmVjdGl2ZV9zaW5jZV90aW1lc3RhbXAYByABKAMikgEKCkxMTVByb2ZpbGUSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRIPCgdiYWNrZW5kGAMgASgJEhAKCGJhc2VfdXJsGAQgASgJEg0KBW1vZGVsGAUgASgJEg8KB2FwaV9rZXkYBiABKAkSEwoLdGVtcGVyYXR1cmUYByABKAkSEgoKbWF4X3Rva2VucxgIIAEoCSIVChNMaXN0UHJvZmlsZXNSZXF1ZXN0IlsKFExpc3RQcm9maWxlc1Jlc3BvbnNlEigKCHByb2ZpbGVzGAEgAygLMhYuZ2l0Y2hhdC52MS5MTE1Qcm9maWxlEhkKEWFjdGl2ZV9wcm9maWxlX2lkGAIgASgJIj0KElNhdmVQcm9maWxlUmVxdWVzdBInCgdwcm9maWxlGAEgASgLMhYuZ2l0Y2hhdC52MS5MTE1Qcm9maWxlIiEKE1NhdmVQcm9maWxlUmVzcG9uc2USCgoCaWQYASABKAkiIgoURGVsZXRlUHJvZmlsZVJlcXVlc3QSCgoCaWQYASABKAkiFwoVRGVsZXRlUHJvZmlsZVJlc3BvbnNlIiQKFkFjdGl2YXRlUHJvZmlsZVJlcXVlc3QSCgoCaWQYASABKAkiGQoXQWN0aXZhdGVQcm9maWxlUmVzcG9uc2UqggEKCUVudHJ5VHlwZRIaChZFTlRSWV9UWVBFX1VOU1BFQ0lGSUVEEAASEwoPRU5UUllfVFlQRV9GSUxFEAESEgoORU5UUllfVFlQRV9ESVIQAhIWChJFTlRSWV9UWVBFX1NZTUxJTksQAxIYChRFTlRSWV9UWVBFX1NVQk1PRFVMRRAEMukKCgtSZXBvU2VydmljZRJICglMaXN0UmVwb3MSHC5naXRjaGF0LnYxLkxpc3RSZXBvc1JlcXVlc3QaHS5naXRjaGF0LnYxLkxpc3RSZXBvc1Jlc3BvbnNlElEKDExpc3RCcmFuY2hlcxIfLmdpdGNoYXQudjEuTGlzdEJyYW5jaGVzUmVxdWVzdBogLmdpdGNoYXQudjEuTGlzdEJyYW5jaGVzUmVzcG9uc2USRQoITGlzdFRyZWUSGy5naXRjaGF0LnYxLkxpc3RUcmVlUmVxdWVzdBocLmdpdGNoYXQudjEuTGlzdFRyZWVSZXNwb25zZRJCCgdHZXRGaWxlEhouZ2l0Y2hhdC52MS5HZXRGaWxlUmVxdWVzdBobLmdpdGNoYXQudjEuR2V0RmlsZVJlc3BvbnNlEk4KC0xpc3RDb21taXRzEh4uZ2l0Y2hhdC52MS5MaXN0Q29tbWl0c1JlcXVlc3QaHy5naXRjaGF0LnYxLkxpc3RDb21taXRzUmVzcG9uc2USRQoIR2V0QmxhbWUSGy5naXRjaGF0LnYxLkdldEJsYW1lUmVxdWVzdBocLmdpdGNoYXQudjEuR2V0QmxhbWVSZXNwb25zZRJaCg9Db21wYXJlQnJhbmNoZXMSIi5naXRjaGF0LnYxLkNvbXBhcmVCcmFuY2hlc1JlcXVlc3QaIy5naXRjaGF0LnYxLkNvbXBhcmVCcmFuY2hlc1Jlc3BvbnNlEkIKB0dldERpZmYSGi5naXRjaGF0LnYxLkdldERpZmZSZXF1ZXN0GhsuZ2l0Y2hhdC52MS5HZXREaWZmUmVzcG9uc2USSAoJR2V0U3RhdHVzEhwuZ2l0Y2hhdC52MS5HZXRTdGF0dXNSZXF1ZXN0Gh0uZ2l0Y2hhdC52MS5HZXRTdGF0dXNSZXNwb25zZRJjChJHZXRXb3JraW5nVHJlZURpZmYSJS5naXRjaGF0LnYxLkdldFdvcmtpbmdUcmVlRGlmZlJlcXVlc3QaJi5naXRjaGF0LnYxLkdldFdvcmtpbmdUcmVlRGlmZlJlc3BvbnNlEloKD0dldEZpbGVDaHVybk1hcBIiLmdpdGNoYXQudjEuR2V0RmlsZUNodXJuTWFwUmVxdWVzdBojLmdpdGNoYXQudjEuR2V0RmlsZUNodXJuTWFwUmVzcG9uc2USSAoJR2V0Q29uZmlnEhwuZ2l0Y2hhdC52MS5HZXRDb25maWdSZXF1ZXN0Gh0uZ2l0Y2hhdC52MS5HZXRDb25maWdSZXNwb25zZRJRCgxVcGRhdGVDb25maWcSHy5naXRjaGF0LnYxLlVwZGF0ZUNvbmZpZ1JlcXVlc3QaIC5naXRjaGF0LnYxLlVwZGF0ZUNvbmZpZ1Jlc3BvbnNlElEKDExpc3RQcm9maWxlcxIfLmdpdGNoYXQudjEuTGlzdFByb2ZpbGVzUmVxdWVzdBogLmdpdGNoYXQudjEuTGlzdFByb2ZpbGVzUmVzcG9uc2USTgoLU2F2ZVByb2ZpbGUSHi5naXRjaGF0LnYxLlNhdmVQcm9maWxlUmVxdWVzdBofLmdpdGNoYXQudjEuU2F2ZVByb2ZpbGVSZXNwb25zZRJUCg1EZWxldGVQcm9maWxlEiAuZ2l0Y2hhdC52MS5EZWxldGVQcm9maWxlUmVxdWVzdBohLmdpdGNoYXQudjEuRGVsZXRlUHJvZmlsZVJlc3BvbnNlEloKD0FjdGl2YXRlUHJvZmlsZRIiLmdpdGNoYXQudjEuQWN0aXZhdGVQcm9maWxlUmVxdWVzdBojLmdpdGNoYXQudjEuQWN0aXZhdGVQcm9maWxlUmVzcG9uc2VCnQEKDmNvbS5naXRjaGF0LnYxQglSZXBvUHJvdG9QAVo3Z2l0aHViLmNvbS9wZGVyczAxL2dpdC1jaGF0L2dlbi9nby9naXRjaGF0L3YxO2dpdGNoYXR2MaICA0dYWKoCCkdpdGNoYXQuVjHKAgpHaXRjaGF0XFYx4gIWR2l0Y2hhdFxWMVxHUEJNZXRhZGF0YeoCC0dpdGNoYXQ6OlYxYgZwcm90bzM");
 
 /**
  * ─── Repo ───────────────────────────────────────────────────────────────
@@ -1192,6 +1192,189 @@ export const GetFileChurnMapResponseSchema: GenMessage<GetFileChurnMapResponse> 
   messageDesc(file_gitchat_v1_repo, 34);
 
 /**
+ * @generated from message gitchat.v1.LLMProfile
+ */
+export type LLMProfile = Message<"gitchat.v1.LLMProfile"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string backend = 3;
+   */
+  backend: string;
+
+  /**
+   * @generated from field: string base_url = 4;
+   */
+  baseUrl: string;
+
+  /**
+   * @generated from field: string model = 5;
+   */
+  model: string;
+
+  /**
+   * masked in list responses, plaintext in save requests
+   *
+   * @generated from field: string api_key = 6;
+   */
+  apiKey: string;
+
+  /**
+   * @generated from field: string temperature = 7;
+   */
+  temperature: string;
+
+  /**
+   * @generated from field: string max_tokens = 8;
+   */
+  maxTokens: string;
+};
+
+/**
+ * Describes the message gitchat.v1.LLMProfile.
+ * Use `create(LLMProfileSchema)` to create a new message.
+ */
+export const LLMProfileSchema: GenMessage<LLMProfile> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 35);
+
+/**
+ * @generated from message gitchat.v1.ListProfilesRequest
+ */
+export type ListProfilesRequest = Message<"gitchat.v1.ListProfilesRequest"> & {
+};
+
+/**
+ * Describes the message gitchat.v1.ListProfilesRequest.
+ * Use `create(ListProfilesRequestSchema)` to create a new message.
+ */
+export const ListProfilesRequestSchema: GenMessage<ListProfilesRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 36);
+
+/**
+ * @generated from message gitchat.v1.ListProfilesResponse
+ */
+export type ListProfilesResponse = Message<"gitchat.v1.ListProfilesResponse"> & {
+  /**
+   * @generated from field: repeated gitchat.v1.LLMProfile profiles = 1;
+   */
+  profiles: LLMProfile[];
+
+  /**
+   * @generated from field: string active_profile_id = 2;
+   */
+  activeProfileId: string;
+};
+
+/**
+ * Describes the message gitchat.v1.ListProfilesResponse.
+ * Use `create(ListProfilesResponseSchema)` to create a new message.
+ */
+export const ListProfilesResponseSchema: GenMessage<ListProfilesResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 37);
+
+/**
+ * @generated from message gitchat.v1.SaveProfileRequest
+ */
+export type SaveProfileRequest = Message<"gitchat.v1.SaveProfileRequest"> & {
+  /**
+   * @generated from field: gitchat.v1.LLMProfile profile = 1;
+   */
+  profile?: LLMProfile;
+};
+
+/**
+ * Describes the message gitchat.v1.SaveProfileRequest.
+ * Use `create(SaveProfileRequestSchema)` to create a new message.
+ */
+export const SaveProfileRequestSchema: GenMessage<SaveProfileRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 38);
+
+/**
+ * @generated from message gitchat.v1.SaveProfileResponse
+ */
+export type SaveProfileResponse = Message<"gitchat.v1.SaveProfileResponse"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message gitchat.v1.SaveProfileResponse.
+ * Use `create(SaveProfileResponseSchema)` to create a new message.
+ */
+export const SaveProfileResponseSchema: GenMessage<SaveProfileResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 39);
+
+/**
+ * @generated from message gitchat.v1.DeleteProfileRequest
+ */
+export type DeleteProfileRequest = Message<"gitchat.v1.DeleteProfileRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message gitchat.v1.DeleteProfileRequest.
+ * Use `create(DeleteProfileRequestSchema)` to create a new message.
+ */
+export const DeleteProfileRequestSchema: GenMessage<DeleteProfileRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 40);
+
+/**
+ * @generated from message gitchat.v1.DeleteProfileResponse
+ */
+export type DeleteProfileResponse = Message<"gitchat.v1.DeleteProfileResponse"> & {
+};
+
+/**
+ * Describes the message gitchat.v1.DeleteProfileResponse.
+ * Use `create(DeleteProfileResponseSchema)` to create a new message.
+ */
+export const DeleteProfileResponseSchema: GenMessage<DeleteProfileResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 41);
+
+/**
+ * @generated from message gitchat.v1.ActivateProfileRequest
+ */
+export type ActivateProfileRequest = Message<"gitchat.v1.ActivateProfileRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message gitchat.v1.ActivateProfileRequest.
+ * Use `create(ActivateProfileRequestSchema)` to create a new message.
+ */
+export const ActivateProfileRequestSchema: GenMessage<ActivateProfileRequest> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 42);
+
+/**
+ * @generated from message gitchat.v1.ActivateProfileResponse
+ */
+export type ActivateProfileResponse = Message<"gitchat.v1.ActivateProfileResponse"> & {
+};
+
+/**
+ * Describes the message gitchat.v1.ActivateProfileResponse.
+ * Use `create(ActivateProfileResponseSchema)` to create a new message.
+ */
+export const ActivateProfileResponseSchema: GenMessage<ActivateProfileResponse> = /*@__PURE__*/
+  messageDesc(file_gitchat_v1_repo, 43);
+
+/**
  * @generated from enum gitchat.v1.EntryType
  */
 export enum EntryType {
@@ -1390,6 +1573,40 @@ export const RepoService: GenService<{
     methodKind: "unary";
     input: typeof UpdateConfigRequestSchema;
     output: typeof UpdateConfigResponseSchema;
+  },
+  /**
+   * LLM profile management.
+   *
+   * @generated from rpc gitchat.v1.RepoService.ListProfiles
+   */
+  listProfiles: {
+    methodKind: "unary";
+    input: typeof ListProfilesRequestSchema;
+    output: typeof ListProfilesResponseSchema;
+  },
+  /**
+   * @generated from rpc gitchat.v1.RepoService.SaveProfile
+   */
+  saveProfile: {
+    methodKind: "unary";
+    input: typeof SaveProfileRequestSchema;
+    output: typeof SaveProfileResponseSchema;
+  },
+  /**
+   * @generated from rpc gitchat.v1.RepoService.DeleteProfile
+   */
+  deleteProfile: {
+    methodKind: "unary";
+    input: typeof DeleteProfileRequestSchema;
+    output: typeof DeleteProfileResponseSchema;
+  },
+  /**
+   * @generated from rpc gitchat.v1.RepoService.ActivateProfile
+   */
+  activateProfile: {
+    methodKind: "unary";
+    input: typeof ActivateProfileRequestSchema;
+    output: typeof ActivateProfileResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_gitchat_v1_repo, 0);

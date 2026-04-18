@@ -68,6 +68,11 @@ export class GcApp extends LitElement {
   @state() private settingsSection = "appearance";
   private configDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
+  // LLM profiles state
+  @state() private profiles: any[] = [];
+  @state() private activeProfileId = "";
+  @state() private editingProfile: any | null = null;
+
   override async connectedCallback() {
     super.connectedCallback();
     window.addEventListener("hashchange", this.onHashChange);
@@ -634,6 +639,7 @@ export class GcApp extends LitElement {
                 this.showSettings = !this.showSettings;
                 if (this.showSettings) {
                   this.loadConfig();
+                  this.loadProfiles();
                 }
               }}
               aria-label="Settings"
@@ -745,6 +751,48 @@ export class GcApp extends LitElement {
       this.configEntries = [];
     } finally {
       this.configLoading = false;
+    }
+  }
+
+  private async loadProfiles() {
+    try {
+      const resp = await (repoClient as any).listProfiles({});
+      this.profiles = resp.profiles ?? [];
+      this.activeProfileId = resp.activeProfileId ?? "";
+    } catch {
+      this.profiles = [];
+    }
+  }
+
+  private async saveProfile(profile: any) {
+    try {
+      const resp = await (repoClient as any).saveProfile({ profile });
+      if (!profile.id) profile.id = resp.id;
+      await this.loadProfiles();
+      this.editingProfile = null;
+    } catch (e) {
+      // TODO: surface error
+    }
+  }
+
+  private async deleteProfile(id: string) {
+    try {
+      await (repoClient as any).deleteProfile({ id });
+      await this.loadProfiles();
+      await this.loadConfig();
+      this.editingProfile = null;
+    } catch {
+      // TODO: surface error
+    }
+  }
+
+  private async activateProfile(id: string) {
+    try {
+      await (repoClient as any).activateProfile({ id });
+      await this.loadProfiles();
+      await this.loadConfig();
+    } catch {
+      // TODO: surface error
     }
   }
 
@@ -951,7 +999,191 @@ export class GcApp extends LitElement {
   private renderSettingsSection() {
     const section = this.settingsSection;
     if (section === "appearance") return this.renderAppearance();
+    if (section === "llm") return this.renderLLMSection();
     return this.renderConfigGroup(section);
+  }
+
+  private renderLLMSection() {
+    return html`
+      <div class="profiles-section">
+        <div class="profiles-header">
+          <span class="profiles-label">Profiles</span>
+          <button
+            class="action-btn"
+            @click=${() => {
+              this.editingProfile = {
+                id: "",
+                name: "",
+                backend: "openai",
+                baseUrl: "http://localhost:1234/v1",
+                model: "",
+                apiKey: "",
+                temperature: "",
+                maxTokens: "",
+              };
+            }}
+          >
+            + new
+          </button>
+        </div>
+        <div class="profiles-list">
+          ${this.profiles.length === 0
+            ? html`<p class="config-empty">no profiles yet</p>`
+            : this.profiles.map(
+                (p: any) => html`
+                  <div class="profile-item ${this.activeProfileId === p.id ? "active" : ""}">
+                    <button
+                      class="profile-name"
+                      @click=${() => {
+                        this.editingProfile = { ...p };
+                      }}
+                    >
+                      ${p.name}
+                      <span class="profile-meta">${p.backend} · ${p.model || "(default)"}</span>
+                    </button>
+                    <div class="profile-actions">
+                      ${this.activeProfileId === p.id
+                        ? html`<span class="profile-active-badge">active</span>`
+                        : html`<button
+                            class="action-btn"
+                            @click=${() => this.activateProfile(p.id)}
+                          >
+                            activate
+                          </button>`}
+                    </div>
+                  </div>
+                `,
+              )}
+        </div>
+        ${this.activeProfileId
+          ? html`<button
+              class="action-btn profile-deactivate"
+              @click=${() => this.activateProfile("")}
+            >
+              use manual settings
+            </button>`
+          : nothing}
+      </div>
+      ${this.editingProfile ? this.renderProfileEditor() : nothing}
+      ${!this.editingProfile ? this.renderConfigGroup("llm") : nothing}
+    `;
+  }
+
+  private renderProfileEditor() {
+    const p = this.editingProfile;
+    if (!p) return nothing;
+    const isNew = !p.id;
+    return html`
+      <div class="profile-editor">
+        <h4 class="profile-editor-title">${isNew ? "New Profile" : p.name}</h4>
+        <div class="profile-fields">
+          <label class="profile-field">
+            <span>Name</span>
+            <input
+              type="text"
+              class="config-input"
+              .value=${p.name}
+              @input=${(e: Event) => {
+                p.name = (e.target as HTMLInputElement).value;
+              }}
+            />
+          </label>
+          <label class="profile-field">
+            <span>Backend</span>
+            <select
+              class="config-input"
+              .value=${p.backend}
+              @change=${(e: Event) => {
+                p.backend = (e.target as HTMLSelectElement).value;
+                this.requestUpdate();
+              }}
+            >
+              <option value="openai">openai</option>
+              <option value="anthropic">anthropic</option>
+            </select>
+          </label>
+          ${p.backend !== "anthropic"
+            ? html`<label class="profile-field">
+                <span>Base URL</span>
+                <input
+                  type="text"
+                  class="config-input"
+                  .value=${p.baseUrl}
+                  @input=${(e: Event) => {
+                    p.baseUrl = (e.target as HTMLInputElement).value;
+                  }}
+                />
+              </label>`
+            : nothing}
+          <label class="profile-field">
+            <span>Model</span>
+            <input
+              type="text"
+              class="config-input"
+              placeholder="(backend default)"
+              .value=${p.model}
+              @input=${(e: Event) => {
+                p.model = (e.target as HTMLInputElement).value;
+              }}
+            />
+          </label>
+          <label class="profile-field">
+            <span>API Key</span>
+            <input
+              type="password"
+              class="config-input"
+              autocomplete="off"
+              placeholder=${p.apiKey || "not set"}
+              .value=${p.apiKey === "••••••••" ? "" : p.apiKey}
+              @change=${(e: Event) => {
+                const v = (e.target as HTMLInputElement).value;
+                if (v) p.apiKey = v;
+              }}
+            />
+          </label>
+          <label class="profile-field">
+            <span>Temperature</span>
+            <input
+              type="text"
+              class="config-input"
+              placeholder="0"
+              .value=${p.temperature}
+              @input=${(e: Event) => {
+                p.temperature = (e.target as HTMLInputElement).value;
+              }}
+            />
+          </label>
+          <label class="profile-field">
+            <span>Max Tokens</span>
+            <input
+              type="text"
+              class="config-input"
+              placeholder="0"
+              .value=${p.maxTokens}
+              @input=${(e: Event) => {
+                p.maxTokens = (e.target as HTMLInputElement).value;
+              }}
+            />
+          </label>
+        </div>
+        <div class="profile-editor-actions">
+          <button class="action-btn" @click=${() => this.saveProfile(p)}>
+            ${isNew ? "create" : "save"}
+          </button>
+          ${!isNew
+            ? html`<button
+                class="action-btn danger"
+                @click=${() => this.deleteProfile(p.id)}
+              >
+                delete
+              </button>`
+            : nothing}
+          <button class="action-btn" @click=${() => (this.editingProfile = null)}>
+            cancel
+          </button>
+        </div>
+      </div>
+    `;
   }
 
   private settingsSectionLabel(id: string): string {
@@ -2043,6 +2275,115 @@ export class GcApp extends LitElement {
       font-size: 0.65rem;
       opacity: 0.4;
       line-height: 1.3;
+    }
+
+    /* ── LLM Profiles ────────────────────────────────────────── */
+    .profiles-section {
+      margin-bottom: var(--space-4);
+      padding-bottom: var(--space-4);
+      border-bottom: 1px solid var(--surface-4);
+    }
+    .profiles-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-3);
+    }
+    .profiles-label {
+      font-size: var(--text-xs);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      opacity: 0.5;
+    }
+    .profiles-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+    .profile-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-default);
+      transition: border-color 0.1s ease;
+    }
+    .profile-item.active {
+      border-color: var(--accent-assistant);
+    }
+    .profile-name {
+      background: none;
+      border: none;
+      color: var(--text);
+      font-family: inherit;
+      font-size: var(--text-sm);
+      cursor: pointer;
+      text-align: left;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .profile-name:hover {
+      opacity: 0.8;
+    }
+    .profile-meta {
+      font-size: var(--text-xs);
+      opacity: 0.5;
+    }
+    .profile-active-badge {
+      font-size: var(--text-xs);
+      color: var(--accent-assistant);
+      font-weight: 500;
+    }
+    .profile-deactivate {
+      margin-top: var(--space-2);
+      opacity: 0.5;
+      font-size: var(--text-xs);
+    }
+    .profile-editor {
+      margin-bottom: var(--space-4);
+      padding: var(--space-4);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      background: var(--surface-0);
+    }
+    .profile-editor-title {
+      margin: 0 0 var(--space-3);
+      font-size: var(--text-sm);
+      font-weight: 500;
+    }
+    .profile-fields {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .profile-field {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: var(--text-xs);
+    }
+    .profile-field select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: var(--space-1) var(--space-2);
+      background: var(--surface-1);
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: var(--text-xs);
+    }
+    .profile-editor-actions {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+    .action-btn.danger {
+      color: var(--danger, #e55);
     }
 
     /* ── Responsive ─────────────────────────────────────────── */

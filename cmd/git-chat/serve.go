@@ -95,7 +95,7 @@ func runServe(args []string) error {
 		Pairings: pairings,
 		Signers:  signers,
 	}
-	repoSvc := &repo.Service{Registry: registry, Config: cfg}
+	repoSvc := &repo.Service{Registry: registry, Config: cfg, DB: db}
 	chatSvc := &chat.Service{
 		DB:          db,
 		LLM:         llmAdapter,

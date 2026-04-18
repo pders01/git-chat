@@ -191,7 +191,7 @@ func runLocal(args []string) error {
 		Sessions: sessions,
 		Local:    localTok,
 	}
-	repoSvc := &repo.Service{Registry: registry, Config: cfg}
+	repoSvc := &repo.Service{Registry: registry, Config: cfg, DB: db}
 	chatSvc := &chat.Service{
 		DB:          db,
 		LLM:         llmAdapter,

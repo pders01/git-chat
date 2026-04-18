@@ -64,6 +64,17 @@ const (
 	// RepoServiceUpdateConfigProcedure is the fully-qualified name of the RepoService's UpdateConfig
 	// RPC.
 	RepoServiceUpdateConfigProcedure = "/gitchat.v1.RepoService/UpdateConfig"
+	// RepoServiceListProfilesProcedure is the fully-qualified name of the RepoService's ListProfiles
+	// RPC.
+	RepoServiceListProfilesProcedure = "/gitchat.v1.RepoService/ListProfiles"
+	// RepoServiceSaveProfileProcedure is the fully-qualified name of the RepoService's SaveProfile RPC.
+	RepoServiceSaveProfileProcedure = "/gitchat.v1.RepoService/SaveProfile"
+	// RepoServiceDeleteProfileProcedure is the fully-qualified name of the RepoService's DeleteProfile
+	// RPC.
+	RepoServiceDeleteProfileProcedure = "/gitchat.v1.RepoService/DeleteProfile"
+	// RepoServiceActivateProfileProcedure is the fully-qualified name of the RepoService's
+	// ActivateProfile RPC.
+	RepoServiceActivateProfileProcedure = "/gitchat.v1.RepoService/ActivateProfile"
 )
 
 // RepoServiceClient is a client for the gitchat.v1.RepoService service.
@@ -116,6 +127,11 @@ type RepoServiceClient interface {
 	// UpdateConfig writes a configuration override into SQLite. The new
 	// value takes effect immediately for future Get() calls.
 	UpdateConfig(context.Context, *connect.Request[v1.UpdateConfigRequest]) (*connect.Response[v1.UpdateConfigResponse], error)
+	// LLM profile management.
+	ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error)
+	SaveProfile(context.Context, *connect.Request[v1.SaveProfileRequest]) (*connect.Response[v1.SaveProfileResponse], error)
+	DeleteProfile(context.Context, *connect.Request[v1.DeleteProfileRequest]) (*connect.Response[v1.DeleteProfileResponse], error)
+	ActivateProfile(context.Context, *connect.Request[v1.ActivateProfileRequest]) (*connect.Response[v1.ActivateProfileResponse], error)
 }
 
 // NewRepoServiceClient constructs a client for the gitchat.v1.RepoService service. By default, it
@@ -207,6 +223,30 @@ func NewRepoServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(repoServiceMethods.ByName("UpdateConfig")),
 			connect.WithClientOptions(opts...),
 		),
+		listProfiles: connect.NewClient[v1.ListProfilesRequest, v1.ListProfilesResponse](
+			httpClient,
+			baseURL+RepoServiceListProfilesProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("ListProfiles")),
+			connect.WithClientOptions(opts...),
+		),
+		saveProfile: connect.NewClient[v1.SaveProfileRequest, v1.SaveProfileResponse](
+			httpClient,
+			baseURL+RepoServiceSaveProfileProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("SaveProfile")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteProfile: connect.NewClient[v1.DeleteProfileRequest, v1.DeleteProfileResponse](
+			httpClient,
+			baseURL+RepoServiceDeleteProfileProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("DeleteProfile")),
+			connect.WithClientOptions(opts...),
+		),
+		activateProfile: connect.NewClient[v1.ActivateProfileRequest, v1.ActivateProfileResponse](
+			httpClient,
+			baseURL+RepoServiceActivateProfileProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("ActivateProfile")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -225,6 +265,10 @@ type repoServiceClient struct {
 	getFileChurnMap    *connect.Client[v1.GetFileChurnMapRequest, v1.GetFileChurnMapResponse]
 	getConfig          *connect.Client[v1.GetConfigRequest, v1.GetConfigResponse]
 	updateConfig       *connect.Client[v1.UpdateConfigRequest, v1.UpdateConfigResponse]
+	listProfiles       *connect.Client[v1.ListProfilesRequest, v1.ListProfilesResponse]
+	saveProfile        *connect.Client[v1.SaveProfileRequest, v1.SaveProfileResponse]
+	deleteProfile      *connect.Client[v1.DeleteProfileRequest, v1.DeleteProfileResponse]
+	activateProfile    *connect.Client[v1.ActivateProfileRequest, v1.ActivateProfileResponse]
 }
 
 // ListRepos calls gitchat.v1.RepoService.ListRepos.
@@ -292,6 +336,26 @@ func (c *repoServiceClient) UpdateConfig(ctx context.Context, req *connect.Reque
 	return c.updateConfig.CallUnary(ctx, req)
 }
 
+// ListProfiles calls gitchat.v1.RepoService.ListProfiles.
+func (c *repoServiceClient) ListProfiles(ctx context.Context, req *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error) {
+	return c.listProfiles.CallUnary(ctx, req)
+}
+
+// SaveProfile calls gitchat.v1.RepoService.SaveProfile.
+func (c *repoServiceClient) SaveProfile(ctx context.Context, req *connect.Request[v1.SaveProfileRequest]) (*connect.Response[v1.SaveProfileResponse], error) {
+	return c.saveProfile.CallUnary(ctx, req)
+}
+
+// DeleteProfile calls gitchat.v1.RepoService.DeleteProfile.
+func (c *repoServiceClient) DeleteProfile(ctx context.Context, req *connect.Request[v1.DeleteProfileRequest]) (*connect.Response[v1.DeleteProfileResponse], error) {
+	return c.deleteProfile.CallUnary(ctx, req)
+}
+
+// ActivateProfile calls gitchat.v1.RepoService.ActivateProfile.
+func (c *repoServiceClient) ActivateProfile(ctx context.Context, req *connect.Request[v1.ActivateProfileRequest]) (*connect.Response[v1.ActivateProfileResponse], error) {
+	return c.activateProfile.CallUnary(ctx, req)
+}
+
 // RepoServiceHandler is an implementation of the gitchat.v1.RepoService service.
 type RepoServiceHandler interface {
 	// ListRepos returns every repository the server has been configured to
@@ -342,6 +406,11 @@ type RepoServiceHandler interface {
 	// UpdateConfig writes a configuration override into SQLite. The new
 	// value takes effect immediately for future Get() calls.
 	UpdateConfig(context.Context, *connect.Request[v1.UpdateConfigRequest]) (*connect.Response[v1.UpdateConfigResponse], error)
+	// LLM profile management.
+	ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error)
+	SaveProfile(context.Context, *connect.Request[v1.SaveProfileRequest]) (*connect.Response[v1.SaveProfileResponse], error)
+	DeleteProfile(context.Context, *connect.Request[v1.DeleteProfileRequest]) (*connect.Response[v1.DeleteProfileResponse], error)
+	ActivateProfile(context.Context, *connect.Request[v1.ActivateProfileRequest]) (*connect.Response[v1.ActivateProfileResponse], error)
 }
 
 // NewRepoServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -429,6 +498,30 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(repoServiceMethods.ByName("UpdateConfig")),
 		connect.WithHandlerOptions(opts...),
 	)
+	repoServiceListProfilesHandler := connect.NewUnaryHandler(
+		RepoServiceListProfilesProcedure,
+		svc.ListProfiles,
+		connect.WithSchema(repoServiceMethods.ByName("ListProfiles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	repoServiceSaveProfileHandler := connect.NewUnaryHandler(
+		RepoServiceSaveProfileProcedure,
+		svc.SaveProfile,
+		connect.WithSchema(repoServiceMethods.ByName("SaveProfile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	repoServiceDeleteProfileHandler := connect.NewUnaryHandler(
+		RepoServiceDeleteProfileProcedure,
+		svc.DeleteProfile,
+		connect.WithSchema(repoServiceMethods.ByName("DeleteProfile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	repoServiceActivateProfileHandler := connect.NewUnaryHandler(
+		RepoServiceActivateProfileProcedure,
+		svc.ActivateProfile,
+		connect.WithSchema(repoServiceMethods.ByName("ActivateProfile")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/gitchat.v1.RepoService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RepoServiceListReposProcedure:
@@ -457,6 +550,14 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 			repoServiceGetConfigHandler.ServeHTTP(w, r)
 		case RepoServiceUpdateConfigProcedure:
 			repoServiceUpdateConfigHandler.ServeHTTP(w, r)
+		case RepoServiceListProfilesProcedure:
+			repoServiceListProfilesHandler.ServeHTTP(w, r)
+		case RepoServiceSaveProfileProcedure:
+			repoServiceSaveProfileHandler.ServeHTTP(w, r)
+		case RepoServiceDeleteProfileProcedure:
+			repoServiceDeleteProfileHandler.ServeHTTP(w, r)
+		case RepoServiceActivateProfileProcedure:
+			repoServiceActivateProfileHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -516,4 +617,20 @@ func (UnimplementedRepoServiceHandler) GetConfig(context.Context, *connect.Reque
 
 func (UnimplementedRepoServiceHandler) UpdateConfig(context.Context, *connect.Request[v1.UpdateConfigRequest]) (*connect.Response[v1.UpdateConfigResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.UpdateConfig is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.ListProfiles is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) SaveProfile(context.Context, *connect.Request[v1.SaveProfileRequest]) (*connect.Response[v1.SaveProfileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.SaveProfile is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) DeleteProfile(context.Context, *connect.Request[v1.DeleteProfileRequest]) (*connect.Response[v1.DeleteProfileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.DeleteProfile is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) ActivateProfile(context.Context, *connect.Request[v1.ActivateProfileRequest]) (*connect.Response[v1.ActivateProfileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.ActivateProfile is not implemented"))
 }

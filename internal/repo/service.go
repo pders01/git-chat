@@ -2,6 +2,8 @@ package repo
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/pders01/git-chat/gen/go/gitchat/v1/gitchatv1connect"
 	"github.com/pders01/git-chat/internal/auth"
 	"github.com/pders01/git-chat/internal/config"
+	"github.com/pders01/git-chat/internal/storage"
 )
 
 // Service implements gitchat.v1.RepoService backed by a Registry.
@@ -21,6 +24,7 @@ type Service struct {
 	gitchatv1connect.UnimplementedRepoServiceHandler
 	Registry *Registry
 	Config   *config.Registry
+	DB       *storage.DB
 }
 
 var _ gitchatv1connect.RepoServiceHandler = (*Service)(nil)
@@ -260,6 +264,166 @@ func (s *Service) UpdateConfig(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&gitchatv1.UpdateConfigResponse{}), nil
+}
+
+// ─── LLM Profiles ─────────────────────────────────────────────────────
+
+func (s *Service) ListProfiles(
+	ctx context.Context,
+	_ *connect.Request[gitchatv1.ListProfilesRequest],
+) (*connect.Response[gitchatv1.ListProfilesResponse], error) {
+	profiles, err := s.DB.ListProfiles(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	out := make([]*gitchatv1.LLMProfile, 0, len(profiles))
+	for _, p := range profiles {
+		apiKey := p.APIKey
+		// Decrypt then mask for display.
+		if plain, err := s.Config.DecryptSecret(apiKey); err == nil {
+			apiKey = plain
+		}
+		masked := ""
+		if apiKey != "" {
+			masked = "••••••••"
+		}
+		out = append(out, &gitchatv1.LLMProfile{
+			Id:          p.ID,
+			Name:        p.Name,
+			Backend:     p.Backend,
+			BaseUrl:     p.BaseURL,
+			Model:       p.Model,
+			ApiKey:      masked,
+			Temperature: p.Temperature,
+			MaxTokens:   p.MaxTokens,
+		})
+	}
+	activeID := s.Config.GetCtx(ctx, "LLM_ACTIVE_PROFILE")
+	return connect.NewResponse(&gitchatv1.ListProfilesResponse{
+		Profiles:        out,
+		ActiveProfileId: activeID,
+	}), nil
+}
+
+func (s *Service) SaveProfile(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.SaveProfileRequest],
+) (*connect.Response[gitchatv1.SaveProfileResponse], error) {
+	// Restricted to local principal.
+	principal, _, ok := auth.PrincipalFromContext(ctx)
+	if !ok || principal != "local" {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("profiles can only be managed by the server operator"))
+	}
+	p := req.Msg.Profile
+	if p == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("profile is required"))
+	}
+	if p.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("name is required"))
+	}
+	id := p.Id
+	if id == "" {
+		b := make([]byte, 16)
+		_, _ = rand.Read(b)
+		id = hex.EncodeToString(b)
+	}
+	// Encrypt API key before storage.
+	apiKey := p.ApiKey
+	// Don't overwrite with masked placeholder on edit.
+	if apiKey == "••••••••" {
+		// Load existing key from DB.
+		existing, err := s.DB.GetProfile(ctx, id)
+		if err == nil {
+			apiKey = existing.APIKey // already encrypted
+		} else {
+			apiKey = ""
+		}
+	} else if apiKey != "" {
+		enc, err := s.Config.EncryptSecret(apiKey)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("encrypt api key: %w", err))
+		}
+		apiKey = enc
+	}
+	if err := s.DB.SaveProfile(ctx, storage.LLMProfile{
+		ID:          id,
+		Name:        p.Name,
+		Backend:     p.Backend,
+		BaseURL:     p.BaseUrl,
+		Model:       p.Model,
+		APIKey:      apiKey,
+		Temperature: p.Temperature,
+		MaxTokens:   p.MaxTokens,
+	}); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&gitchatv1.SaveProfileResponse{Id: id}), nil
+}
+
+func (s *Service) DeleteProfile(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.DeleteProfileRequest],
+) (*connect.Response[gitchatv1.DeleteProfileResponse], error) {
+	principal, _, ok := auth.PrincipalFromContext(ctx)
+	if !ok || principal != "local" {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("profiles can only be managed by the server operator"))
+	}
+	if err := s.DB.DeleteProfile(ctx, req.Msg.Id); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	// If the deleted profile was active, clear the active profile.
+	if active := s.Config.GetCtx(ctx, "LLM_ACTIVE_PROFILE"); active == req.Msg.Id {
+		_ = s.Config.Set(ctx, "LLM_ACTIVE_PROFILE", "")
+	}
+	return connect.NewResponse(&gitchatv1.DeleteProfileResponse{}), nil
+}
+
+func (s *Service) ActivateProfile(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.ActivateProfileRequest],
+) (*connect.Response[gitchatv1.ActivateProfileResponse], error) {
+	principal, _, ok := auth.PrincipalFromContext(ctx)
+	if !ok || principal != "local" {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("profiles can only be managed by the server operator"))
+	}
+	// Allow deactivation (empty ID = use individual LLM_* settings).
+	if req.Msg.Id == "" {
+		_ = s.Config.Set(ctx, "LLM_ACTIVE_PROFILE", "")
+		return connect.NewResponse(&gitchatv1.ActivateProfileResponse{}), nil
+	}
+	p, err := s.DB.GetProfile(ctx, req.Msg.Id)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	// Decrypt the API key to write it into the config override.
+	apiKey := p.APIKey
+	if plain, err := s.Config.DecryptSecret(apiKey); err == nil {
+		apiKey = plain
+	}
+	// Write profile values into config overrides.
+	for _, kv := range []struct{ k, v string }{
+		{"LLM_BACKEND", p.Backend},
+		{"LLM_BASE_URL", p.BaseURL},
+		{"LLM_MODEL", p.Model},
+		{"LLM_API_KEY", apiKey},
+		{"LLM_TEMPERATURE", p.Temperature},
+		{"LLM_MAX_TOKENS", p.MaxTokens},
+		{"LLM_ACTIVE_PROFILE", req.Msg.Id},
+	} {
+		if err := s.Config.Set(ctx, kv.k, kv.v); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+	}
+	return connect.NewResponse(&gitchatv1.ActivateProfileResponse{}), nil
 }
 
 func (s *Service) lookup(id string) *Entry {

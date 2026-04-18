@@ -112,6 +112,24 @@ func (r *Registry) IsRestricted(key string) bool {
 	return false
 }
 
+// EncryptSecret encrypts a plaintext value for storage. Returns the
+// original value unchanged if encryption is not initialised.
+func (r *Registry) EncryptSecret(plaintext string) (string, error) {
+	if r.encKey == nil || plaintext == "" {
+		return plaintext, nil
+	}
+	return encrypt(r.encKey, plaintext)
+}
+
+// DecryptSecret decrypts a stored value. Returns the original value
+// unchanged if it wasn't encrypted or encryption is not initialised.
+func (r *Registry) DecryptSecret(stored string) (string, error) {
+	if r.encKey == nil || !isEncrypted(stored) {
+		return stored, nil
+	}
+	return decrypt(r.encKey, strings.TrimPrefix(stored, encPrefix))
+}
+
 // Get resolves a config value: DB override → env var → default.
 // Returns the compiled default if the key is unknown.
 func (r *Registry) Get(key string) string {
