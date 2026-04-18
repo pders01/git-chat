@@ -50,6 +50,17 @@ export class GcSessionSidebar extends LitElement {
     }
   }
 
+  /** Pinned sessions float to the top; within each group the server's
+   * supplied order is preserved (most recent first). Uses Array.sort
+   * which is stable in every modern JS engine, so equally-ranked
+   * sessions don't shuffle between renders. */
+  private sortedSessions(): ChatSession[] {
+    return [...this.sessions].sort((a, b) => {
+      if (a.pinned === b.pinned) return 0;
+      return a.pinned ? -1 : 1;
+    });
+  }
+
   private async pinSession(sessionId: string, pinned: boolean) {
     try {
       await chatClient.pinSession({ sessionId, pinned });
@@ -100,7 +111,7 @@ export class GcSessionSidebar extends LitElement {
       <ul class="sessions" role="list" aria-labelledby="sessions-label">
         ${this.sessions.length === 0
           ? html`<li class="sidebar-empty">no sessions yet</li>`
-          : this.sessions
+          : this.sortedSessions()
               .filter(
                 (sess) =>
                   !this.sessionFilter ||
