@@ -969,7 +969,7 @@ Output exactly TWO sections separated by ---:
 	}
 	if adapter == nil {
 		return connect.NewResponse(&gitchatv1.SummarizeActivityResponse{
-			Summary: "Recent commits:\n" + commitLog.String(),
+			Summary: commitLog.String(),
 		}), nil
 	}
 	model, _, _ := s.llmParams(ctx)
@@ -984,7 +984,7 @@ Output exactly TWO sections separated by ---:
 	if err != nil {
 		// Fallback: return raw commit list.
 		return connect.NewResponse(&gitchatv1.SummarizeActivityResponse{
-			Summary: "Recent commits:\n" + commitLog.String(),
+			Summary: commitLog.String(),
 		}), nil
 	}
 
