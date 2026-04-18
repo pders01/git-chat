@@ -507,7 +507,11 @@ Invalidated cards remain in the table but are excluded from fast-path lookup.
 
 ### Webhook notifications
 
-When a card is invalidated, async HTTP POST to `GITCHAT_WEBHOOK_URL` (if set):
+Async HTTP POST to `GITCHAT_WEBHOOK_URL` (if set) on two event types:
+
+- `card_invalidated` — fires when a KB card's provenance blob changes
+- `card_created` — fires when `maybePromoteCard` upserts a brand-new card
+  (answer-replacements on existing cards stay silent to avoid noise)
 
 ```json
 {
@@ -522,7 +526,11 @@ When a card is invalidated, async HTTP POST to `GITCHAT_WEBHOOK_URL` (if set):
 }
 ```
 
-Fire-and-forget: errors logged, never propagated.
+Transient failures (network errors, 5xx, 429) are retried with exponential
+backoff: up to 3 attempts, 500ms × 2^n with ±50% jitter, 5s cap. Honours
+the caller's context so parent cancellation interrupts in-flight retries.
+4xx responses (other than 429) are treated as permanent. Errors logged,
+never propagated.
 
 ### KB management UI
 
@@ -630,9 +638,12 @@ the browser `switch (chunk.kind.case)` exhausts all variants at compile time.
 2. **Environment variable** -- `os.Getenv`
 3. **Compiled default** -- registered in `defaults.go`
 
-All 18 `GITCHAT_*` keys registered at init with description and group. The
-settings UI fetches all entries via `GetConfig` and writes overrides via
-`UpdateConfig`. Changes take effect immediately -- no restart required.
+All 20 `GITCHAT_*` keys and 8 `LLM_*` keys registered at init with
+description and group. The settings UI fetches all entries via `GetConfig`
+and writes overrides via `UpdateConfig`. Changes take effect immediately
+-- no restart required. One deliberate exception: `prewarmChurn` in
+`repo/registry.go` stays as a package-level `os.Getenv` because the
+registry doesn't exist yet when repos register at startup.
 
 ---
 
@@ -675,8 +686,8 @@ git-chat/
 │   ├── config/                  # runtime config registry
 │   │   ├── config.go            # Registry: 3-tier resolution (DB > env > default)
 │   │   ├── config_test.go
-│   │   └── defaults.go          # RegisterDefaults: all 18 GITCHAT_* keys
-│   ├── mcp/                     # MCP server (5 tools via mcp-go)
+│   │   └── defaults.go          # RegisterDefaults: 20 GITCHAT_* + 8 LLM_* keys
+│   ├── mcp/                     # MCP server (10 tools via mcp-go)
 │   ├── repo/                    # RepoService: git operations
 │   │   ├── registry.go          # Registry: repo collection, Add, ScanDirectory
 │   │   ├── reader.go            # go-git read path + git(1) fallbacks
@@ -814,9 +825,11 @@ git chat
   overrides in `[data-theme="light"]`. `settings.ts` sets the attribute on
   `<html>` and listens to `prefers-color-scheme` for "system" mode.
 - **Config: DB > env > default.** `internal/config/Registry` resolves through
-  three tiers. All 18 keys registered in `defaults.go`. UI reads/writes via
-  RPCs. Changes immediate, no restart.
-- **Webhook is fire-and-forget.** Async goroutine, errors logged, never
+  three tiers. All 28 keys (20 GITCHAT_* + 8 LLM_*) registered in
+  `defaults.go`. UI reads/writes via RPCs. Changes immediate, no restart.
+- **Webhook retries transient failures.** Async goroutine, exponential
+  backoff (3 attempts, ±50% jitter, 5s cap) on 5xx/429/network errors;
+  4xx treated as permanent. Errors logged, never
   returned. Slack/Discord-compatible `text` field. Single URL config.
 - **Code city uses churn, not structure.** `GetFileChurnMap` returns commit
   counts, additions, deletions, size. Three.js maps to building dimensions.
