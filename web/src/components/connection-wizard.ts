@@ -111,6 +111,19 @@ export class GcConnectionWizard extends LitElement {
     ];
   }
 
+  /**
+   * True when the current page is served over plain HTTP to a non-loopback
+   * host. In that case the API key would travel in clear-text between
+   * browser and git-chat server and the user deserves a warning before
+   * entering one.
+   */
+  private get uiIsPlaintext(): boolean {
+    if (typeof window === "undefined") return false;
+    if (window.location.protocol !== "http:") return false;
+    const host = window.location.hostname;
+    return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
+  }
+
   private get modelOptions(): ComboboxOption[] {
     return this.discoveredModels.map((id) => ({
       value: id,
@@ -338,6 +351,13 @@ export class GcConnectionWizard extends LitElement {
         </div>
         ${!isLocal
           ? html`
+              ${this.uiIsPlaintext
+                ? html`<p class="warn">
+                    This page is served over plain HTTP. Your API key will be
+                    sent to the server in the clear — use HTTPS or a localhost
+                    deployment before entering a real key.
+                  </p>`
+                : nothing}
               <label class="field">
                 <span>API Key</span>
                 <input
@@ -663,6 +683,16 @@ export class GcConnectionWizard extends LitElement {
       color: var(--success, #16a34a);
       font-size: var(--text-xs);
       margin: 0;
+    }
+    .warn {
+      color: var(--warning, #b45309);
+      background: var(--surface-2);
+      border-left: 2px solid var(--warning, #b45309);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      margin: 0;
+      padding: var(--space-1) var(--space-2);
+      line-height: 1.4;
     }
 
     /* Advanced */
