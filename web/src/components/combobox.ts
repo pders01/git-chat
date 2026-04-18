@@ -62,14 +62,19 @@ export class GcCombobox extends LitElement {
     );
   }
 
+  private _scrollListener = () => this.positionListbox();
+
   private show() {
     this.open = true;
     this.activeIndex = -1;
+    // Track scroll on any ancestor to keep the dropdown aligned.
+    window.addEventListener("scroll", this._scrollListener, { capture: true });
   }
 
   private hide() {
     this.open = false;
     this.activeIndex = -1;
+    window.removeEventListener("scroll", this._scrollListener, { capture: true } as EventListenerOptions);
   }
 
   private select(opt: ComboboxOption) {
@@ -101,22 +106,50 @@ export class GcCombobox extends LitElement {
         e.preventDefault();
         if (!this.open) {
           this.show();
+          this.activeIndex = 0;
         } else {
           this.activeIndex = Math.min(this.activeIndex + 1, items.length - 1);
         }
+        this.scrollActiveIntoView();
         break;
       case "ArrowUp":
         e.preventDefault();
-        this.activeIndex = Math.max(this.activeIndex - 1, 0);
+        if (!this.open) {
+          this.show();
+          this.activeIndex = items.length - 1;
+        } else {
+          this.activeIndex = Math.max(this.activeIndex - 1, 0);
+        }
+        this.scrollActiveIntoView();
+        break;
+      case "Home":
+        if (this.open) {
+          e.preventDefault();
+          this.activeIndex = 0;
+          this.scrollActiveIntoView();
+        }
+        break;
+      case "End":
+        if (this.open) {
+          e.preventDefault();
+          this.activeIndex = items.length - 1;
+          this.scrollActiveIntoView();
+        }
         break;
       case "Enter":
         e.preventDefault();
         if (this.open && this.activeIndex >= 0 && this.activeIndex < items.length) {
           this.select(items[this.activeIndex]);
+        } else {
+          this.hide();
         }
         break;
       case "Escape":
-        this.hide();
+        if (this.open) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.hide();
+        }
         break;
       case "Tab":
         this.hide();
@@ -124,9 +157,28 @@ export class GcCombobox extends LitElement {
     }
   }
 
+  /** Scroll the active option into view within the listbox. */
+  private scrollActiveIntoView() {
+    this.updateComplete.then(() => {
+      const opt = this.renderRoot.querySelector(".option.active") as HTMLElement | null;
+      opt?.scrollIntoView({ block: "nearest" });
+    });
+  }
+
   private onFocus() {
     this.filter = this.displayValue();
     this.show();
+  }
+
+  /** Position the listbox using fixed coordinates to escape overflow clipping. */
+  private positionListbox() {
+    const input = this.renderRoot.querySelector("input");
+    const listbox = this.renderRoot.querySelector(".listbox") as HTMLElement | null;
+    if (!input || !listbox) return;
+    const rect = input.getBoundingClientRect();
+    listbox.style.top = `${rect.bottom + 2}px`;
+    listbox.style.left = `${rect.left}px`;
+    listbox.style.width = `${rect.width}px`;
   }
 
   private onBlur() {
@@ -145,11 +197,20 @@ export class GcCombobox extends LitElement {
     if (changed.has("value") && !this.open) {
       this.filter = this.displayValue();
     }
+    // Position the listbox after Lit has rendered it into the DOM.
+    if (this.open) {
+      this.positionListbox();
+    }
   }
 
   override connectedCallback() {
     super.connectedCallback();
     this.filter = this.displayValue();
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    window.removeEventListener("scroll", this._scrollListener, { capture: true } as EventListenerOptions);
   }
 
   override render() {
@@ -235,12 +296,9 @@ export class GcCombobox extends LitElement {
       border-color: var(--accent-assistant, #6b8aff);
     }
     .listbox {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      z-index: 100;
-      margin: 2px 0 0;
+      position: fixed;
+      z-index: 9999;
+      margin: 0;
       padding: var(--space-1, 4px) 0;
       background: var(--surface-2, #252525);
       border: 1px solid var(--border-strong, #444);
