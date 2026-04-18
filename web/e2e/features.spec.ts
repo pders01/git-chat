@@ -69,18 +69,19 @@ test.describe("features", () => {
 
   test("settings modal opens via gear icon", async () => {
     await clickShadowElement(page, "gc-app", ".settings-btn");
-    await waitForShadowElement(page, "gc-app", '[role="dialog"][aria-label="Settings"]');
+    await waitForShadowElement(page, "gc-app gc-settings-panel", '[role="dialog"][aria-label="Settings"]');
 
     const visible = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const dialog = app?.shadowRoot?.querySelector('div[role="dialog"][aria-label="Settings"]');
+      const panel = app?.shadowRoot?.querySelector("gc-settings-panel");
+      const dialog = panel?.shadowRoot?.querySelector('div[role="dialog"][aria-label="Settings"]');
       return !!dialog;
     });
     expect(visible).toBe(true);
 
     // Close.
-    await clickShadowElement(page, "gc-app", ".modal-backdrop");
-    await waitForShadowElement(page, "gc-app", '[role="dialog"][aria-label="Settings"]', { state: 'hidden' });
+    await clickShadowElement(page, "gc-app gc-settings-panel", ".modal-backdrop");
+    await waitForShadowElement(page, "gc-app gc-settings-panel", '[role="dialog"][aria-label="Settings"]', { state: 'hidden' });
   });
 
   // ── Composer ───────────────────────────────────────────────

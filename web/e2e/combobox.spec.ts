@@ -7,17 +7,19 @@ let page: Page;
 // Helper: open settings → LLM → Advanced config.
 async function openLLMAdvanced(page: Page) {
   await clickShadowElement(page, "gc-app", ".settings-btn");
-  await waitForShadowElement(page, "gc-app", '[role="dialog"][aria-label="Settings"]');
+  await waitForShadowElement(page, "gc-app gc-settings-panel", '[role="dialog"][aria-label="Settings"]');
   await page.evaluate(() => {
     const app = document.querySelector("gc-app");
-    const items = app?.shadowRoot?.querySelectorAll(".settings-nav-item");
+    const panel = app?.shadowRoot?.querySelector("gc-settings-panel");
+    const items = panel?.shadowRoot?.querySelectorAll(".settings-nav-item");
     items?.forEach((item) => {
       if (item.textContent?.trim().startsWith("LLM")) (item as HTMLElement).click();
     });
   });
   await page.evaluate(() => {
     const app = document.querySelector("gc-app");
-    const details = app?.shadowRoot?.querySelector("details.advanced-config") as HTMLDetailsElement | null;
+    const panel = app?.shadowRoot?.querySelector("gc-settings-panel");
+    const details = panel?.shadowRoot?.querySelector("details.advanced-config") as HTMLDetailsElement | null;
     if (details && !details.open) details.open = true;
   });
 }
@@ -26,7 +28,8 @@ async function openLLMAdvanced(page: Page) {
 async function focusCombobox(page: Page) {
   await page.evaluate(() => {
     const app = document.querySelector("gc-app");
-    const combobox = app?.shadowRoot?.querySelector(".settings-content gc-combobox");
+    const panel = app?.shadowRoot?.querySelector("gc-settings-panel");
+    const combobox = panel?.shadowRoot?.querySelector(".settings-content gc-combobox");
     const input = combobox?.shadowRoot?.querySelector("input") as HTMLInputElement | null;
     if (input) {
       input.focus();
@@ -41,7 +44,8 @@ async function focusCombobox(page: Page) {
 async function getState(page: Page) {
   return page.evaluate(() => {
     const app = document.querySelector("gc-app");
-    const combobox = app?.shadowRoot?.querySelector(".settings-content gc-combobox") as any;
+    const panel = app?.shadowRoot?.querySelector("gc-settings-panel");
+    const combobox = panel?.shadowRoot?.querySelector(".settings-content gc-combobox") as any;
     if (!combobox) return { open: false, activeIndex: -1, optionCount: 0, activeLabel: "", inputValue: "", ariaExpanded: "false", ariaActivedescendant: "" };
     const input = combobox.shadowRoot?.querySelector("input") as HTMLInputElement | null;
     const options = combobox.shadowRoot?.querySelectorAll(".option") ?? [];
@@ -101,7 +105,8 @@ test.describe("combobox keyboard navigation", () => {
     // ── aria-activedescendant references the active option ──
     const valid = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const combobox = app?.shadowRoot?.querySelector(".settings-content gc-combobox");
+      const panel = app?.shadowRoot?.querySelector("gc-settings-panel");
+      const combobox = panel?.shadowRoot?.querySelector(".settings-content gc-combobox");
       const input = combobox?.shadowRoot?.querySelector("input");
       const id = input?.getAttribute("aria-activedescendant") ?? "";
       return id !== "" && !!combobox?.shadowRoot?.getElementById(id);
@@ -125,7 +130,8 @@ test.describe("combobox keyboard navigation", () => {
     // ── Escape does NOT close the settings modal ──
     const settingsStillOpen = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      return !!app?.shadowRoot?.querySelector('[role="dialog"][aria-label="Settings"]');
+      const panel = app?.shadowRoot?.querySelector("gc-settings-panel");
+      return !!panel?.shadowRoot?.querySelector('[role="dialog"][aria-label="Settings"]');
     });
     expect(settingsStillOpen).toBe(true);
 
@@ -140,7 +146,8 @@ test.describe("combobox keyboard navigation", () => {
     // ── Enter with no highlight (free-form) closes dropdown ──
     await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const combobox = app?.shadowRoot?.querySelector(".settings-content gc-combobox");
+      const panel = app?.shadowRoot?.querySelector("gc-settings-panel");
+      const combobox = panel?.shadowRoot?.querySelector(".settings-content gc-combobox");
       const input = combobox?.shadowRoot?.querySelector("input") as HTMLInputElement | null;
       if (input) {
         input.focus();
@@ -153,8 +160,8 @@ test.describe("combobox keyboard navigation", () => {
     await expect.poll(async () => (await getState(page)).open, { timeout: 3000 }).toBe(false);
 
     // Clean up: close settings.
-    await clickShadowElement(page, "gc-app", ".modal-backdrop");
-    await waitForShadowElement(page, "gc-app", '[role="dialog"][aria-label="Settings"]', { state: "hidden" });
+    await clickShadowElement(page, "gc-app gc-settings-panel", ".modal-backdrop");
+    await waitForShadowElement(page, "gc-app gc-settings-panel", '[role="dialog"][aria-label="Settings"]', { state: "hidden" });
   });
 
   test("typing filters the option list", async () => {
@@ -172,7 +179,8 @@ test.describe("combobox keyboard navigation", () => {
     // inside shadow DOM inputs).
     await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const combobox = app?.shadowRoot?.querySelector(".settings-content gc-combobox");
+      const panel = app?.shadowRoot?.querySelector("gc-settings-panel");
+      const combobox = panel?.shadowRoot?.querySelector(".settings-content gc-combobox");
       const input = combobox?.shadowRoot?.querySelector("input") as HTMLInputElement | null;
       if (input) {
         input.value = "anthropic";
@@ -189,8 +197,8 @@ test.describe("combobox keyboard navigation", () => {
     expect(s.optionCount).toBeGreaterThan(0);
 
     await page.keyboard.press("Escape");
-    await clickShadowElement(page, "gc-app", ".modal-backdrop");
-    await waitForShadowElement(page, "gc-app", '[role="dialog"][aria-label="Settings"]', { state: "hidden" });
+    await clickShadowElement(page, "gc-app gc-settings-panel", ".modal-backdrop");
+    await waitForShadowElement(page, "gc-app gc-settings-panel", '[role="dialog"][aria-label="Settings"]', { state: "hidden" });
   });
 
   test("dropdown is positioned directly below input", async () => {
@@ -207,7 +215,8 @@ test.describe("combobox keyboard navigation", () => {
     await expect.poll(async () => {
       const pos = await page.evaluate(() => {
         const app = document.querySelector("gc-app");
-        const combobox = app?.shadowRoot?.querySelector(".settings-content gc-combobox");
+        const panel = app?.shadowRoot?.querySelector("gc-settings-panel");
+        const combobox = panel?.shadowRoot?.querySelector(".settings-content gc-combobox");
         const input = combobox?.shadowRoot?.querySelector("input");
         const listbox = combobox?.shadowRoot?.querySelector(".listbox") as HTMLElement | null;
         if (!input || !listbox) return null;
@@ -224,7 +233,7 @@ test.describe("combobox keyboard navigation", () => {
     }, { timeout: 3000 }).toBe(true);
 
     await page.keyboard.press("Escape");
-    await clickShadowElement(page, "gc-app", ".modal-backdrop");
-    await waitForShadowElement(page, "gc-app", '[role="dialog"][aria-label="Settings"]', { state: "hidden" });
+    await clickShadowElement(page, "gc-app gc-settings-panel", ".modal-backdrop");
+    await waitForShadowElement(page, "gc-app gc-settings-panel", '[role="dialog"][aria-label="Settings"]', { state: "hidden" });
   });
 });
