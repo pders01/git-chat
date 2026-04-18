@@ -106,6 +106,48 @@ func TestRegistryDuplicateRegister(t *testing.T) {
 	}
 }
 
+func TestSecretEncryptionRoundTrip(t *testing.T) {
+	db := openTestDB(t)
+	r := config.New(db)
+	r.RegisterSecret("MY_SECRET", "", "a secret key", "test")
+	if err := r.InitEncryption(db.Path); err != nil {
+		t.Fatalf("init encryption: %v", err)
+	}
+
+	ctx := context.Background()
+	secret := "sk-test-1234567890abcdef"
+	if err := r.Set(ctx, "MY_SECRET", secret); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	// GetCtx should transparently decrypt.
+	if got := r.GetCtx(ctx, "MY_SECRET"); got != secret {
+		t.Fatalf("expected decrypted %q, got %q", secret, got)
+	}
+
+	// Raw DB value should NOT be the plaintext.
+	raw, ok, err := db.GetConfigOverride(ctx, "MY_SECRET")
+	if err != nil || !ok {
+		t.Fatalf("raw lookup: ok=%v err=%v", ok, err)
+	}
+	if raw == secret {
+		t.Fatal("raw DB value is plaintext — encryption did not work")
+	}
+
+	// All() should return a masked value, not plaintext.
+	entries := r.All(ctx)
+	for _, e := range entries {
+		if e.Key == "MY_SECRET" {
+			if e.Value == secret {
+				t.Fatal("All() returned plaintext secret")
+			}
+			if !e.Secret {
+				t.Fatal("All() did not set secret flag")
+			}
+		}
+	}
+}
+
 func TestRegistryDelete(t *testing.T) {
 	db := openTestDB(t)
 	r := config.New(db)

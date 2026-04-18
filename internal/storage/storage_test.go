@@ -291,6 +291,30 @@ func TestDeleteCard(t *testing.T) {
 	}
 }
 
+func TestDeleteCardScoped(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	db.UpsertCard(ctx, CardRow{
+		ID: "c1", RepoID: "repo1", QuestionNormalized: "q",
+		AnswerMD: "a", CreatedCommit: "x", LastVerifiedCommit: "x", CreatedBy: "alice",
+	})
+
+	// Bob cannot delete Alice's card.
+	if err := db.DeleteCardScoped(ctx, "c1", "bob"); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound for wrong principal, got %v", err)
+	}
+
+	// Alice can delete her own card.
+	if err := db.DeleteCardScoped(ctx, "c1", "alice"); err != nil {
+		t.Fatalf("delete by owner: %v", err)
+	}
+
+	// Double delete returns ErrNotFound.
+	if err := db.DeleteCardScoped(ctx, "c1", "alice"); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound on double delete, got %v", err)
+	}
+}
+
 func TestListCards(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()

@@ -246,3 +246,30 @@ func TestUnknownTool(t *testing.T) {
 		t.Fatal("expected ErrUnknownTool")
 	}
 }
+
+func TestSafePath(t *testing.T) {
+	tests := []struct {
+		input string
+		ok    bool
+	}{
+		{".", true},
+		{"src", true},
+		{"src/sub/file.go", true},
+		{"../escape", false},
+		{"/absolute", false},
+		{"a/../../b", false},
+		{"..", false},
+		{"../", false},
+		{"src/../src", true}, // resolves to "src"
+		{"", true},           // Clean("") = "."
+	}
+	for _, tt := range tests {
+		clean, err := safePath(tt.input)
+		if tt.ok && err != nil {
+			t.Errorf("safePath(%q) unexpected error: %v", tt.input, err)
+		}
+		if !tt.ok && err == nil {
+			t.Errorf("safePath(%q) should have failed, got %q", tt.input, clean)
+		}
+	}
+}

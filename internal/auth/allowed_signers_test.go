@@ -132,3 +132,43 @@ paul@laptop ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDIhz2GK/XCUj4i6Q5yQJNL1MXMY0Rxz
 		t.Fatalf("expected 1 signer, got %d", count)
 	}
 }
+
+func TestRemoveAllowedSignersByPrincipal(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "allowed_signers")
+
+	content := `# comment line
+paul@laptop ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDIhz2GK/XCUj4i6Q5yQJNL1MXMY0RxzPV2QrBqfHr1C
+alice@desktop ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDIhz2GK/XCUj4i6Q5yQJNL1MXMY0RxzPV2QrBqfHr1D
+
+`
+	os.WriteFile(path, []byte(content), 0o600)
+
+	// Remove paul — should leave alice + comment.
+	n, err := auth.RemoveAllowedSignersByPrincipal(path, "paul@laptop")
+	if err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("expected 1 removed, got %d", n)
+	}
+
+	// Verify file contents.
+	data, _ := os.ReadFile(path)
+	remaining := string(data)
+	if strings.Contains(remaining, "paul@laptop") {
+		t.Fatal("paul@laptop should have been removed")
+	}
+	if !strings.Contains(remaining, "alice@desktop") {
+		t.Fatal("alice@desktop should still be present")
+	}
+	if !strings.Contains(remaining, "# comment") {
+		t.Fatal("comment line should be preserved")
+	}
+
+	// Removing a non-existent principal should error.
+	_, err = auth.RemoveAllowedSignersByPrincipal(path, "nobody@nowhere")
+	if err == nil {
+		t.Fatal("expected error for unknown principal")
+	}
+}
