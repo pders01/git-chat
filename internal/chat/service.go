@@ -134,25 +134,88 @@ func (s *Service) llmParams(ctx context.Context) (model string, temp float32, ma
 	return
 }
 
-// Package-level tunables, configurable via environment variables.
-var (
-	maxMessageBytes      = envIntSvc("GITCHAT_MAX_MESSAGE_BYTES", 32*1024)
-	maxHistoryTurns      = envIntSvc("GITCHAT_MAX_HISTORY_TURNS", 20)
-	maxTitleLen          = envIntSvc("GITCHAT_TITLE_MAX_LEN", 48)
-	titleTimeout         = envDurSvc("GITCHAT_TITLE_TIMEOUT", 15*time.Second)
-	cardTimeout          = envDurSvc("GITCHAT_CARD_TIMEOUT", 10*time.Second)
-	maxAttachmentsPerMsg = envIntSvc("GITCHAT_MAX_ATTACHMENTS_PER_MESSAGE", 8)
-	maxAttachmentBytes   = envIntSvc("GITCHAT_MAX_ATTACHMENT_BYTES", 10*1024*1024)
-	maxAttachmentTotal   = envIntSvc("GITCHAT_MAX_ATTACHMENTS_TOTAL_BYTES", 20*1024*1024)
-	toolLoopMax          = envIntSvc("GITCHAT_TOOL_LOOP_MAX", 8)
-	toolLoopMaxTokens    = envIntSvc("GITCHAT_TOOL_LOOP_MAX_TOKENS", 100_000)
-	// cardPromotionThreshold is the minimum number of similar past user
-	// messages (via FTS5) required before a question gets promoted to a
-	// knowledge card. Set to 2 so the first ask always goes to the LLM,
-	// and only on the second similar question does caching kick in. This
-	// prevents one-off exploratory questions from polluting the KB.
-	cardPromotionThreshold = envIntSvc("GITCHAT_KB_PROMOTION_THRESHOLD", 2)
+// Compiled-in fallbacks for chat tunables. The canonical resolution
+// path is Service.cfgInt / cfgDur via the config Registry so UI edits
+// land without restart; these constants only apply when Service.Config
+// is nil (tests that construct Service directly) or the key isn't
+// registered.
+const (
+	defaultMaxMessageBytes       = 32 * 1024
+	defaultMaxHistoryTurns       = 20
+	defaultMaxTitleLen           = 48
+	defaultTitleTimeout          = 15 * time.Second
+	defaultCardTimeout           = 10 * time.Second
+	defaultMaxAttachmentsPerMsg  = 8
+	defaultMaxAttachmentBytes    = 10 * 1024 * 1024
+	defaultMaxAttachmentTotal    = 20 * 1024 * 1024
+	defaultToolLoopMax           = 8
+	defaultToolLoopMaxTokens     = 100_000
+	// defaultCardPromotionThreshold is the minimum number of similar
+	// past user messages (via FTS5) required before a question gets
+	// promoted to a knowledge card. Set to 2 so the first ask always
+	// goes to the LLM, and only on the second similar question does
+	// caching kick in. This prevents one-off exploratory questions from
+	// polluting the KB.
+	defaultCardPromotionThreshold = 2
+	// defaults for prompt-assembly caps live alongside so chat/prompt.go
+	// can resolve without crossing package boundaries.
+	defaultMaxInjectedFileBytes    = 4 * 1024
+	defaultMaxTotalInjectedBytes   = 12 * 1024
+	defaultMaxBaselineContextBytes = 4 * 1024
+	defaultMaxHistoryDiffBytes     = 4 * 1024
+	defaultMaxTreeLines            = 60
+	defaultMaxTreeBytes            = 2 * 1024
+	defaultRecentCommitCount       = 5
 )
+
+// cfgInt resolves a chat-Registry-backed int tunable, falling back to
+// env then `def` when no Config is attached. Per-call so live UI edits
+// take effect; the Registry's DB lookup is timeout-guarded internally.
+// Values ≤ 0 are treated as unset (safety: a user setting e.g.
+// GITCHAT_MAX_MESSAGE_BYTES=0 would otherwise reject every message).
+func (s *Service) cfgInt(ctx context.Context, key string, def int) int {
+	if s.Config != nil {
+		if n := s.Config.GetIntCtx(ctx, key, def); n > 0 {
+			return n
+		}
+		return def
+	}
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
+}
+
+// cfgInt64 is the int64 counterpart of cfgInt with the same ≤0 guard.
+func (s *Service) cfgInt64(ctx context.Context, key string, def int64) int64 {
+	if s.Config != nil {
+		if n := s.Config.GetInt64Ctx(ctx, key, def); n > 0 {
+			return n
+		}
+		return def
+	}
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
+}
+
+// cfgDur resolves a Go-duration-string config value.
+func (s *Service) cfgDur(ctx context.Context, key string, def time.Duration) time.Duration {
+	if s.Config != nil {
+		return s.Config.GetDurCtx(ctx, key, def)
+	}
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return def
+}
 
 // allowedAttachmentMIMEs restricts uploads to image types Anthropic's
 // multimodal API accepts plus plain-text blobs we fold into the prompt
@@ -375,11 +438,12 @@ func (s *Service) StreamMessage(
 	if text == "" && len(msg.Attachments) == 0 {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("empty message"))
 	}
-	if len(text) > maxMessageBytes {
+	maxMessage := s.cfgInt(ctx, "GITCHAT_MAX_MESSAGE_BYTES", defaultMaxMessageBytes)
+	if len(text) > maxMessage {
 		return connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("message too long (%d bytes, max %d)", len(text), maxMessageBytes))
+			fmt.Errorf("message too long (%d bytes, max %d)", len(text), maxMessage))
 	}
-	if err := validateAttachments(msg.Attachments); err != nil {
+	if err := s.validateAttachments(ctx, msg.Attachments); err != nil {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
@@ -430,7 +494,7 @@ func (s *Service) resolveSession(ctx context.Context, sc *streamCtx) error {
 		if sc.repo == nil {
 			return connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 		}
-		title := makeTitle(sc.text)
+		title := s.makeTitle(ctx, sc.text)
 		created, err := s.DB.CreateSession(ctx, newID(), sc.principal, sc.repo.ID, title)
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, err)
@@ -583,8 +647,9 @@ func (s *Service) runLLMAndPersist(
 	if n := len(history); n > 0 && history[n-1].ID == sc.userMsgID {
 		history = history[:n-1]
 	}
-	if len(history) > maxHistoryTurns {
-		history = history[len(history)-maxHistoryTurns:]
+	maxHistory := s.cfgInt(ctx, "GITCHAT_MAX_HISTORY_TURNS", defaultMaxHistoryTurns)
+	if len(history) > maxHistory {
+		history = history[len(history)-maxHistory:]
 	}
 
 	// Build prompt.
@@ -681,6 +746,8 @@ func (s *Service) agenticLoop(
 	var assistant strings.Builder
 	toolOrdinal := 0
 	roundMsgs := append([]llm.Message(nil), msgs...)
+	toolLoopMax := s.cfgInt(ctx, "GITCHAT_TOOL_LOOP_MAX", defaultToolLoopMax)
+	toolLoopMaxTokens := s.cfgInt(ctx, "GITCHAT_TOOL_LOOP_MAX_TOKENS", defaultToolLoopMaxTokens)
 
 	for round := 0; round < toolLoopMax; round++ {
 		if ctx.Err() != nil {
@@ -905,7 +972,7 @@ Output exactly TWO sections separated by ---:
 	}
 	model, _, _ := s.llmParams(ctx)
 
-	ctx2, cancel := context.WithTimeout(ctx, titleTimeout)
+	ctx2, cancel := context.WithTimeout(ctx, s.cfgDur(ctx, "GITCHAT_TITLE_TIMEOUT", defaultTitleTimeout))
 	defer cancel()
 
 	chunks, err := adapter.Stream(ctx2, llm.Request{
@@ -985,7 +1052,8 @@ func (s *Service) generateSmartTitle(adapter llm.LLM, model, sessionID, userMsg,
 		{Role: llm.RoleUser, Content: "Generate a 3-5 word title for this conversation."},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), titleTimeout)
+	bg := context.Background()
+	ctx, cancel := context.WithTimeout(bg, s.cfgDur(bg, "GITCHAT_TITLE_TIMEOUT", defaultTitleTimeout))
 	defer cancel()
 
 	chunks, err := adapter.Stream(ctx, llm.Request{
@@ -1075,7 +1143,8 @@ func (s *Service) notifyInvalidation(ctx context.Context, card *storage.CardRow,
 // times to justify caching, and if so, upserts a knowledge card.
 // Runs in a background goroutine — errors are cosmetic.
 func (s *Service) maybePromoteCard(model, repoID, normalizedQ, answer, headCommit, userText string, r *repo.Entry, principal string) {
-	ctx, cancel := context.WithTimeout(context.Background(), cardTimeout)
+	bg := context.Background()
+	ctx, cancel := context.WithTimeout(bg, s.cfgDur(bg, "GITCHAT_CARD_TIMEOUT", defaultCardTimeout))
 	defer cancel()
 
 	// Count similar historical questions via FTS5. If below
@@ -1086,7 +1155,7 @@ func (s *Service) maybePromoteCard(model, repoID, normalizedQ, answer, headCommi
 		slog.Debug("similar-count query failed", "err", err)
 		// On error, fall through and cache anyway — better to have
 		// a spurious card than to silently skip promotion.
-	} else if count < cardPromotionThreshold {
+	} else if count < s.cfgInt(ctx, "GITCHAT_KB_PROMOTION_THRESHOLD", defaultCardPromotionThreshold) {
 		return
 	}
 
@@ -1128,15 +1197,16 @@ func (s *Service) maybePromoteCard(model, repoID, normalizedQ, answer, headCommi
 
 // makeTitle derives a session title from the first message. Keeps it
 // short enough to render in a sidebar, truncating on a word boundary.
-func makeTitle(text string) string {
+func (s *Service) makeTitle(ctx context.Context, text string) string {
 	text = strings.TrimSpace(text)
 	// Collapse any whitespace run to a single space.
 	text = strings.Join(strings.Fields(text), " ")
-	if len(text) <= maxTitleLen {
+	maxLen := s.cfgInt(ctx, "GITCHAT_TITLE_MAX_LEN", defaultMaxTitleLen)
+	if len(text) <= maxLen {
 		return text
 	}
-	cut := text[:maxTitleLen]
-	if i := strings.LastIndexByte(cut, ' '); i > maxTitleLen/2 {
+	cut := text[:maxLen]
+	if i := strings.LastIndexByte(cut, ' '); i > maxLen/2 {
 		cut = cut[:i]
 	}
 	return cut + "…"
@@ -1196,12 +1266,15 @@ func toMessage(r *storage.MessageRow, atts []*storage.AttachmentRow, events []*s
 // validateAttachments enforces per-message caps on attachment count,
 // per-file size, total bytes, and MIME allowlist. Any failure returns
 // a human-readable error suitable for surfacing to the client.
-func validateAttachments(atts []*gitchatv1.Attachment) error {
+func (s *Service) validateAttachments(ctx context.Context, atts []*gitchatv1.Attachment) error {
 	if len(atts) == 0 {
 		return nil
 	}
-	if len(atts) > maxAttachmentsPerMsg {
-		return fmt.Errorf("too many attachments (%d, max %d)", len(atts), maxAttachmentsPerMsg)
+	maxPerMsg := s.cfgInt(ctx, "GITCHAT_MAX_ATTACHMENTS_PER_MESSAGE", defaultMaxAttachmentsPerMsg)
+	maxBytes := s.cfgInt(ctx, "GITCHAT_MAX_ATTACHMENT_BYTES", defaultMaxAttachmentBytes)
+	maxTotal := s.cfgInt(ctx, "GITCHAT_MAX_ATTACHMENTS_TOTAL_BYTES", defaultMaxAttachmentTotal)
+	if len(atts) > maxPerMsg {
+		return fmt.Errorf("too many attachments (%d, max %d)", len(atts), maxPerMsg)
 	}
 	var total int
 	for _, a := range atts {
@@ -1211,15 +1284,15 @@ func validateAttachments(atts []*gitchatv1.Attachment) error {
 		if len(a.Data) == 0 {
 			return fmt.Errorf("empty attachment %q", a.Filename)
 		}
-		if len(a.Data) > maxAttachmentBytes {
+		if len(a.Data) > maxBytes {
 			return fmt.Errorf("attachment %q too large (%d bytes, max %d)",
-				a.Filename, len(a.Data), maxAttachmentBytes)
+				a.Filename, len(a.Data), maxBytes)
 		}
 		total += len(a.Data)
 	}
-	if total > maxAttachmentTotal {
+	if total > maxTotal {
 		return fmt.Errorf("attachments exceed total size cap (%d bytes, max %d)",
-			total, maxAttachmentTotal)
+			total, maxTotal)
 	}
 	return nil
 }
@@ -1300,23 +1373,3 @@ func protoRole(s string) gitchatv1.MessageRole {
 	}
 }
 
-// envIntSvc reads an env var as int, returning def if unset or invalid.
-func envIntSvc(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return n
-		}
-	}
-	return def
-}
-
-// envDurSvc reads an env var as a time.Duration string (e.g. "30s",
-// "2m"), returning def if unset or invalid.
-func envDurSvc(key string, def time.Duration) time.Duration {
-	if v := os.Getenv(key); v != "" {
-		if d, err := time.ParseDuration(v); err == nil && d > 0 {
-			return d
-		}
-	}
-	return def
-}

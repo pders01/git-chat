@@ -211,6 +211,20 @@ func (r *Registry) GetInt64Ctx(ctx context.Context, key string, fallback int64) 
 	return n
 }
 
+// GetDurCtx resolves a config value as a time.Duration (Go duration
+// string — "30s", "168h"), returning fallback when unset or unparseable.
+func (r *Registry) GetDurCtx(ctx context.Context, key string, fallback time.Duration) time.Duration {
+	v := r.GetCtx(ctx, key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fallback
+	}
+	return d
+}
+
 // Set writes (or overwrites) a config override in SQLite.
 // Secret entries are encrypted before writing.
 func (r *Registry) Set(ctx context.Context, key, value string) error {

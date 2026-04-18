@@ -3,10 +3,8 @@ package chat
 import (
 	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
@@ -16,10 +14,10 @@ import (
 )
 
 // Context budget caps. Each has a sensible default for small local
-// models (Gemma 4B, 4K practical context) and can be overridden via
-// environment variable for users running larger models (Claude, GPT-4)
-// where the context window is 128K+ and the defaults are wastefully
-// conservative.
+// models (Gemma 4B, 4K practical context) and can be overridden at
+// runtime via the config Registry (DB override → env → default). The
+// compiled-in defaults live in service.go alongside the other chat
+// tunable fallbacks.
 //
 // Env vars:
 //
@@ -27,24 +25,6 @@ import (
 //	GITCHAT_MAX_TOTAL_INJECT    — total @-file budget per turn (default 12288)
 //	GITCHAT_MAX_BASELINE_BYTES  — overview doc cap (default 4096)
 //	GITCHAT_MAX_HISTORY_DIFF    — per-diff in history expansion (default 4096)
-var (
-	maxInjectedFileBytes    = envInt("GITCHAT_MAX_FILE_BYTES", 4*1024)
-	maxTotalInjectedBytes   = envInt("GITCHAT_MAX_TOTAL_INJECT", 12*1024)
-	maxBaselineContextBytes = envInt("GITCHAT_MAX_BASELINE_BYTES", 4*1024)
-	maxHistoryDiffBytes     = envInt("GITCHAT_MAX_HISTORY_DIFF", 4*1024)
-	maxTreeLines            = envInt("GITCHAT_MAX_TREE_LINES", 60)
-	maxTreeBytes            = envInt("GITCHAT_MAX_TREE_BYTES", 2*1024)
-	recentCommitCount       = envInt("GITCHAT_RECENT_COMMITS", 5)
-)
-
-func envInt(key string, def int64) int64 {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			return n
-		}
-	}
-	return def
-}
 
 // diffMarkerPattern matches [[diff]] or [[diff key=value …]] in
 // historical assistant messages. Kept in sync with the frontend
@@ -59,8 +39,9 @@ var diffAttrPattern = regexp.MustCompile(`(\w+)=(?:"([^"]*)"|(\S+))`)
 // recentCommits returns a short git log (last 5 commits) for baseline
 // context. Lets the model answer "what changed recently?" without the
 // user switching to the log tab. ~200 bytes, negligible context cost.
-func recentCommits(ctx context.Context, r *repo.Entry) string {
-	commits, _, err := r.ListCommits(ctx, "", int(recentCommitCount), 0, "")
+func (s *Service) recentCommits(ctx context.Context, r *repo.Entry) string {
+	n := s.cfgInt(ctx, "GITCHAT_RECENT_COMMITS", defaultRecentCommitCount)
+	commits, _, err := r.ListCommits(ctx, "", n, 0, "")
 	if err != nil || len(commits) == 0 {
 		return ""
 	}
@@ -123,11 +104,11 @@ func (s *Service) buildPrompt(
 	// servers hash-match a stable prefix automatically.
 	var stable strings.Builder
 	stable.WriteString(s.baseSystemPromptStable(repoEntry))
-	if tree := baselineTree(repoEntry); tree != "" {
+	if tree := s.baselineTree(repoEntry); tree != "" {
 		stable.WriteString("\n\n## Repository layout (2 levels)\n\n")
 		stable.WriteString(tree)
 	}
-	if overview, label := overviewDoc(repoEntry); overview != "" {
+	if overview, label := s.overviewDoc(repoEntry); overview != "" {
 		fmt.Fprintf(&stable, "\n\n## Project overview (from `%s`)\n\n```\n%s\n```", label, overview)
 	}
 	// Append per-profile custom system prompt if configured.
@@ -141,7 +122,7 @@ func (s *Service) buildPrompt(
 	var volatile strings.Builder
 	fmt.Fprintf(&volatile, "## Current repo state\n\n- default branch: %s\n- HEAD: %s\n",
 		repoEntry.DefaultBranch, repoEntry.HeadCommit())
-	if recentLog := recentCommits(ctx, repoEntry); recentLog != "" {
+	if recentLog := s.recentCommits(ctx, repoEntry); recentLog != "" {
 		volatile.WriteString("\n## Recent commits\n\n")
 		volatile.WriteString(recentLog)
 	}
@@ -160,7 +141,7 @@ func (s *Service) buildPrompt(
 	for _, m := range sessionHistory {
 		content := m.Content
 		if m.Role == "assistant" && diffMarkerPattern.MatchString(content) {
-			content = expandHistoryDiffMarkers(ctx, repoEntry, content, diffCache)
+			content = s.expandHistoryDiffMarkers(ctx, repoEntry, content, diffCache)
 		}
 		var atts []llm.Attachment
 		if m.Role == "user" {
@@ -226,7 +207,8 @@ func (s *Service) buildPrompt(
 // Unresolvable markers are left as-is — it's better for the model to
 // see the raw marker than to silently drop a reference it might have
 // been about to explain.
-func expandHistoryDiffMarkers(ctx context.Context, r *repo.Entry, text string, cache map[string]string) string {
+func (s *Service) expandHistoryDiffMarkers(ctx context.Context, r *repo.Entry, text string, cache map[string]string) string {
+	maxDiff := s.cfgInt(ctx, "GITCHAT_MAX_HISTORY_DIFF", defaultMaxHistoryDiffBytes)
 	return diffMarkerPattern.ReplaceAllStringFunc(text, func(match string) string {
 		sub := diffMarkerPattern.FindStringSubmatch(match)
 		attrs := ""
@@ -248,8 +230,8 @@ func expandHistoryDiffMarkers(ctx context.Context, r *repo.Entry, text string, c
 			expansion = fmt.Sprintf("(no changes for %s)", cacheKey)
 		} else {
 			body := diff
-			if int64(len(body)) > maxHistoryDiffBytes {
-				body = body[:maxHistoryDiffBytes] + "\n… (diff truncated for history)\n"
+			if len(body) > maxDiff {
+				body = body[:maxDiff] + "\n… (diff truncated for history)\n"
 			}
 			expansion = "\n```diff\n" + body + "\n```\n"
 		}
@@ -373,7 +355,12 @@ Here is the most recent commit:
 //	docs/ (files: ARCHITECTURE.md)
 //	internal/ (dirs: auth/, chat/, repo/, rpc/, storage/; files: assets/)
 //	web/ (dirs: src/; files: index.html, package.json, tsconfig.json, vite.config.ts)
-func baselineTree(r *repo.Entry) string {
+func (s *Service) baselineTree(r *repo.Entry) string {
+	// No ctx in callers (baseSystemPromptStable); the Registry's DB
+	// lookup is timeout-guarded so Background is safe.
+	ctx := context.Background()
+	maxLines := s.cfgInt(ctx, "GITCHAT_MAX_TREE_LINES", defaultMaxTreeLines)
+	maxBytes := s.cfgInt(ctx, "GITCHAT_MAX_TREE_BYTES", defaultMaxTreeBytes)
 	rootEntries, _, err := r.ListTree("", "")
 	if err != nil || len(rootEntries) == 0 {
 		return ""
@@ -396,7 +383,7 @@ func baselineTree(r *repo.Entry) string {
 		if e.Type != gitchatv1.EntryType_ENTRY_TYPE_DIR {
 			continue
 		}
-		if int64(lines) >= maxTreeLines || int64(sb.Len()) >= maxTreeBytes {
+		if lines >= maxLines || sb.Len() >= maxBytes {
 			sb.WriteString("… (tree truncated)\n")
 			break
 		}
@@ -442,9 +429,10 @@ func formatTreeLine(label string, entries []*gitchatv1.TreeEntry) string {
 // overviewDoc looks for the first file on overviewFiles that exists and
 // returns its (possibly truncated) content plus the path we found it at.
 // Returns empty strings if nothing matches.
-func overviewDoc(r *repo.Entry) (content, label string) {
+func (s *Service) overviewDoc(r *repo.Entry) (content, label string) {
+	maxBytes := s.cfgInt64(context.Background(), "GITCHAT_MAX_BASELINE_BYTES", defaultMaxBaselineContextBytes)
 	for _, candidate := range overviewFiles {
-		resp, err := r.GetFile("", candidate, maxBaselineContextBytes)
+		resp, err := r.GetFile("", candidate, maxBytes)
 		if err != nil || resp.IsBinary || len(resp.Content) == 0 {
 			continue
 		}
@@ -472,6 +460,8 @@ func (s *Service) resolveMentions(ctx context.Context, r *repo.Entry, text strin
 	if len(matches) == 0 {
 		return ""
 	}
+	perFileBytes := s.cfgInt64(ctx, "GITCHAT_MAX_FILE_BYTES", defaultMaxInjectedFileBytes)
+	totalBudget := s.cfgInt(ctx, "GITCHAT_MAX_TOTAL_INJECT", defaultMaxTotalInjectedBytes)
 	seen := map[string]struct{}{}
 	var blocks []string
 	total := 0
@@ -497,7 +487,7 @@ func (s *Service) resolveMentions(ctx context.Context, r *repo.Entry, text strin
 			continue
 		}
 		seen[path] = struct{}{}
-		resp, err := r.GetFile("", path, maxInjectedFileBytes)
+		resp, err := r.GetFile("", path, perFileBytes)
 		if err != nil {
 			// Negative result with fuzzy suggestions.
 			hint := ""
@@ -523,7 +513,7 @@ func (s *Service) resolveMentions(ctx context.Context, r *repo.Entry, text strin
 			continue
 		}
 		body := string(resp.Content)
-		if int64(total+len(body)) > maxTotalInjectedBytes {
+		if total+len(body) > totalBudget {
 			blocks = append(blocks, fmt.Sprintf(
 				"File: `%s` — skipped: per-turn file injection budget exhausted.",
 				path,

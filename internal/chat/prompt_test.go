@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -247,14 +248,14 @@ func TestFormatTreeLine(t *testing.T) {
 	}
 }
 
-func TestEnvInt(t *testing.T) {
+func TestCfgInt64(t *testing.T) {
 	const key = "GITCHAT_TEST_ENVINT"
 
 	tests := []struct {
-		name    string
-		setVal  string // empty = unset
-		def     int64
-		want    int64
+		name   string
+		setVal string // empty = unset
+		def    int64
+		want   int64
 	}{
 		{"unset returns default", "", 42, 42},
 		{"valid int parsed", "100", 42, 100},
@@ -262,6 +263,9 @@ func TestEnvInt(t *testing.T) {
 		{"zero returns default", "0", 42, 42},
 		{"negative returns default", "-5", 42, 42},
 	}
+	// Service with no Config wired in — exercises the env-fallback
+	// path, which is the same behaviour the old envInt helper had.
+	svc := &Service{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.setVal != "" {
@@ -270,9 +274,9 @@ func TestEnvInt(t *testing.T) {
 			} else {
 				os.Unsetenv(key)
 			}
-			got := envInt(key, tt.def)
+			got := svc.cfgInt64(context.Background(), key, tt.def)
 			if got != tt.want {
-				t.Errorf("envInt(%q, %d) = %d, want %d", key, tt.def, got, tt.want)
+				t.Errorf("cfgInt64(%q, %d) = %d, want %d", key, tt.def, got, tt.want)
 			}
 		})
 	}
