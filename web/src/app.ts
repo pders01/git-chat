@@ -816,11 +816,6 @@ export class GcApp extends LitElement {
     return p?.models ?? [];
   }
 
-  /** Find a catalog provider by ID. */
-  private catalogProvider(providerId: string): any | undefined {
-    return this.catalog.find((c: any) => c.id === providerId);
-  }
-
   private async activateProfile(id: string) {
     try {
       await (repoClient as any).activateProfile({ id });
@@ -1195,58 +1190,45 @@ export class GcApp extends LitElement {
           </label>
           <label class="profile-field">
             <span>Provider</span>
-            ${this.catalog.length > 0
-              ? html`<select
-                  class="config-input"
-                  @change=${(e: Event) => {
-                    const id = (e.target as HTMLSelectElement).value;
-                    p._providerId = id;
-                    const prov = this.catalogProvider(id);
-                    if (prov) {
-                      p.backend = prov.type;
-                      p.baseUrl = prov.defaultBaseUrl || "";
-                      p.model = prov.defaultModelId || "";
-                    } else {
-                      p.backend = id;
-                    }
-                    this.requestUpdate();
-                  }}
-                >
-                  <option value="">— select provider —</option>
-                  ${this.catalog.map(
-                    (c: any) => html`<option
-                      value=${c.id}
-                      ?selected=${c.id === p._providerId}
-                    >
-                      ${c.name} (${c.type})
-                    </option>`,
-                  )}
-                </select>`
-              : html`<select
-                  class="config-input"
-                  .value=${p.backend}
-                  @change=${(e: Event) => {
-                    p.backend = (e.target as HTMLSelectElement).value;
-                    this.requestUpdate();
-                  }}
-                >
-                  <option value="openai">openai</option>
-                  <option value="anthropic">anthropic</option>
-                </select>`}
-            <span class="config-desc">
+            <input
+              type="text"
+              class="config-input"
+              list="dl-profile-provider"
+              placeholder="e.g. openai, anthropic"
+              .value=${p._providerLabel || p.backend || ""}
+              @input=${(e: Event) => {
+                const val = (e.target as HTMLInputElement).value;
+                p._providerLabel = val;
+                const prov = this.catalog.find(
+                  (c: any) => `${c.name} (${c.type})` === val || c.id === val,
+                );
+                if (prov) {
+                  p._providerId = prov.id;
+                  p.backend = prov.type;
+                  p.baseUrl = prov.defaultBaseUrl || p.baseUrl || "";
+                  p.model = prov.defaultModelId || "";
+                } else {
+                  p._providerId = "";
+                  // Allow raw backend type as input.
+                  if (val === "openai" || val === "anthropic") {
+                    p.backend = val;
+                  }
+                }
+                this.requestUpdate();
+              }}
+            />
+            <datalist id="dl-profile-provider">
+              ${[...this.catalog]
+                .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                .map(
+                  (c: any) =>
+                    html`<option value="${c.name} (${c.type})"></option>`,
+                )}
               ${this.catalog.length === 0
-                ? html`<button
-                    class="action-btn"
-                    ?disabled=${this.catalogLoading}
-                    @click=${(e: Event) => {
-                      e.preventDefault();
-                      this.refreshCatalog();
-                    }}
-                  >
-                    ${this.catalogLoading ? "fetching…" : "fetch provider catalog"}
-                  </button>`
+                ? html`<option value="openai"></option>
+                    <option value="anthropic"></option>`
                 : nothing}
-            </span>
+            </datalist>
           </label>
           ${p.backend !== "anthropic"
             ? html`<label class="profile-field">
@@ -1254,40 +1236,49 @@ export class GcApp extends LitElement {
                 <input
                   type="text"
                   class="config-input"
+                  list="dl-profile-baseurl"
                   .value=${p.baseUrl}
                   @input=${(e: Event) => {
                     p.baseUrl = (e.target as HTMLInputElement).value;
                   }}
                 />
+                <datalist id="dl-profile-baseurl">
+                  ${[...new Set([
+                    "http://localhost:1234/v1",
+                    "http://localhost:11434/v1",
+                    ...this.catalog
+                      .filter((c: any) => c.defaultBaseUrl)
+                      .map((c: any) => c.defaultBaseUrl),
+                  ])].map((u) => html`<option value=${u}></option>`)}
+                </datalist>
               </label>`
             : nothing}
           <label class="profile-field">
             <span>Model</span>
-            ${this.catalogModelsFor(p._providerId || "").length > 0
-              ? html`<select
-                  class="config-input"
-                  @change=${(e: Event) => {
-                    p.model = (e.target as HTMLSelectElement).value;
-                    this.requestUpdate();
-                  }}
-                >
-                  ${this.catalogModelsFor(p._providerId || "").map(
-                    (m: any) => html`<option value=${m.id} ?selected=${p.model === m.id}>
-                      ${m.name}${m.contextWindow
-                        ? ` · ${Math.round(m.contextWindow / 1000)}K`
-                        : ""}${m.costPer1MIn ? ` · $${m.costPer1MIn}/$${m.costPer1MOut}` : ""}
-                    </option>`,
-                  )}
-                </select>`
-              : html`<input
-                  type="text"
-                  class="config-input"
-                  placeholder="(backend default)"
-                  .value=${p.model}
-                  @input=${(e: Event) => {
-                    p.model = (e.target as HTMLInputElement).value;
-                  }}
-                />`}
+            <input
+              type="text"
+              class="config-input"
+              list="dl-profile-model"
+              placeholder="(backend default)"
+              .value=${p.model}
+              @input=${(e: Event) => {
+                p.model = (e.target as HTMLInputElement).value;
+              }}
+            />
+            <datalist id="dl-profile-model">
+              ${(p._providerId
+                ? this.catalogModelsFor(p._providerId)
+                : []
+              )
+                .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                .map(
+                  (m: any) =>
+                    html`<option
+                      value=${m.id}
+                      label="${m.name}${m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}K` : ""}${m.costPer1MIn ? ` · $${m.costPer1MIn}/$${m.costPer1MOut}` : ""}"
+                    ></option>`,
+                )}
+            </datalist>
           </label>
           <label class="profile-field">
             <span>API Key</span>
