@@ -240,11 +240,12 @@ export class GcCommitLog extends LitElement {
   }
 
   private rewireListObserver() {
-    if (this.viewMode !== "commits") {
-      this.listObserver?.disconnect();
-      this.listObserver = null;
-      return;
-    }
+    // The commit-list sidebar is rendered in both commits and calendar
+    // viewMode (calendar mode keeps the sidebar visible alongside the
+    // heatmap), so pagination should work in either. Graph mode swaps
+    // the ul for the absolute-positioned graph rows; query the matching
+    // scroller and let the absence-check below handle cleanup when no
+    // sidebar list is on screen at all.
     const sentinel = this.renderRoot.querySelector<HTMLElement>(".load-sentinel");
     const scroller = this.renderRoot.querySelector<HTMLElement>(
       this.graphMode ? ".graph-scroll" : ".commits",
