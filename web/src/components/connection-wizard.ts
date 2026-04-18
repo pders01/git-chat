@@ -60,6 +60,31 @@ export class GcConnectionWizard extends LitElement {
       this.systemPrompt = this.profile.systemPrompt ?? "";
       // For editing, start at provider step but pre-fill.
       this.step = "provider";
+      // Pre-discover models so the model dropdown is populated without
+      // requiring the user to re-authenticate.
+      if (this.baseUrl) {
+        this.discoverModelsForEdit();
+      }
+    }
+  }
+
+  /**
+   * Silently discover models for an existing profile's base URL.
+   * Uses the saved API key (masked or not) — the server still holds
+   * the real key for profiles that were previously saved.
+   */
+  private async discoverModelsForEdit() {
+    try {
+      const resp = await (repoClient as any).discoverModels({
+        baseUrl: this.baseUrl,
+        apiKey: this.apiKey,
+      });
+      if (!resp.error) {
+        this.discoveredModels = resp.modelIds ?? [];
+        if (resp.providerName) this.providerName = resp.providerName;
+      }
+    } catch {
+      // Silent — editing can proceed without pre-populated models.
     }
   }
 
