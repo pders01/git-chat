@@ -339,17 +339,25 @@ func (s *Service) SendMessage(
 	return s.StreamMessage(ctx, req.Msg, stream.Send)
 }
 
+// streamCtx bundles the per-turn state threaded through StreamMessage's
+// helper functions. Keeps argument lists short without hiding control flow
+// behind struct methods.
+type streamCtx struct {
+	principal string
+	text      string
+	msg       *gitchatv1.SendMessageRequest
+	sess      *storage.SessionRow
+	repo      *repo.Entry
+	isNew     bool
+	userMsgID string
+	adapter   llm.LLM
+	model     string
+	temp      float32
+	maxTok    int
+	caps      llm.Capabilities
+}
+
 // StreamMessage runs the chat turn and streams chunks via send.
-//
-// Lifecycle of one call:
-//  1. Resolve (or create) the session. Creation pins the session to the
-//     current repo_id; subsequent turns on the session can skip repo_id.
-//  2. Persist the user turn.
-//  3. Load prior messages (not including the one we just inserted — we
-//     add that to the prompt from the request directly).
-//  4. Build the prompt, including @file context injection.
-//  5. Open the LLM stream, forward tokens, accumulate the assistant text.
-//  6. Persist the assistant turn (with final counts), send Done.
 func (s *Service) StreamMessage(
 	ctx context.Context,
 	msg *gitchatv1.SendMessageRequest,
@@ -360,7 +368,6 @@ func (s *Service) StreamMessage(
 	if text == "" && len(msg.Attachments) == 0 {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("empty message"))
 	}
-	// Cap message length — unbounded input goes to the LLM and SQLite.
 	if len(text) > maxMessageBytes {
 		return connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("message too long (%d bytes, max %d)", len(text), maxMessageBytes))
@@ -369,63 +376,86 @@ func (s *Service) StreamMessage(
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	// ── Resolve or create the session.
-	var sess *storage.SessionRow
-	var repoEntry *repo.Entry
-	isNew := msg.SessionId == ""
-	if msg.SessionId != "" {
-		existing, err := s.DB.GetSession(ctx, principal, msg.SessionId)
+	sc := &streamCtx{principal: principal, text: text, msg: msg}
+
+	// Phase 1: resolve or create the session.
+	if err := s.resolveSession(ctx, sc); err != nil {
+		return err
+	}
+
+	// Phase 2: persist the user turn.
+	if err := s.persistUserTurn(ctx, sc); err != nil {
+		return err
+	}
+
+	// Phase 3: resolve LLM adapter and send Started chunk.
+	if err := s.prepareLLM(ctx, sc, send); err != nil {
+		return err
+	}
+
+	// Phase 4: KB cache fast-path — may short-circuit.
+	if done, err := s.tryKBCacheHit(ctx, sc, send); err != nil || done {
+		return err
+	}
+
+	// Phase 5: build prompt, run agentic LLM loop, persist result.
+	return s.runLLMAndPersist(ctx, sc, send)
+}
+
+// resolveSession finds an existing session or creates a new one.
+func (s *Service) resolveSession(ctx context.Context, sc *streamCtx) error {
+	if sc.msg.SessionId != "" {
+		existing, err := s.DB.GetSession(ctx, sc.principal, sc.msg.SessionId)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return connect.NewError(connect.CodeNotFound, err)
 			}
 			return connect.NewError(connect.CodeInternal, err)
 		}
-		sess = existing
-		repoEntry = s.Repos.Get(sess.RepoID)
-		if repoEntry == nil {
+		sc.sess = existing
+		sc.repo = s.Repos.Get(existing.RepoID)
+		if sc.repo == nil {
 			return connect.NewError(connect.CodeFailedPrecondition,
 				errors.New("session's repo is no longer registered"))
 		}
 	} else {
-		repoEntry = s.Repos.Get(msg.RepoId)
-		if repoEntry == nil {
+		sc.repo = s.Repos.Get(sc.msg.RepoId)
+		if sc.repo == nil {
 			return connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 		}
-		title := makeTitle(text)
-		created, err := s.DB.CreateSession(ctx, newID(), principal, repoEntry.ID, title)
+		title := makeTitle(sc.text)
+		created, err := s.DB.CreateSession(ctx, newID(), sc.principal, sc.repo.ID, title)
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, err)
 		}
-		sess = created
+		sc.sess = created
+		sc.isNew = true
 	}
 
-	// ── Edit / regenerate: truncate the session at the target message
-	// before appending the new user turn. replace_from_message_id is
-	// expected to be a message already in this session; any mismatch
-	// (wrong session, deleted id) returns zero rows and we proceed as
-	// a normal append, which matches "client raced; the message is
-	// already gone" behaviour.
-	if msg.ReplaceFromMessageId != "" {
-		if _, err := s.DB.DeleteMessagesFrom(ctx, sess.ID, msg.ReplaceFromMessageId); err != nil {
+	// Edit / regenerate: truncate the session at the target message.
+	if sc.msg.ReplaceFromMessageId != "" {
+		if _, err := s.DB.DeleteMessagesFrom(ctx, sc.sess.ID, sc.msg.ReplaceFromMessageId); err != nil {
 			return connect.NewError(connect.CodeInternal, err)
 		}
 	}
+	return nil
+}
 
-	// ── Persist the user turn.
-	userMsgID := newID()
+// persistUserTurn writes the user message and its attachments to SQLite.
+func (s *Service) persistUserTurn(ctx context.Context, sc *streamCtx) error {
+	sc.userMsgID = newID()
 	if err := s.DB.CreateMessage(ctx, storage.MessageRow{
-		ID:        userMsgID,
-		SessionID: sess.ID,
+		ID:        sc.userMsgID,
+		SessionID: sc.sess.ID,
 		Role:      "user",
-		Content:   text,
+		Content:   sc.text,
 	}); err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
-	for _, a := range msg.Attachments {
+	for _, a := range sc.msg.Attachments {
 		if err := s.DB.CreateAttachment(ctx, storage.AttachmentRow{
 			ID:        newID(),
-			MessageID: userMsgID,
+			MessageID: sc.userMsgID,
 			MimeType:  a.MimeType,
 			Filename:  a.Filename,
 			Size:      int64(len(a.Data)),
@@ -434,10 +464,14 @@ func (s *Service) StreamMessage(
 			return connect.NewError(connect.CodeInternal, err)
 		}
 	}
+	return nil
+}
 
-	// Resolve the LLM adapter and parameters for this request. The
-	// adapter is lazily reconstructed when config changes (e.g. user
-	// switches from openai to anthropic in the settings UI).
+// prepareLLM resolves the adapter, reads params, and sends the Started chunk.
+func (s *Service) prepareLLM(
+	ctx context.Context, sc *streamCtx,
+	send func(*gitchatv1.MessageChunk) error,
+) error {
 	adapter, err := s.resolveLLM(ctx)
 	if err != nil {
 		slog.Warn("LLM adapter reconstruction failed, using previous", "err", err)
@@ -445,147 +479,124 @@ func (s *Service) StreamMessage(
 	if adapter == nil {
 		return connect.NewError(connect.CodeInternal, errors.New("no LLM adapter available"))
 	}
-	model, temperature, maxTokens := s.llmParams(ctx)
+	sc.adapter = adapter
+	sc.model, sc.temp, sc.maxTok = s.llmParams(ctx)
+	sc.caps = adapter.Capabilities(ctx, sc.model)
 
-	// Resolve the adapter's capability profile for the active model so
-	// we can strip attachments the model cannot consume before they
-	// reach the LLM. Persisted attachments are untouched — only the
-	// prompt payload is filtered, so the transcript still reflects
-	// what the user actually uploaded.
-	caps := adapter.Capabilities(ctx, model)
 	var warnings []string
-	if !caps.Images && hasImageAttachment(msg.Attachments) {
+	if !sc.caps.Images && hasImageAttachment(sc.msg.Attachments) {
 		warnings = append(warnings,
-			fmt.Sprintf("images stripped — model %q does not report vision support", model))
+			fmt.Sprintf("images stripped — model %q does not report vision support", sc.model))
 	}
-
-	// Tell the client the user turn's canonical ID (and the session's,
-	// if we just created one) before we start the LLM stream. Retries
-	// after a mid-stream failure need user_message_id to pass through
-	// replace_from_message_id and truncate the failed pair — without
-	// this the client only learns the ID from Done, which doesn't
-	// arrive on error.
 	startedSessionID := ""
-	if isNew {
-		startedSessionID = sess.ID
+	if sc.isNew {
+		startedSessionID = sc.sess.ID
 	}
-	if err := send(&gitchatv1.MessageChunk{
+	return send(&gitchatv1.MessageChunk{
 		Kind: &gitchatv1.MessageChunk_Started{
 			Started: &gitchatv1.Started{
-				UserMessageId: userMsgID,
+				UserMessageId: sc.userMsgID,
 				SessionId:     startedSessionID,
 				Warnings:      warnings,
 			},
 		},
+	})
+}
+
+// tryKBCacheHit checks whether a valid knowledge card can answer the
+// question without calling the LLM. Returns (true, nil) when the cache
+// hit was served, (false, nil) to fall through to the LLM.
+func (s *Service) tryKBCacheHit(
+	ctx context.Context, sc *streamCtx,
+	send func(*gitchatv1.MessageChunk) error,
+) (bool, error) {
+	normalizedQ := storage.NormalizeQuestion(sc.text)
+	headCommit := sc.repo.HeadCommit()
+
+	card, cardErr := s.DB.FindValidCard(ctx, sc.repo.ID, normalizedQ)
+	if cardErr != nil || card == nil {
+		return false, nil
+	}
+	if card.LastVerifiedCommit != headCommit {
+		if !s.verifyProvenance(ctx, card, sc.repo, headCommit) {
+			return false, nil
+		}
+	}
+
+	_ = s.DB.IncrementCardHit(ctx, card.ID)
+	if err := send(&gitchatv1.MessageChunk{
+		Kind: &gitchatv1.MessageChunk_CardHit{
+			CardHit: &gitchatv1.KnowledgeCardHit{
+				CardId:        card.ID,
+				AnswerMd:      card.AnswerMD,
+				Model:         card.Model,
+				HitCount:      int32(card.HitCount + 1),
+				CreatedCommit: card.CreatedCommit,
+			},
+		},
 	}); err != nil {
-		return err
+		return true, err
 	}
-
-	// ── Knowledge-base fast path (M5). If a valid card exists for
-	// this exact (normalized) question and its provenance still
-	// matches HEAD, skip the LLM entirely and return the cached
-	// answer.
-	normalizedQ := storage.NormalizeQuestion(text)
-	repoID := repoEntry.ID
-	headCommit := repoEntry.HeadCommit()
-
-	card, cardErr := s.DB.FindValidCard(ctx, repoID, normalizedQ)
-	if cardErr == nil && card != nil {
-		// Verify provenance if HEAD moved since last verification.
-		if card.LastVerifiedCommit != headCommit {
-			if stillValid := s.verifyProvenance(ctx, card, repoEntry, headCommit); !stillValid {
-				card = nil // fall through to LLM
-			}
-		}
-		if card != nil {
-			// Fast path: serve from cache.
-			_ = s.DB.IncrementCardHit(ctx, card.ID)
-			if err := send(&gitchatv1.MessageChunk{
-				Kind: &gitchatv1.MessageChunk_CardHit{
-					CardHit: &gitchatv1.KnowledgeCardHit{
-						CardId:        card.ID,
-						AnswerMd:      card.AnswerMD,
-						Model:         card.Model,
-						HitCount:      int32(card.HitCount + 1),
-						CreatedCommit: card.CreatedCommit,
-					},
-				},
-			}); err != nil {
-				return err
-			}
-			// Persist as an assistant turn so the transcript is complete.
-			assistantID := newID()
-			if err := s.DB.CreateMessage(ctx, storage.MessageRow{
-				ID:        assistantID,
-				SessionID: sess.ID,
-				Role:      "assistant",
-				Content:   card.AnswerMD,
-				Model:     card.Model,
-			}); err != nil {
-				slog.Warn("KB cache hit: failed to persist assistant message", "err", err)
-			}
-			if err := s.DB.TouchSession(ctx, sess.ID); err != nil {
-				slog.Warn("KB cache hit: failed to touch session", "err", err)
-			}
-			return send(&gitchatv1.MessageChunk{
-				Kind: &gitchatv1.MessageChunk_Done{
-					Done: &gitchatv1.Done{
-						SessionId:          sess.ID,
-						UserMessageId:      userMsgID,
-						AssistantMessageId: assistantID,
-						Model:              card.Model,
-					},
-				},
-			})
-		}
+	assistantID := newID()
+	if err := s.DB.CreateMessage(ctx, storage.MessageRow{
+		ID:        assistantID,
+		SessionID: sc.sess.ID,
+		Role:      "assistant",
+		Content:   card.AnswerMD,
+		Model:     card.Model,
+	}); err != nil {
+		slog.Warn("KB cache hit: failed to persist assistant message", "err", err)
 	}
+	if err := s.DB.TouchSession(ctx, sc.sess.ID); err != nil {
+		slog.Warn("KB cache hit: failed to touch session", "err", err)
+	}
+	return true, send(&gitchatv1.MessageChunk{
+		Kind: &gitchatv1.MessageChunk_Done{
+			Done: &gitchatv1.Done{
+				SessionId:          sc.sess.ID,
+				UserMessageId:      sc.userMsgID,
+				AssistantMessageId: assistantID,
+				Model:              card.Model,
+			},
+		},
+	})
+}
 
-	// ── Load history (oldest → newest) for the prompt.
-	history, err := s.DB.ListMessages(ctx, sess.ID)
+// runLLMAndPersist loads history, builds the prompt, runs the agentic
+// LLM loop, persists the assistant turn, and sends the Done chunk.
+func (s *Service) runLLMAndPersist(
+	ctx context.Context, sc *streamCtx,
+	send func(*gitchatv1.MessageChunk) error,
+) error {
+	// Load history, drop the user turn we just inserted.
+	history, err := s.DB.ListMessages(ctx, sc.sess.ID)
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
-	// The message we just inserted is in history; drop the tail so we
-	// don't duplicate it when we append the user turn in buildPrompt.
-	if n := len(history); n > 0 && history[n-1].ID == userMsgID {
+	if n := len(history); n > 0 && history[n-1].ID == sc.userMsgID {
 		history = history[:n-1]
 	}
-	// Sliding window: only send the most recent N turns to the LLM.
-	// Long sessions accumulate hundreds of messages that blow the
-	// context window. We keep the last maxHistoryTurns messages
-	// (each user+assistant pair = 2 entries). Older context is still
-	// in SQLite for the user to scroll through.
 	if len(history) > maxHistoryTurns {
 		history = history[len(history)-maxHistoryTurns:]
 	}
 
-	// ── Build the prompt and start the LLM stream.
-	//
-	// We deliberately do NOT return a connect.Error when the LLM adapter
-	// fails to start — we want the browser to see the failure *inside*
-	// the stream (as the error field on the Done chunk), not as a
-	// top-level RPC error. The connect-web client turns top-level errors
-	// into opaque "unexpected end of JSON input" messages, while inline
-	// errors render cleanly next to the assistant turn.
-	historyAttachments, err := s.DB.ListAttachmentsForSession(ctx, sess.ID)
+	// Build prompt.
+	historyAttachments, err := s.DB.ListAttachmentsForSession(ctx, sc.sess.ID)
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
-	currentAttachments := protoToLLMAttachments(msg.Attachments)
-	if !caps.Images {
+	currentAttachments := protoToLLMAttachments(sc.msg.Attachments)
+	if !sc.caps.Images {
 		currentAttachments = stripImageAttachments(currentAttachments)
 		historyAttachments = stripImageHistory(historyAttachments)
 	}
-	historyToolEvents, err := s.DB.ListToolEventsForSession(ctx, sess.ID)
+	historyToolEvents, err := s.DB.ListToolEventsForSession(ctx, sc.sess.ID)
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
-	msgs := s.buildPrompt(ctx, repoEntry, history, text, currentAttachments, historyAttachments, historyToolEvents)
-	var assistant strings.Builder
-	var finalIn, finalOut int
-	var llmErr string
+	msgs := s.buildPrompt(ctx, sc.repo, history, sc.text, currentAttachments, historyAttachments, historyToolEvents)
 
-	// Build the tool spec once — the catalog is stable across rounds.
+	// Build tool specs once.
 	var toolSpecs []llm.ToolSpec
 	if s.Tools != nil {
 		for _, sp := range s.Tools.Specs() {
@@ -597,30 +608,84 @@ func (s *Service) StreamMessage(
 		}
 	}
 
-	// ── Agentic loop.
-	//
-	// Each round we stream the LLM's next response, forwarding token
-	// chunks and tool_use chunks to the client as they arrive. If the
-	// round emits any tool_use, we execute each tool via the registry,
-	// append {assistant: tool_calls} + {tool: result} messages to the
-	// prompt, and go again. The loop terminates when a round produces
-	// no tool_use (the model has answered), the adapter fails, or the
-	// hard round cap is hit.
-	var persistedEvents []storage.ToolEventRow
+	// Run the agentic loop.
+	assistantText, finalIn, finalOut, persistedEvents, llmErr := s.agenticLoop(
+		ctx, sc, msgs, toolSpecs, send,
+	)
+
+	// Persist the assistant turn.
+	assistantID := newID()
+	if err := s.DB.CreateMessage(ctx, storage.MessageRow{
+		ID:            assistantID,
+		SessionID:     sc.sess.ID,
+		Role:          "assistant",
+		Content:       assistantText,
+		Model:         sc.model,
+		TokenCountIn:  finalIn,
+		TokenCountOut: finalOut,
+	}); err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	for _, ev := range persistedEvents {
+		ev.ID = newID()
+		ev.MessageID = assistantID
+		if err := s.DB.CreateToolEvent(ctx, ev); err != nil {
+			slog.Warn("persist tool event failed", "err", err, "tool", ev.Name)
+		}
+	}
+	if err := s.DB.TouchSession(ctx, sc.sess.ID); err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Background tasks: KB promotion and smart title.
+	repoID := sc.repo.ID
+	normalizedQ := storage.NormalizeQuestion(sc.text)
+	headCommit := sc.repo.HeadCommit()
+	if assistantText != "" && llmErr == "" {
+		go s.maybePromoteCard(sc.model, repoID, normalizedQ, assistantText, headCommit, sc.text, sc.repo, sc.principal)
+	}
+	if sc.isNew && !s.DisableSmartTitle {
+		go s.generateSmartTitle(sc.adapter, sc.model, sc.sess.ID, sc.text, assistantText)
+	}
+
+	return send(&gitchatv1.MessageChunk{
+		Kind: &gitchatv1.MessageChunk_Done{
+			Done: &gitchatv1.Done{
+				SessionId:          sc.sess.ID,
+				UserMessageId:      sc.userMsgID,
+				AssistantMessageId: assistantID,
+				TokenCountIn:       int32(finalIn),
+				TokenCountOut:      int32(finalOut),
+				Model:              sc.model,
+				Error:              llmErr,
+			},
+		},
+	})
+}
+
+// agenticLoop streams LLM responses and executes tool calls in a loop.
+// Returns the accumulated assistant text, token counts, tool events, and
+// any LLM error string.
+func (s *Service) agenticLoop(
+	ctx context.Context, sc *streamCtx,
+	msgs []llm.Message, toolSpecs []llm.ToolSpec,
+	send func(*gitchatv1.MessageChunk) error,
+) (assistantText string, totalIn, totalOut int, events []storage.ToolEventRow, llmErr string) {
+	var assistant strings.Builder
 	toolOrdinal := 0
 	roundMsgs := append([]llm.Message(nil), msgs...)
+
 	for round := 0; round < toolLoopMax; round++ {
-		// Bail early if the client disconnected.
 		if ctx.Err() != nil {
 			llmErr = "client disconnected"
 			break
 		}
 		slog.Debug("agentic round starting", "round", round, "msgs", len(roundMsgs))
-		llmChunks, err := adapter.Stream(ctx, llm.Request{
-			Model:       model,
+		llmChunks, err := sc.adapter.Stream(ctx, llm.Request{
+			Model:       sc.model,
 			Messages:    roundMsgs,
-			Temperature: temperature,
-			MaxTokens:   maxTokens,
+			Temperature: sc.temp,
+			MaxTokens:   sc.maxTok,
 			Tools:       toolSpecs,
 		})
 		if err != nil {
@@ -637,18 +702,18 @@ func (s *Service) StreamMessage(
 				if err := send(&gitchatv1.MessageChunk{
 					Kind: &gitchatv1.MessageChunk_Token{Token: c.Token},
 				}); err != nil {
-					return err
+					return assistant.String(), totalIn, totalOut, events, "send error"
 				}
 			case llm.ChunkReasoning:
 				if err := send(&gitchatv1.MessageChunk{
 					Kind: &gitchatv1.MessageChunk_Thinking{Thinking: c.Reasoning},
 				}); err != nil {
-					return err
+					return assistant.String(), totalIn, totalOut, events, "send error"
 				}
 			case llm.ChunkToolUse:
 				tc := llm.ToolCall{ID: c.ToolUseID, Name: c.ToolName, Args: c.ToolArgs}
 				roundCalls = append(roundCalls, tc)
-				if err := send(&gitchatv1.MessageChunk{
+				_ = send(&gitchatv1.MessageChunk{
 					Kind: &gitchatv1.MessageChunk_ToolCall{
 						ToolCall: &gitchatv1.ToolCall{
 							Id:       c.ToolUseID,
@@ -656,54 +721,43 @@ func (s *Service) StreamMessage(
 							ArgsJson: string(c.ToolArgs),
 						},
 					},
-				}); err != nil {
-					return err
-				}
+				})
 			case llm.ChunkDone:
-				finalIn += c.TokenCountIn
-				finalOut += c.TokenCountOut
+				totalIn += c.TokenCountIn
+				totalOut += c.TokenCountOut
 				llmErr = c.Error
 			}
 		}
 		slog.Debug("agentic round finished", "round", round,
 			"text_bytes", roundText.Len(), "calls", len(roundCalls),
-			"tokens_in", finalIn, "tokens_out", finalOut,
+			"tokens_in", totalIn, "tokens_out", totalOut,
 			"llm_err", llmErr)
 		if llmErr != "" || len(roundCalls) == 0 || s.Tools == nil {
 			break
 		}
-		// Cap check before executing tools — avoids wasted work on
-		// the final round when we'd just discard the results.
 		if round == toolLoopMax-1 {
 			llmErr = fmt.Sprintf("tool loop cap reached (%d rounds)", toolLoopMax)
 			break
 		}
-		// Replay this round's assistant output into roundMsgs so the
-		// next Stream call sees the tool_use blocks in history.
 		roundMsgs = append(roundMsgs, llm.Message{
 			Role:      llm.RoleAssistant,
 			Content:   roundText.String(),
 			ToolCalls: roundCalls,
 		})
-		// Execute each tool and forward the result both to the client
-		// (for immediate UI rendering) and back into the prompt.
 		for _, tc := range roundCalls {
-			// Check for client disconnect between tool executions.
 			if ctx.Err() != nil {
 				llmErr = "client disconnected"
 				break
 			}
-			// Per-tool timeout prevents a single slow tool from
-			// blocking the entire turn.
 			toolCtx, toolCancel := context.WithTimeout(ctx, 30*time.Second)
-			output, execErr := s.Tools.Execute(toolCtx, repoEntry, tc.Name, tc.Args)
+			output, execErr := s.Tools.Execute(toolCtx, sc.repo, tc.Name, tc.Args)
 			toolCancel()
 			isErr := false
 			if execErr != nil {
 				output = execErr.Error()
 				isErr = true
 			}
-			if err := send(&gitchatv1.MessageChunk{
+			_ = send(&gitchatv1.MessageChunk{
 				Kind: &gitchatv1.MessageChunk_ToolResult{
 					ToolResult: &gitchatv1.ToolResult{
 						Id:      tc.ID,
@@ -711,10 +765,8 @@ func (s *Service) StreamMessage(
 						IsError: isErr,
 					},
 				},
-			}); err != nil {
-				return err
-			}
-			persistedEvents = append(persistedEvents, storage.ToolEventRow{
+			})
+			events = append(events, storage.ToolEventRow{
 				ToolCallID:    tc.ID,
 				Name:          tc.Name,
 				ArgsJSON:      string(tc.Args),
@@ -730,71 +782,7 @@ func (s *Service) StreamMessage(
 			})
 		}
 	}
-
-	// ── Persist the assistant turn and touch the session.
-	assistantContent := assistant.String()
-	assistantID := newID()
-	if err := s.DB.CreateMessage(ctx, storage.MessageRow{
-		ID:            assistantID,
-		SessionID:     sess.ID,
-		Role:          "assistant",
-		Content:       assistantContent,
-		Model:         model,
-		TokenCountIn:  finalIn,
-		TokenCountOut: finalOut,
-	}); err != nil {
-		return connect.NewError(connect.CodeInternal, err)
-	}
-	// Persist every tool call + result from the agentic loop. Errors
-	// are logged but don't fail the turn — tool history is useful for
-	// rehydration but not load-bearing for the answer itself.
-	for _, ev := range persistedEvents {
-		ev.ID = newID()
-		ev.MessageID = assistantID
-		if err := s.DB.CreateToolEvent(ctx, ev); err != nil {
-			slog.Warn("persist tool event failed", "err", err, "tool", ev.Name)
-		}
-	}
-	if err := s.DB.TouchSession(ctx, sess.ID); err != nil {
-		return connect.NewError(connect.CodeInternal, err)
-	}
-
-	// ── Post-LLM: check whether this question has been asked enough
-	// times (N-threshold) to warrant caching as a knowledge card.
-	// The current promotion policy requires N≥2 similar
-	// past user messages (via FTS5) before promoting. This prevents
-	// one-off poorly-phrased questions from polluting the KB.
-	if assistantContent != "" && llmErr == "" {
-		go s.maybePromoteCard(model, repoID, normalizedQ, assistantContent, headCommit, text, repoEntry, principal)
-	}
-
-	// Fire-and-forget title generation for new sessions. The user
-	// sees the fallback truncated-first-message title immediately;
-	// this goroutine generates a short LLM-powered title and updates
-	// it in SQLite. The next time the client fetches the session list
-	// (which happens on the Done chunk re-fetch), it picks up the
-	// smart title. Errors are swallowed — a bad title is cosmetic.
-	if isNew && !s.DisableSmartTitle {
-		go s.generateSmartTitle(adapter, model, sess.ID, text, assistantContent)
-	}
-
-	// ── Final Done chunk.
-	if err := send(&gitchatv1.MessageChunk{
-		Kind: &gitchatv1.MessageChunk_Done{
-			Done: &gitchatv1.Done{
-				SessionId:          sess.ID,
-				UserMessageId:      userMsgID,
-				AssistantMessageId: assistantID,
-				TokenCountIn:       int32(finalIn),
-				TokenCountOut:      int32(finalOut),
-				Model:              model,
-				Error:              llmErr,
-			},
-		},
-	}); err != nil {
-		return err
-	}
-	return nil
+	return assistant.String(), totalIn, totalOut, events, llmErr
 }
 
 // ─── ListCards ─────────────────────────────────────────────────────────
