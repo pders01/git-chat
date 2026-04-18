@@ -55,6 +55,12 @@ export class GcChatView extends LitElement {
   @state() private sessionTokensIn = 0;
   @state() private sessionTokensOut = 0;
 
+  // Active-model indicator. Shown above the composer as a persistent
+  // reminder of what the next turn will hit. Refreshed on mount and
+  // after every slash-action (/model, /profile).
+  @state() private activeModel = "";
+  @state() private activeProfileName = "";
+
   private _lastRestoredSession = "";
   private _lastPrefillNonce = 0;
   private _lastFileMentionNonce = 0;
@@ -126,7 +132,30 @@ export class GcChatView extends LitElement {
     if (this.repoId) {
       void this.loadSessions();
     }
+    void this.loadActiveModel();
     this.addEventListener("keydown", this.onKeydownLocal);
+  }
+
+  // Resolve what model/profile the next chat turn will use. Mirrors the
+  // settings panel's effectiveLLMStatus: profile.model > LLM_MODEL
+  // override > compiled default. Kept intentionally lightweight — two
+  // small RPCs, no cache, runs on mount and after slash actions. Fails
+  // silently: indicator just stays blank if the server is unreachable.
+  private async loadActiveModel() {
+    try {
+      const [cfg, profs] = await Promise.all([
+        repoClient.getConfig({}),
+        repoClient.listProfiles({}),
+      ]);
+      const modelEntry = cfg.entries?.find((e) => e.key === "LLM_MODEL");
+      const activeId = profs.activeProfileId ?? "";
+      const active = profs.profiles?.find((p) => p.id === activeId);
+      this.activeProfileName = active?.name ?? "";
+      this.activeModel =
+        active?.model || modelEntry?.value || modelEntry?.defaultValue || "";
+    } catch {
+      // Unreachable backend → leave indicator blank rather than error.
+    }
   }
 
   override disconnectedCallback() {
@@ -572,6 +601,9 @@ export class GcChatView extends LitElement {
       } else {
         this.toast("warn", `unknown slash command: /${command}`);
       }
+      // Refresh the persistent model indicator so the chip under the
+      // composer reflects the change the user just made.
+      void this.loadActiveModel();
     } catch (err) {
       this.toast("error", err instanceof Error ? err.message : String(err));
     }
@@ -710,6 +742,18 @@ export class GcChatView extends LitElement {
                 @gc:update-turns=${this.onUpdateTurns}
               ></gc-message-list>`}
 
+          ${this.activeModel
+            ? html`<div class="model-indicator" role="status" aria-live="polite">
+                <span class="model-indicator-label">model</span>
+                <span class="model-indicator-value">${this.activeModel}</span>
+                ${this.activeProfileName
+                  ? html`<span class="model-indicator-sep">·</span>
+                      <span class="model-indicator-profile"
+                        >${this.activeProfileName}</span
+                      >`
+                  : nothing}
+              </div>`
+            : nothing}
           <gc-composer
             .repoId=${this.repoId}
             .sending=${this.sending}
@@ -837,6 +881,39 @@ export class GcChatView extends LitElement {
       opacity: 0.4;
       margin-right: auto;
       letter-spacing: 0.01em;
+    }
+    /* Persistent active-model indicator, pinned directly above the
+       composer. Kept small and subdued — it's a reminder, not UI chrome.
+       Sits inside the same vertical stack as the composer so it doesn't
+       overlap messages when scrolled. */
+    .model-indicator {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      max-width: var(--content-max-width);
+      margin: 0 auto var(--space-1);
+      padding: 0 var(--space-7);
+      font-size: var(--text-xs);
+      opacity: 0.55;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .model-indicator-label {
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.6rem;
+      opacity: 0.7;
+    }
+    .model-indicator-value {
+      font-family: var(--font-mono, ui-monospace, monospace);
+      color: var(--accent-assistant);
+    }
+    .model-indicator-sep {
+      opacity: 0.4;
+    }
+    .model-indicator-profile {
+      font-style: italic;
     }
     .dashboard-wrap {
       flex: 1;
