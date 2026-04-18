@@ -94,6 +94,12 @@ export class GcCommitCalendar extends LitElement {
   // on explicit button press, consistent with code-city's
   // building-click → detail panel → "View File" action flow.
   @state() private armedCommit: CommitEntry | null = null;
+  // Tracks whether kalendus's detail menu is currently open. While
+  // it is, the toast is suppressed — the tooltip already shows the
+  // same heading/content and they'd otherwise collide at the bottom
+  // of the pane. When the user dismisses the menu, the toast
+  // re-appears so "view commit" is reachable without re-arming.
+  @state() private menuOpen = false;
   // Cache the mapped CalendarEntry per SHA so progressive batches
   // from the parent (fetch-loop) only convert new commits, not
   // the whole array each tick. Kalendus still reprocesses the
@@ -212,6 +218,7 @@ export class GcCommitCalendar extends LitElement {
       date,
       anchorRect: cal.getBoundingClientRect(),
     });
+    this.menuOpen = true;
   }
 
   private findEntryByHeading(cal: KalendusAPI, heading: string): HTMLElement | undefined {
@@ -234,6 +241,24 @@ export class GcCommitCalendar extends LitElement {
     // in the action bar to drill in. Kalendus's own detail popup
     // still opens from the click for quick reading.
     this.armedCommit = commit;
+    this.menuOpen = true;
+    // Let the parent know so it can sync calendarArmedSha — the
+    // sidebar commit row for this SHA then gets .armed highlighting
+    // and both surfaces stay in sync (calendar click → sidebar
+    // highlights; sidebar click → calendar reveals). Idempotent:
+    // if parent already has this SHA armed (sidebar-driven path),
+    // the re-assignment is a no-op identity match.
+    this.dispatchEvent(
+      new CustomEvent("gc:arm-commit", {
+        bubbles: true,
+        composed: true,
+        detail: { sha: commit.sha },
+      }),
+    );
+  };
+
+  private onMenuClose = () => {
+    this.menuOpen = false;
   };
 
   private viewArmedCommit() {
@@ -267,8 +292,9 @@ export class GcCommitCalendar extends LitElement {
         .yearDrillTarget=${"day"}
         color="var(--accent-user, #3b82f6)"
         @open-menu=${this.onOpenMenu}
+        @menu-close=${this.onMenuClose}
       ></lms-calendar>
-      ${this.armedCommit
+      ${this.armedCommit && !this.menuOpen
         ? html`<div class="action-bar" role="region" aria-label="Selected commit">
             <span class="action-sha">${this.armedCommit.shortSha}</span>
             <span class="action-msg">${this.armedCommit.message}</span>
@@ -278,14 +304,6 @@ export class GcCommitCalendar extends LitElement {
               aria-label="View commit diff"
             >
               view commit →
-            </button>
-            <button
-              class="action-close"
-              @click=${() => (this.armedCommit = null)}
-              aria-label="Dismiss"
-              title="Dismiss"
-            >
-              ×
             </button>
           </div>`
         : nothing}
@@ -362,18 +380,6 @@ export class GcCommitCalendar extends LitElement {
     }
     .action-btn:hover {
       opacity: 0.85;
-    }
-    .action-close {
-      background: transparent;
-      color: var(--text-muted);
-      border: none;
-      padding: 0 var(--space-1);
-      font-size: var(--text-sm);
-      cursor: pointer;
-      opacity: 0.6;
-    }
-    .action-close:hover {
-      opacity: 1;
     }
     lms-calendar {
       flex: 1;

@@ -1049,11 +1049,12 @@ export class GcCommitLog extends LitElement {
           <svg class="graph-svg" width="${svgW}" height="${svgH}">${svgLines} ${svgDots}</svg>
           ${commits.map((c, i) => {
             const y = i * ROW_H;
-            const armed = this.viewMode === "calendar" && c.sha === this.calendarArmedSha;
+            const inCal = this.viewMode === "calendar";
+            const armed = inCal && c.sha === this.calendarArmedSha;
+            const selected = !inCal && c.sha === this.selectedSha;
             return html` <button
-              class="graph-row ${c.sha === this.selectedSha ? "selected" : ""} ${armed
-                ? "armed"
-                : ""}"
+              data-sha=${c.sha}
+              class="graph-row ${selected ? "selected" : ""} ${armed ? "armed" : ""}"
               style="height:${ROW_H}px; top:${y}px; padding-left:${svgW + 4}px"
               @click=${() => this.pickCommit(c.sha)}
               title="${c.message} — ${c.authorName}"
@@ -1179,14 +1180,15 @@ export class GcCommitLog extends LitElement {
               ? this.renderGraph(commits)
               : html`<ul class="commits" role="list" @keydown=${this.onListKeydown}>
                   ${commits.map((c) => {
-                    const armed = this.viewMode === "calendar" && c.sha === this.calendarArmedSha;
+                    const inCal = this.viewMode === "calendar";
+                    const armed = inCal && c.sha === this.calendarArmedSha;
+                    const selected = !inCal && c.sha === this.selectedSha;
                     return html`
                       <li>
                         <button
-                          class="commit-row ${c.sha === this.selectedSha ? "selected" : ""} ${armed
-                            ? "armed"
-                            : ""}"
-                          aria-pressed=${c.sha === this.selectedSha ? "true" : "false"}
+                          data-sha=${c.sha}
+                          class="commit-row ${selected ? "selected" : ""} ${armed ? "armed" : ""}"
+                          aria-pressed=${selected || armed ? "true" : "false"}
                           @click=${() => this.pickCommit(c.sha)}
                           title="${c.message} — ${c.authorName}"
                         >
@@ -1224,6 +1226,7 @@ export class GcCommitLog extends LitElement {
                 .loading=${this.calendarLoading}
                 .armedSha=${this.calendarArmedSha}
                 @gc:select-commit=${this.onCalendarPick}
+                @gc:arm-commit=${this.onCalendarArm}
               ></gc-commit-calendar>`
             : html` <!-- Middle: commit info pane — split vertically, top is the
              commit metadata capped at 50% of the pane height, bottom is
@@ -1416,6 +1419,32 @@ export class GcCommitLog extends LitElement {
     this.calendarArmedSha = "";
     this.setViewMode("commits");
     void this.selectCommit(e.detail.sha);
+  };
+
+  // User clicked a calendar entry — child reports which SHA so the
+  // sidebar row can reflect the same armed state. If the commit
+  // lives in the full-history calendarCommits but hasn't paged into
+  // the paginated sidebar yet, splice it in at its chronological
+  // position so the row exists to highlight. Then scroll into view
+  // so the user sees the selection echo even if the list was
+  // scrolled elsewhere. Safe to echo the sidebar-driven path too:
+  // same SHA = no-op identity match.
+  private onCalendarArm = (e: CustomEvent<{ sha: string }>) => {
+    const sha = e.detail.sha;
+    if (this.state.phase === "ready" && !this.state.commits.some((c) => c.sha === sha)) {
+      const fromCal = this.calendarCommits.find((c) => c.sha === sha);
+      if (fromCal) {
+        this.state = {
+          ...this.state,
+          commits: insertByAuthorTime(this.state.commits, fromCal),
+        };
+      }
+    }
+    this.calendarArmedSha = sha;
+    void this.updateComplete.then(() => {
+      const row = this.renderRoot.querySelector<HTMLElement>(`[data-sha="${sha}"]`);
+      row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
   };
 
   static override styles = css`
