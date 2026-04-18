@@ -145,6 +145,7 @@ var (
 	maxAttachmentBytes   = envIntSvc("GITCHAT_MAX_ATTACHMENT_BYTES", 10*1024*1024)
 	maxAttachmentTotal   = envIntSvc("GITCHAT_MAX_ATTACHMENTS_TOTAL_BYTES", 20*1024*1024)
 	toolLoopMax          = envIntSvc("GITCHAT_TOOL_LOOP_MAX", 8)
+	toolLoopMaxTokens    = envIntSvc("GITCHAT_TOOL_LOOP_MAX_TOKENS", 100_000)
 )
 
 // allowedAttachmentMIMEs restricts uploads to image types Anthropic's
@@ -733,6 +734,10 @@ func (s *Service) agenticLoop(
 			"tokens_in", totalIn, "tokens_out", totalOut,
 			"llm_err", llmErr)
 		if llmErr != "" || len(roundCalls) == 0 || s.Tools == nil {
+			break
+		}
+		if totalIn+totalOut > toolLoopMaxTokens {
+			llmErr = fmt.Sprintf("token budget exceeded (%d tokens used, limit %d)", totalIn+totalOut, toolLoopMaxTokens)
 			break
 		}
 		if round == toolLoopMax-1 {
