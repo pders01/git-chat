@@ -59,6 +59,23 @@ export class GcCommitLog extends LitElement {
   // in calendar mode flips back to commits mode with that SHA
   // selected so the diff flow resumes without losing context.
   @state() private viewMode: "commits" | "calendar" = "commits";
+  // Full commit history for calendar view. The main commits array
+  // pages lazily via "load more", but a heatmap is misleading
+  // without the complete dataset — a busy day looks identical to
+  // an empty one if half the commits haven't been fetched yet.
+  // Populated by a background fetch-loop on first switch to
+  // calendar; reset on repo/branch change via the existing updated
+  // hook path.
+  @state() private calendarCommits: CommitEntry[] = [];
+  @state() private calendarLoading = false;
+  private calendarLoaded = false;
+  // Infinite-scroll plumbing for the commits list. The sentinel
+  // sits at the tail of the commits list; whenever it crosses
+  // into the scroll viewport, we fire the next page load. The
+  // observer is wired in updated() because the sentinel's
+  // presence depends on state.hasMore, which changes at runtime.
+  @state() private loadingMore = false;
+  private listObserver: IntersectionObserver | null = null;
   @state() private files: ChangedFile[] = [];
   @state() private selectedFile = ""; // "" = all files
   @state() private commitFilter = "";
@@ -114,6 +131,8 @@ export class GcCommitLog extends LitElement {
     this.unsubSettings = null;
     this.renameAbort?.abort();
     this.renameAbort = null;
+    this.listObserver?.disconnect();
+    this.listObserver = null;
   }
 
   private onSyncFocus = () => {
@@ -161,6 +180,22 @@ export class GcCommitLog extends LitElement {
       this.repoId
     ) {
       void this.load(0);
+      // Invalidate the calendar dataset — different repo/branch
+      // means different history.
+      this.calendarCommits = [];
+      this.calendarLoaded = false;
+    }
+    // Kick off the full-history fetch the first time the user
+    // switches into calendar view. Cached until the invalidation
+    // above fires.
+    if (
+      changed.has("viewMode") &&
+      this.viewMode === "calendar" &&
+      !this.calendarLoaded &&
+      !this.calendarLoading &&
+      this.repoId
+    ) {
+      void this.loadAllCommits();
     }
     if (
       changed.has("initialCommitSha") &&
@@ -176,6 +211,87 @@ export class GcCommitLog extends LitElement {
     }
     if (changed.has("initialSplitView")) {
       this.splitView = this.initialSplitView;
+    }
+    // Re-attach the infinite-scroll sentinel observer every render
+    // in commits view — the sentinel is recreated whenever
+    // hasMore flips or the list re-renders. Calling observe() on
+    // the same element is idempotent, and we disconnect/null the
+    // observer when the sentinel disappears so we don't hold a
+    // stale reference.
+    this.rewireListObserver();
+  }
+
+  private rewireListObserver() {
+    if (this.viewMode !== "commits") {
+      this.listObserver?.disconnect();
+      this.listObserver = null;
+      return;
+    }
+    const sentinel = this.renderRoot.querySelector<HTMLElement>(".load-sentinel");
+    const scroller = this.renderRoot.querySelector<HTMLElement>(".commits");
+    if (!sentinel || !scroller) {
+      this.listObserver?.disconnect();
+      this.listObserver = null;
+      return;
+    }
+    if (!this.listObserver) {
+      this.listObserver = new IntersectionObserver(
+        (entries) => {
+          if (
+            entries.some((e) => e.isIntersecting) &&
+            this.state.phase === "ready" &&
+            this.state.hasMore &&
+            !this.loadingMore
+          ) {
+            this.loadingMore = true;
+            const nextOffset = this.state.offset + 50;
+            void this.load(nextOffset).finally(() => {
+              this.loadingMore = false;
+            });
+          }
+        },
+        { root: scroller, rootMargin: "200px" },
+      );
+    }
+    this.listObserver.observe(sentinel);
+  }
+
+  // loadAllCommits pages through listCommits in small batches so
+  // the calendar heatmap fills in progressively via Lit reactivity
+  // rather than blocking on a single huge fetch. Each batch
+  // assigns to calendarCommits (a @state), which re-renders
+  // gc-commit-calendar with the growing dataset. Small page size
+  // keeps the first-paint latency bounded on large repos; the
+  // loading flag drives a count indicator in the view-switch bar.
+  private async loadAllCommits() {
+    this.calendarLoading = true;
+    this.calendarCommits = [];
+    const pageSize = 100;
+    let offset = 0;
+    try {
+      for (;;) {
+        const resp = await repoClient.listCommits({
+          repoId: this.repoId,
+          ref: this.branch,
+          limit: pageSize,
+          offset,
+          path: "", // whole-repo for the heatmap, not the filtered view
+        });
+        this.calendarCommits =
+          offset === 0 ? resp.commits : [...this.calendarCommits, ...resp.commits];
+        offset += resp.commits.length;
+        if (!resp.hasMore || resp.commits.length === 0) break;
+        // Yield to the event loop so Lit can paint the growing
+        // heatmap between batches — otherwise large repos hold
+        // the main thread across the whole loop.
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      this.calendarLoaded = true;
+    } catch {
+      // Leave calendarLoaded=false so a subsequent switch can
+      // retry. Whatever batches already landed keep rendering.
+    } finally {
+      this.calendarLoading = false;
     }
   }
 
@@ -861,7 +977,7 @@ export class GcCommitLog extends LitElement {
         <button class="retry-btn" @click=${() => void this.load(0)}>retry</button>
       </div>`;
     }
-    const { commits: rawCommits, hasMore, offset } = this.state;
+    const { commits: rawCommits, hasMore } = this.state;
     const lowerFilter = this.commitFilter.toLowerCase();
     const commits = lowerFilter
       ? rawCommits.filter(
@@ -876,7 +992,7 @@ export class GcCommitLog extends LitElement {
         <div class="log-root">
           ${this.renderViewSwitch()}
           <gc-commit-calendar
-            .commits=${commits}
+            .commits=${this.calendarCommits}
             @gc:select-commit=${this.onCalendarPick}
           ></gc-commit-calendar>
         </div>
@@ -976,9 +1092,9 @@ export class GcCommitLog extends LitElement {
                   )}
                 </ul>`}
             ${hasMore
-              ? html`<button class="load-more" @click=${() => this.load(offset + 50)}>
-                  load more
-                </button>`
+              ? html`<div class="load-sentinel" aria-hidden="true">
+                  ${this.loadingMore ? "loading…" : ""}
+                </div>`
               : nothing}
           </aside>
 
@@ -1148,6 +1264,7 @@ export class GcCommitLog extends LitElement {
   }
 
   private renderViewSwitch() {
+    const loaded = this.calendarCommits.length;
     return html`
       <div class="view-switch" role="tablist" aria-label="Log view mode">
         <button
@@ -1166,6 +1283,11 @@ export class GcCommitLog extends LitElement {
         >
           calendar
         </button>
+        ${this.viewMode === "calendar" && (this.calendarLoading || loaded > 0)
+          ? html`<span class="view-progress" aria-live="polite">
+              ${this.calendarLoading ? html`loading ${loaded} commits…` : html`${loaded} commits`}
+            </span>`
+          : nothing}
       </div>
     `;
   }
@@ -1202,36 +1324,45 @@ export class GcCommitLog extends LitElement {
       min-height: 0;
       min-width: 0;
     }
+    /* Tab-underline switcher — same visual language as the app's
+       main tab bar, so it reads as "scoped view toggle" rather
+       than a heavy button pair. The 2px accent underline on the
+       active option matches our other focus/selection affordances. */
     .view-switch {
       display: flex;
-      gap: 2px;
-      padding: var(--space-2) var(--space-3) 0;
+      align-items: center;
+      gap: var(--space-3);
+      padding: 0 var(--space-3);
+      border-bottom: 1px solid var(--surface-4);
       flex-shrink: 0;
+      height: 30px;
     }
     .view-opt {
-      padding: var(--space-1) var(--space-3);
+      padding: 6px 0;
       background: transparent;
-      color: var(--text-muted);
-      border: 1px solid transparent;
-      border-radius: var(--radius-sm);
+      color: var(--text);
+      border: none;
+      border-bottom: 2px solid transparent;
       font-family: inherit;
       font-size: var(--text-xs);
       cursor: pointer;
-      opacity: 0.7;
+      opacity: 0.5;
       transition:
-        background 0.12s ease,
         opacity 0.12s ease,
         border-color 0.12s ease;
     }
     .view-opt:hover {
-      opacity: 1;
-      background: var(--surface-2);
+      opacity: 0.85;
     }
     .view-opt.active {
       opacity: 1;
-      color: var(--text);
-      background: var(--surface-2);
-      border-color: var(--border-default);
+      border-bottom-color: var(--accent-user);
+    }
+    .view-progress {
+      margin-left: auto;
+      font-size: var(--text-xs);
+      opacity: 0.55;
+      letter-spacing: 0.02em;
     }
     gc-commit-calendar {
       flex: 1;
@@ -1373,20 +1504,18 @@ export class GcCommitLog extends LitElement {
       margin-left: var(--space-1);
     }
 
-    .load-more {
-      margin: var(--space-2);
-      padding: var(--space-1) var(--space-3);
-      background: var(--surface-2);
-      color: var(--text);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-md);
-      font-family: inherit;
+    /* Invisible target for the IntersectionObserver; when it
+       scrolls into the viewport we auto-fetch the next page.
+       A small height reserves space for the "loading…" glyph
+       so the list doesn't jitter on page boundaries. */
+    .load-sentinel {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.4;
       font-size: var(--text-xs);
-      cursor: pointer;
-      text-align: center;
-    }
-    .load-more:hover {
-      background: var(--surface-3);
+      padding: var(--space-2);
     }
 
     /* ── List header + graph toggle ─────────────────────────── */
