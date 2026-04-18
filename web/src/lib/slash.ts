@@ -20,6 +20,16 @@
 // context operations only.
 export type SlashCommandKind = "transform" | "action";
 
+/** Controls how the composer stitches an autocomplete suggestion back
+ * into the input when a command has arg autocomplete. */
+export type ArgCompletionMode =
+  /** Single argument, may contain spaces (e.g. profile names like "Local
+   * Gemma"). Accepting a suggestion replaces everything after `/cmd `. */
+  | "whole"
+  /** Multi-arg or single-word arg. Accepting replaces only the last
+   * whitespace-delimited token; earlier args are preserved. */
+  | "word";
+
 export interface SlashCommand {
   /** Trigger word after the leading `/`, e.g. "diff". */
   trigger: string;
@@ -31,6 +41,8 @@ export interface SlashCommand {
   example: string;
   /** How the composer handles this command on submit. */
   kind: SlashCommandKind;
+  /** Set to enable arg autocomplete. Dictates suggestion stitching. */
+  argCompletion?: ArgCompletionMode;
 }
 
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
@@ -40,6 +52,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     hint: "insert a diff marker",
     example: "/diff HEAD~3..HEAD web/src/foo.ts",
     kind: "transform",
+    argCompletion: "word",
   },
   {
     trigger: "model",
@@ -47,6 +60,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     hint: "switch the model for this chat",
     example: "/model claude-opus-4-7",
     kind: "action",
+    argCompletion: "word",
   },
   {
     trigger: "profile",
@@ -54,6 +68,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     hint: "activate a saved LLM profile",
     example: "/profile Local Gemma",
     kind: "action",
+    argCompletion: "whole",
   },
   {
     trigger: "help",
@@ -81,21 +96,45 @@ export interface ActionArgContext {
 }
 
 /** Detect whether the current line puts the cursor in arg-completion
- * mode for an action command. Triggered only after the command itself
- * has been fully typed and followed by whitespace — `/mod` stays in
- * command-selection mode, `/model ` (note trailing space) enters arg
- * mode with partial="". */
+ * mode for any command with `argCompletion` set. Triggered only after
+ * the command is fully typed and followed by whitespace — `/mod` stays
+ * in command-selection mode, `/model ` (note trailing space) enters
+ * arg mode with partial="". */
 export function matchActionArgContext(line: string): ActionArgContext | null {
   const m = line.match(/^\s*\/(\w+)\s+(.*)$/);
   if (!m) return null;
   const trigger = m[1];
   const partial = m[2];
-  // Newlines in the partial mean the user has moved past the command;
-  // don't offer arg completion across lines.
   if (partial.includes("\n")) return null;
-  const spec = SLASH_COMMANDS.find((c) => c.trigger === trigger && c.kind === "action");
+  const spec = SLASH_COMMANDS.find((c) => c.trigger === trigger && c.argCompletion);
   if (!spec) return null;
   return { command: spec, partial };
+}
+
+/** Split a partial into (prior args, current token) so the composer can
+ * filter/replace correctly. For "whole" mode the current token IS the
+ * whole partial — profile names can have spaces. For "word" mode the
+ * current token is everything after the last whitespace, and prior
+ * tokens are stitched back during replacement. */
+export function splitArgPartial(
+  mode: ArgCompletionMode,
+  partial: string,
+): { priorArgs: string[]; currentToken: string } {
+  if (mode === "whole") {
+    return { priorArgs: [], currentToken: partial };
+  }
+  // "word" mode: last whitespace-delimited fragment, even if partial
+  // ends with a space (currentToken = "" means "about to type the next
+  // arg" — still valid for suggestion fetching).
+  const trailingSpace = /\s$/.test(partial);
+  const tokens = partial.split(/\s+/).filter((t) => t.length > 0);
+  if (trailingSpace || tokens.length === 0) {
+    return { priorArgs: tokens, currentToken: "" };
+  }
+  return {
+    priorArgs: tokens.slice(0, -1),
+    currentToken: tokens[tokens.length - 1],
+  };
 }
 
 /** Parse a composer input as a slash action command. Returns null if

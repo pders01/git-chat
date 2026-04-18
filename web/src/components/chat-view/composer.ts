@@ -15,6 +15,7 @@ import {
   transformSlashCommands,
   parseSlashAction,
   matchActionArgContext,
+  splitArgPartial,
   type SlashCommand,
   type ActionArgContext,
 } from "../../lib/slash.js";
@@ -58,6 +59,7 @@ export class GcComposer extends LitElement {
   private argFetchSeq = 0;
   private modelSuggestionCache: ArgSuggestion[] | null = null;
   private profileSuggestionCache: ArgSuggestion[] | null = null;
+  private refSuggestionCache: ArgSuggestion[] | null = null;
 
   /** Public: set input text (used by parent for prefill / insert). */
   setInput(value: string) {
@@ -124,7 +126,7 @@ export class GcComposer extends LitElement {
     const lineStart = before.lastIndexOf("\n") + 1;
     const currentLine = before.slice(lineStart);
     const ctx = matchActionArgContext(currentLine);
-    if (!ctx) {
+    if (!ctx || !ctx.command.argCompletion) {
       this.argCtx = null;
       this.argResults = [];
       this.showArgs = false;
@@ -134,10 +136,11 @@ export class GcComposer extends LitElement {
     // arg mode, the command-selection menu shouldn't be showing.
     this.showSlash = false;
     this.argCtx = ctx;
+    const { priorArgs, currentToken } = splitArgPartial(ctx.command.argCompletion, ctx.partial);
     const seq = ++this.argFetchSeq;
-    const all = await this.loadArgSuggestions(ctx.command.trigger);
+    const all = await this.loadArgSuggestions(ctx.command.trigger, priorArgs, currentToken);
     if (seq !== this.argFetchSeq) return;
-    const q = ctx.partial.toLowerCase();
+    const q = currentToken.toLowerCase();
     this.argResults = q
       ? all.filter((s) => s.label.toLowerCase().includes(q) || s.value.toLowerCase().includes(q))
       : all.slice(0, 20);
@@ -145,7 +148,11 @@ export class GcComposer extends LitElement {
     this.showArgs = this.argResults.length > 0;
   }
 
-  private async loadArgSuggestions(trigger: string): Promise<ArgSuggestion[]> {
+  private async loadArgSuggestions(
+    trigger: string,
+    priorArgs: string[],
+    currentToken: string,
+  ): Promise<ArgSuggestion[]> {
     if (trigger === "profile") {
       if (this.profileSuggestionCache) return this.profileSuggestionCache;
       try {
@@ -190,7 +197,73 @@ export class GcComposer extends LitElement {
         return [];
       }
     }
+    if (trigger === "diff") {
+      // Arg 1 (first token): refs — branches, tags, plus common
+      // HEAD~N shortcuts so users can start a range without knowing
+      // branch names. Ranges (`A..B`) get treated as refs too — the
+      // transformer splits them later.
+      // Arg 2 (trailing): paths under the partial's dirname.
+      if (priorArgs.length === 0) {
+        return this.loadDiffRefs();
+      }
+      return this.loadPathSuggestions(currentToken);
+    }
     return [];
+  }
+
+  private async loadDiffRefs(): Promise<ArgSuggestion[]> {
+    if (this.refSuggestionCache) return this.refSuggestionCache;
+    const shortcuts: ArgSuggestion[] = [
+      { value: "HEAD", label: "HEAD", description: "latest commit" },
+      { value: "HEAD~1", label: "HEAD~1", description: "one commit back" },
+      { value: "HEAD~3", label: "HEAD~3", description: "three commits back" },
+      { value: "HEAD~5", label: "HEAD~5", description: "five commits back" },
+      { value: "HEAD~10", label: "HEAD~10", description: "ten commits back" },
+    ];
+    try {
+      const resp = await repoClient.listBranches({ repoId: this.repoId });
+      const branches: ArgSuggestion[] = (resp.branches ?? []).map((b) => ({
+        value: b.name,
+        label: b.name,
+        description: b.subject || "branch",
+      }));
+      const tags: ArgSuggestion[] = (resp.tags ?? []).map((t) => ({
+        value: t.name,
+        label: t.name,
+        description: "tag",
+      }));
+      this.refSuggestionCache = [...shortcuts, ...branches, ...tags];
+      return this.refSuggestionCache;
+    } catch {
+      return shortcuts;
+    }
+  }
+
+  // Reuse the @-mention dirCache for listTree calls. Partial may be
+  // "web/", "web/src/f", or "" — we resolve the dirname and filter
+  // by the leaf prefix. The filter that runs in checkArgContext then
+  // further narrows against the FULL partial, which is fine because
+  // entry paths include the dirname prefix.
+  private async loadPathSuggestions(partial: string): Promise<ArgSuggestion[]> {
+    const lastSlash = partial.lastIndexOf("/");
+    const dirPath = lastSlash >= 0 ? partial.slice(0, lastSlash) : "";
+    if (!this.dirCache.has(dirPath)) {
+      try {
+        const resp = await repoClient.listTree({ repoId: this.repoId, path: dirPath });
+        const prefix = dirPath ? dirPath + "/" : "";
+        this.dirCache.set(
+          dirPath,
+          resp.entries.map((e) => prefix + e.name + (e.type === EntryType.DIR ? "/" : "")),
+        );
+      } catch {
+        this.dirCache.set(dirPath, []);
+      }
+    }
+    return (this.dirCache.get(dirPath) ?? []).map((p) => ({
+      value: p,
+      label: p,
+      description: p.endsWith("/") ? "directory" : "file",
+    }));
   }
 
   // Scroll the active item in a listbox into view after keyboard nav.
@@ -207,22 +280,43 @@ export class GcComposer extends LitElement {
   private acceptArgSuggestion(sugg: ArgSuggestion) {
     const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
     if (!ta || !this.argCtx) return;
+    const cmd = this.argCtx.command;
+    const mode = cmd.argCompletion ?? "whole";
     const pos = ta.selectionStart;
     const before = this.input.slice(0, pos);
     const after = this.input.slice(pos);
     const lineStart = before.lastIndexOf("\n") + 1;
-    // Replace the full current-line tail starting after the command +
-    // one space with the chosen value. Using the command trigger keeps
-    // us robust to leading whitespace variations in the user's input.
-    const replacementHead = before.slice(0, lineStart) + `/${this.argCtx.command.trigger} `;
-    this.input = replacementHead + sugg.value + after;
+    const currentLine = before.slice(lineStart);
+
+    let newLine: string;
+    let newCaretInLine: number;
+    if (mode === "whole") {
+      // Replace everything after `/cmd ` (single arg, may contain spaces).
+      newLine = `/${cmd.trigger} ` + sugg.value;
+      newCaretInLine = newLine.length;
+    } else {
+      // "word" mode — replace just the current token (last whitespace-delimited
+      // fragment), preserving anything typed before it. For directory suggestions
+      // (trailing "/") we DON'T add a space so the user can keep drilling.
+      const lastSpace = currentLine.lastIndexOf(" ");
+      const head = currentLine.slice(0, lastSpace + 1);
+      const trailing = sugg.value.endsWith("/") ? "" : "";
+      newLine = head + sugg.value + trailing;
+      newCaretInLine = newLine.length;
+    }
+
+    this.input = before.slice(0, lineStart) + newLine + after;
     this.showArgs = false;
     this.argResults = [];
     this.argCtx = null;
     requestAnimationFrame(() => {
       ta.focus();
-      const newPos = replacementHead.length + sugg.value.length;
+      const newPos = lineStart + newCaretInLine;
       ta.setSelectionRange(newPos, newPos);
+      // For directory drilldowns we re-open the arg menu so the user
+      // can keep typing; for final selections (files, refs, models),
+      // the caller decides whether to submit.
+      if (sugg.value.endsWith("/")) void this.checkArgContext();
     });
   }
 
@@ -410,19 +504,23 @@ export class GcComposer extends LitElement {
       }
       if (e.key === "Tab") {
         // Tab inserts the suggestion in place, composer stays open so
-        // the user can tweak (e.g. append extra args later).
+        // the user can tweak (e.g. append more args).
         e.preventDefault();
         this.acceptArgSuggestion(this.argResults[this.argIdx]);
         return;
       }
       if (e.key === "Enter") {
-        // Enter inserts + submits — the common case when picking a
-        // profile or model: you want to commit the action immediately.
         e.preventDefault();
-        this.acceptArgSuggestion(this.argResults[this.argIdx]);
-        // acceptArgSuggestion mutates this.input synchronously; submit
-        // in the next microtask so the updated input is read.
-        queueMicrotask(() => this.submit());
+        const sugg = this.argResults[this.argIdx];
+        const cmd = this.argCtx?.command;
+        const isDir = sugg.value.endsWith("/");
+        // Auto-submit rule: action commands (single-shot side effect)
+        // submit immediately on Enter. Transform commands like /diff
+        // might still want more args (path after ref), so accept and
+        // keep editing. Directory suggestions never submit.
+        const autoSubmit = cmd?.kind === "action" && !isDir;
+        this.acceptArgSuggestion(sugg);
+        if (autoSubmit) queueMicrotask(() => this.submit());
         return;
       }
       if (e.key === "Escape") {

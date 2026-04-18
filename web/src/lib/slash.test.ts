@@ -3,6 +3,7 @@ import {
   transformSlashCommands,
   parseSlashAction,
   matchActionArgContext,
+  splitArgPartial,
   SLASH_COMMANDS,
 } from "./slash.js";
 
@@ -176,10 +177,12 @@ describe("matchActionArgContext", () => {
     expect(ctx?.partial).toBe("Loc");
   });
 
-  test("returns null for transform commands (they don't arg-autocomplete here)", () => {
-    // /diff has its own completion path (branches/refs/paths) — kept
-    // separate because the suggestion source is completely different.
-    expect(matchActionArgContext("/diff HEAD~3")).toBeNull();
+  test("transform commands with argCompletion also match (e.g. /diff)", () => {
+    // /diff is a transform but has argCompletion:"word" so the composer
+    // can suggest refs + paths as the user types args.
+    const ctx = matchActionArgContext("/diff HEAD~3");
+    expect(ctx?.command.trigger).toBe("diff");
+    expect(ctx?.partial).toBe("HEAD~3");
   });
 
   test("returns null for unknown commands", () => {
@@ -190,5 +193,43 @@ describe("matchActionArgContext", () => {
     const ctx = matchActionArgContext("  /model gp");
     expect(ctx?.command.trigger).toBe("model");
     expect(ctx?.partial).toBe("gp");
+  });
+});
+
+describe("splitArgPartial", () => {
+  test("whole mode: currentToken is the full partial, no priorArgs", () => {
+    expect(splitArgPartial("whole", "Local Gemma")).toEqual({
+      priorArgs: [],
+      currentToken: "Local Gemma",
+    });
+  });
+
+  test("whole mode: empty partial yields empty token", () => {
+    expect(splitArgPartial("whole", "")).toEqual({ priorArgs: [], currentToken: "" });
+  });
+
+  test("word mode: last token is the currentToken", () => {
+    expect(splitArgPartial("word", "HEAD~3..HEAD web/foo")).toEqual({
+      priorArgs: ["HEAD~3..HEAD"],
+      currentToken: "web/foo",
+    });
+  });
+
+  test("word mode: trailing space means next arg is starting", () => {
+    expect(splitArgPartial("word", "HEAD~3..HEAD ")).toEqual({
+      priorArgs: ["HEAD~3..HEAD"],
+      currentToken: "",
+    });
+  });
+
+  test("word mode: single token with no space", () => {
+    expect(splitArgPartial("word", "HEAD~3")).toEqual({
+      priorArgs: [],
+      currentToken: "HEAD~3",
+    });
+  });
+
+  test("word mode: empty partial", () => {
+    expect(splitArgPartial("word", "")).toEqual({ priorArgs: [], currentToken: "" });
   });
 });
