@@ -171,13 +171,37 @@ export class GcCombobox extends LitElement {
     this.show();
   }
 
-  /** Position the listbox using fixed coordinates to escape overflow clipping. */
+  /** Position the listbox using fixed coordinates to escape overflow
+   * clipping. Opens downward by default; flips above when the viewport
+   * has more room above the input than below (typical when the input
+   * sits near the bottom of a modal or page).
+   *
+   * The listbox's natural height is capped at 240px by CSS, so we
+   * compare "space below" against the min of (desired, natural) — no
+   * point flipping if the dropdown already fits comfortably below. */
   private positionListbox() {
     const input = this.renderRoot.querySelector("input");
     const listbox = this.renderRoot.querySelector(".listbox") as HTMLElement | null;
     if (!input || !listbox) return;
     const rect = input.getBoundingClientRect();
-    listbox.style.top = `${rect.bottom + 2}px`;
+    const gap = 2;
+    const naturalHeight = listbox.scrollHeight;
+    const desired = Math.min(naturalHeight, 240);
+    const below = window.innerHeight - rect.bottom - gap;
+    const above = rect.top - gap;
+    // Prefer downward unless below clips the dropdown AND above has more room.
+    const flipUp = below < desired && above > below;
+    if (flipUp) {
+      const maxH = Math.min(desired, above);
+      listbox.style.top = "auto";
+      listbox.style.bottom = `${window.innerHeight - rect.top + gap}px`;
+      listbox.style.maxHeight = `${maxH}px`;
+    } else {
+      const maxH = Math.min(desired, below);
+      listbox.style.bottom = "auto";
+      listbox.style.top = `${rect.bottom + gap}px`;
+      listbox.style.maxHeight = `${maxH}px`;
+    }
     listbox.style.left = `${rect.left}px`;
     listbox.style.width = `${rect.width}px`;
   }
