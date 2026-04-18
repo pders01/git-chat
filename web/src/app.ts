@@ -2,7 +2,7 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { authClient, repoClient, chatClient } from "./lib/transport.js";
 import { AuthMode } from "./gen/gitchat/v1/auth_pb.js";
-import type { Repo } from "./gen/gitchat/v1/repo_pb.js";
+import type { Repo, ConfigEntry, LLMProfile, CatalogProvider, LocalEndpoint } from "./gen/gitchat/v1/repo_pb.js";
 import "./components/pairing-view.js";
 import "./components/repo-browser.js";
 import "./components/chat-view.js";
@@ -66,18 +66,18 @@ export class GcApp extends LitElement {
   private _paletteScrollRafId: number | null = null;
 
   // Server config state
-  @state() private configEntries: any[] = [];
+  @state() private configEntries: ConfigEntry[] = [];
   @state() private configLoading = false;
   @state() private settingsSection = "appearance";
   private configDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   // LLM profiles state
-  @state() private profiles: any[] = [];
+  @state() private profiles: LLMProfile[] = [];
   @state() private activeProfileId = "";
-  @state() private editingProfile: any | null = null;
-  @state() private catalog: any[] = []; // CatalogProvider[]
+  @state() private editingProfile: Partial<LLMProfile> | null = null;
+  @state() private catalog: CatalogProvider[] = [];
   @state() private catalogLoading = false;
-  @state() private localEndpoints: any[] = []; // LocalEndpoint[]
+  @state() private localEndpoints: LocalEndpoint[] = [];
   @state() private localDiscovering = false;
 
   override async connectedCallback() {
@@ -248,6 +248,7 @@ export class GcApp extends LitElement {
     }
     if (
       e.key === "Escape" &&
+      !e.defaultPrevented &&
       (this.showShortcuts || this.showSettings || this.showPalette || this.showSearch)
     ) {
       this.showShortcuts = false;
@@ -841,7 +842,7 @@ export class GcApp extends LitElement {
 
   private updateConfigEntry(key: string, value: string) {
     // Update local state immediately
-    this.configEntries = this.configEntries.map((e: any) => (e.key === key ? { ...e, value } : e));
+    this.configEntries = this.configEntries.map((e) => (e.key === key ? { ...e, value } : e));
     // Debounce the RPC call
     const existing = this.configDebounceTimers.get(key);
     if (existing) clearTimeout(existing);
@@ -858,7 +859,7 @@ export class GcApp extends LitElement {
     );
   }
 
-  private async resetConfigEntry(entry: any) {
+  private async resetConfigEntry(entry: ConfigEntry) {
     this.updateConfigEntry(entry.key, entry.defaultValue);
   }
 
@@ -869,7 +870,7 @@ export class GcApp extends LitElement {
       .replace(/_/g, " ");
   }
 
-  private isSecretEntry(entry: any): boolean {
+  private isSecretEntry(entry: ConfigEntry): boolean {
     return !!entry.secret;
   }
 
@@ -899,14 +900,14 @@ export class GcApp extends LitElement {
     if (s) return s;
 
     if (key === "LLM_BASE_URL") {
-      const local: ComboboxOption[] = this.localEndpoints.map((ep: any) => ({
+      const local: ComboboxOption[] = this.localEndpoints.map((ep) => ({
         value: ep.url,
         label: ep.name,
         description: ep.models?.length ? `${ep.models.length} models` : "detected",
       }));
       const catalog: ComboboxOption[] = this.catalog
-        .filter((c: any) => c.defaultBaseUrl)
-        .map((c: any) => ({ value: c.defaultBaseUrl, label: c.name, description: c.type }));
+        .filter((c) => c.defaultBaseUrl)
+        .map((c) => ({ value: c.defaultBaseUrl, label: c.name, description: c.type }));
       // Deduplicate by URL.
       const seen = new Set<string>();
       return [...local, ...catalog].filter((o) => {
@@ -917,11 +918,11 @@ export class GcApp extends LitElement {
     }
 
     if (key === "LLM_MODEL") {
-      const backend = this.configEntries.find((e: any) => e.key === "LLM_BACKEND")?.value;
-      const baseUrl = this.configEntries.find((e: any) => e.key === "LLM_BASE_URL")?.value;
+      const backend = this.configEntries.find((e) => e.key === "LLM_BACKEND")?.value;
+      const baseUrl = this.configEntries.find((e) => e.key === "LLM_BASE_URL")?.value;
 
       // 1. Local models for the currently configured base URL.
-      const localEp = this.localEndpoints.find((ep: any) => ep.url === baseUrl);
+      const localEp = this.localEndpoints.find((ep) => ep.url === baseUrl);
       if (localEp?.models?.length) {
         return localEp.models.map((id: string) => ({
           value: id,
@@ -932,10 +933,10 @@ export class GcApp extends LitElement {
 
       // 2. Catalog provider matching by base URL — most specific.
       const byUrl = this.catalog.find(
-        (c: any) => c.defaultBaseUrl && baseUrl?.startsWith(c.defaultBaseUrl),
+        (c) => c.defaultBaseUrl && baseUrl?.startsWith(c.defaultBaseUrl),
       );
       if (byUrl?.models?.length) {
-        return byUrl.models.map((m: any) => ({
+        return byUrl.models.map((m) => ({
           value: m.id,
           label: m.name,
           description: [
@@ -950,9 +951,9 @@ export class GcApp extends LitElement {
       //    set, show all models for the backend type as a starting point.
       if (baseUrl) return [];
       return this.catalog
-        .filter((c: any) => c.type === backend)
-        .flatMap((c: any) =>
-          (c.models ?? []).map((m: any) => ({
+        .filter((c) => c.type === backend)
+        .flatMap((c) =>
+          (c.models ?? []).map((m) => ({
             value: m.id,
             label: m.name,
             description: [
@@ -976,12 +977,12 @@ export class GcApp extends LitElement {
     { id: "webhook", label: "Webhook" },
   ] as const;
 
-  private configGroupEntries(group: string): any[] {
-    return this.configEntries.filter((e: any) => (e.group || "other") === group);
+  private configGroupEntries(group: string): ConfigEntry[] {
+    return this.configEntries.filter((e) => (e.group || "other") === group);
   }
 
   private configGroupModifiedCount(group: string): number {
-    return this.configGroupEntries(group).filter((e: any) => e.value !== e.defaultValue).length;
+    return this.configGroupEntries(group).filter((e) => e.value !== e.defaultValue).length;
   }
 
   private renderConfigGroup(group: string) {
@@ -994,7 +995,7 @@ export class GcApp extends LitElement {
     }
     return html`
       <div class="config-group-body">
-        ${entries.map((entry: any) => {
+        ${entries.map((entry) => {
           const isSecret = this.isSecretEntry(entry);
           const modified = entry.value !== entry.defaultValue;
           const suggestions = this.configSuggestionsFor(entry.key);
@@ -1194,7 +1195,7 @@ export class GcApp extends LitElement {
           ${this.profiles.length === 0
             ? html`<p class="config-empty">no profiles yet — click "+ new connection" to get started</p>`
             : this.profiles.map(
-                (p: any) => html`
+                (p) => html`
                   <div class="profile-item ${this.activeProfileId === p.id ? "active" : ""}">
                     <button
                       class="profile-name"
@@ -1236,7 +1237,7 @@ export class GcApp extends LitElement {
               await this.saveProfile(profile);
               if (activate) {
                 // Find the saved profile ID.
-                const saved = this.profiles.find((p: any) => p.name === profile.name);
+                const saved = this.profiles.find((p) => p.name === profile.name);
                 if (saved) await this.activateProfile(saved.id);
               }
               this.editingProfile = null;
@@ -1927,8 +1928,10 @@ export class GcApp extends LitElement {
     .modal {
       position: fixed;
       top: 60px;
-      left: 50%;
-      transform: translateX(-50%);
+      left: 0;
+      right: 0;
+      margin-left: auto;
+      margin-right: auto;
       background: var(--surface-2);
       border: 1px solid var(--border-default);
       border-radius: var(--radius-xl);
@@ -2011,7 +2014,7 @@ export class GcApp extends LitElement {
     @keyframes palette-in {
       from {
         opacity: 0;
-        transform: translateX(-50%) translateY(-8px);
+        transform: translateY(-8px);
       }
     }
     .search-input {
@@ -2138,8 +2141,8 @@ export class GcApp extends LitElement {
     .settings-modal {
       max-width: min(1100px, 92vw);
       width: 92vw;
-      top: 40px;
-      max-height: calc(100vh - 80px);
+      top: 24px;
+      max-height: calc(100vh - 48px);
       display: flex;
       padding: 0;
       overflow: hidden;
