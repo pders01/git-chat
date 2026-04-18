@@ -43,6 +43,9 @@ jobs:
       - name: Build binary
         run: make all
 
+      - name: Bundle size guard
+        run: make size-check
+
       - name: Proto freshness
         run: |
           make proto

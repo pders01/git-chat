@@ -3,6 +3,12 @@ GO_LDFLAGS := -s -w -X main.version=$(shell git describe --always --dirty 2>/dev
 DEV_PORT ?= 18081
 PREFIX ?= /usr/local
 
+# Bundle-size guard. Current embedded SPA is ~4.7 MiB (Shiki grammars +
+# Three.js dominate). Limit set at 6 MiB — leaves room for legitimate
+# growth but catches a runaway dep. Bump deliberately when needed and
+# note why in the commit.
+MAX_BUNDLE_BYTES ?= 6291456
+
 .PHONY: all
 all: web build
 
@@ -60,6 +66,22 @@ proto:
 	@# Freshness guard for CI: fail if gen/ or web/src/gen/ is dirty after regen
 	@if [ -n "$$CI" ]; then git diff --exit-code gen/ web/src/gen/ || { echo "generated code is stale — run 'make proto' locally and commit"; exit 1; }; fi
 
+.PHONY: size-check
+# size-check fails if the embedded SPA bundle exceeds MAX_BUNDLE_BYTES.
+# Depends on `web` so it always measures a fresh build; counts every
+# file vite emits (JS + CSS + HTML + metadata) so the guard reflects
+# the actual binary weight, not just code chunks.
+size-check: web
+	@total=$$(find internal/assets/dist -type f ! -name '.gitkeep' -exec wc -c {} + | awk 'END {print $$1}'); \
+		limit=$(MAX_BUNDLE_BYTES); \
+		if [ "$$total" -gt "$$limit" ]; then \
+			echo "ERROR: bundle size $$total bytes exceeds limit $$limit bytes"; \
+			echo "  reduce bundle size or bump MAX_BUNDLE_BYTES in Makefile (document why in the commit)"; \
+			exit 1; \
+		fi; \
+		pct=$$(( total * 100 / limit )); \
+		printf 'bundle size OK: %d / %d bytes (%d%%)\n' "$$total" "$$limit" "$$pct"
+
 .PHONY: check
 check: check-go check-web
 
@@ -104,4 +126,4 @@ tidy:
 clean:
 	rm -rf dist
 	rm -rf web/node_modules web/dist web/.vite
-	find internal/assets/dist -mindepth 1 ! -name 'index.html' -delete
+	find internal/assets/dist -mindepth 1 ! -name '.gitkeep' -delete
