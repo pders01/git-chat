@@ -10,6 +10,7 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   readFileToAttachment,
 } from "../../lib/attachments.js";
+import { SLASH_COMMANDS, transformSlashCommands, type SlashCommand } from "../../lib/slash.js";
 
 @customElement("gc-composer")
 export class GcComposer extends LitElement {
@@ -26,6 +27,10 @@ export class GcComposer extends LitElement {
   @state() private mentionIdx = -1;
   private dirCache = new Map<string, string[]>();
   private checkMentionSeq = 0;
+
+  @state() private slashResults: SlashCommand[] = [];
+  @state() private showSlash = false;
+  @state() private slashIdx = 0;
 
   /** Public: set input text (used by parent for prefill / insert). */
   setInput(value: string) {
@@ -80,6 +85,46 @@ export class GcComposer extends LitElement {
     this.input = ta.value;
     this.autoResize(ta);
     void this.checkMention();
+    this.checkSlash();
+  }
+
+  private checkSlash() {
+    const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
+    if (!ta) return;
+    const pos = ta.selectionStart;
+    const before = this.input.slice(0, pos);
+    const lineStart = before.lastIndexOf("\n") + 1;
+    const currentLine = before.slice(lineStart);
+    // Only trigger on "/word" at the very start of a line (no whitespace
+    // before). Once the user types a space, the slash command is "armed"
+    // and the menu stays hidden until the line is edited back.
+    const m = currentLine.match(/^\/(\w*)$/);
+    if (!m) {
+      this.showSlash = false;
+      this.slashResults = [];
+      return;
+    }
+    const q = m[1].toLowerCase();
+    this.slashResults = SLASH_COMMANDS.filter((c) => c.trigger.startsWith(q));
+    this.slashIdx = 0;
+    this.showSlash = this.slashResults.length > 0;
+  }
+
+  private acceptSlash(cmd: SlashCommand) {
+    const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
+    if (!ta) return;
+    const pos = ta.selectionStart;
+    const before = this.input.slice(0, pos);
+    const after = this.input.slice(pos);
+    const lineStart = before.lastIndexOf("\n") + 1;
+    const replacement = `/${cmd.trigger} `;
+    this.input = before.slice(0, lineStart) + replacement + after;
+    this.showSlash = false;
+    requestAnimationFrame(() => {
+      ta.focus();
+      const newPos = lineStart + replacement.length;
+      ta.setSelectionRange(newPos, newPos);
+    });
   }
 
   private autoResize(ta: HTMLTextAreaElement) {
@@ -180,6 +225,29 @@ export class GcComposer extends LitElement {
         return;
       }
     }
+    if (this.showSlash && this.slashResults.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        this.slashIdx = (this.slashIdx + 1) % this.slashResults.length;
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        this.slashIdx =
+          this.slashIdx <= 0 ? this.slashResults.length - 1 : this.slashIdx - 1;
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        this.acceptSlash(this.slashResults[this.slashIdx]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        this.showSlash = false;
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       this.submit();
@@ -187,7 +255,7 @@ export class GcComposer extends LitElement {
   }
 
   private submit() {
-    const text = this.input.trim();
+    const text = transformSlashCommands(this.input).trim();
     const attachments = this.pendingAttachments;
     if (!text && attachments.length === 0) return;
     if (this.sending) return;
@@ -316,10 +384,10 @@ export class GcComposer extends LitElement {
             placeholder="ask about the repo — use @path/to/file to pin content"
             ?disabled=${this.sending}
             rows="1"
-            aria-label="Message input — type @ for file autocomplete, Enter to send, drop files to attach"
+            aria-label="Message input — type @ for file autocomplete or / for slash commands, Enter to send, drop files to attach"
             aria-describedby="composer-status"
             aria-autocomplete="list"
-            aria-expanded=${this.showMentions ? "true" : "false"}
+            aria-expanded=${this.showMentions || this.showSlash ? "true" : "false"}
           ></textarea>
           ${this.showMentions
             ? html`<ul class="mention-list" role="listbox">
@@ -333,6 +401,26 @@ export class GcComposer extends LitElement {
                       @click=${() => this.insertMention(p)}
                     >
                       ${p}
+                    </button>
+                  </li>`,
+                )}
+              </ul>`
+            : nothing}
+          ${this.showSlash
+            ? html`<ul class="slash-list" role="listbox" aria-label="Slash commands">
+                ${this.slashResults.map(
+                  (c, i) => html`<li
+                    role="option"
+                    aria-selected=${i === this.slashIdx ? "true" : "false"}
+                  >
+                    <button
+                      class="slash-item ${i === this.slashIdx ? "active" : ""}"
+                      @click=${() => this.acceptSlash(c)}
+                      title=${c.example}
+                    >
+                      <span class="slash-label">${c.label}</span>
+                      <span class="slash-hint">${c.hint}</span>
+                      <span class="slash-example">${c.example}</span>
                     </button>
                   </li>`,
                 )}
@@ -536,6 +624,44 @@ export class GcComposer extends LitElement {
     .mention-item:hover,
     .mention-item.active {
       background: var(--surface-3);
+    }
+    .slash-list {
+      list-style: none;
+      margin: 0;
+      padding: var(--space-1) 0;
+      border-top: 1px solid var(--surface-4);
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    .slash-item {
+      display: grid;
+      grid-template-columns: max-content 1fr auto;
+      align-items: baseline;
+      column-gap: var(--space-3);
+      width: 100%;
+      padding: var(--space-1) var(--space-2);
+      background: transparent;
+      color: var(--text);
+      border: none;
+      font-family: inherit;
+      font-size: var(--text-xs);
+      text-align: left;
+      cursor: pointer;
+    }
+    .slash-item:hover,
+    .slash-item.active {
+      background: var(--surface-3);
+    }
+    .slash-label {
+      color: var(--accent-assistant);
+      font-weight: 500;
+    }
+    .slash-hint {
+      opacity: 0.7;
+    }
+    .slash-example {
+      opacity: 0.45;
+      font-size: 0.68rem;
     }
     .composer.drag-active .composer-inner {
       border-color: var(--border-accent);
