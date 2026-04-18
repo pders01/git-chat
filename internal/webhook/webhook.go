@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -62,30 +63,90 @@ func newUnsafe(url string) *Sender {
 	}
 }
 
+// Retry policy. Values chosen to cover typical Slack/Discord restore
+// times (seconds) without hammering the endpoint when it's actually down
+// for longer. With maxAttempts=3 and baseBackoff=500ms, the worst-case
+// wall time is ~3 * request timeout + 1.5s of backoff.
+const (
+	maxAttempts  = 3
+	baseBackoff  = 500 * time.Millisecond
+	maxBackoff   = 5 * time.Second
+	jitterFactor = 0.5 // ±50% of the computed delay
+)
+
 // Send posts an event asynchronously. Errors are logged, not returned.
-func (s *Sender) Send(_ context.Context, ev Event) {
+// Retries on transient failures (network errors, 5xx, 429) with
+// exponential backoff; 4xx responses are treated as permanent (the
+// payload is malformed and the endpoint won't accept it).
+func (s *Sender) Send(ctx context.Context, ev Event) {
 	if ev.Timestamp == 0 {
 		ev.Timestamp = time.Now().Unix()
 	}
 	if ev.Text == "" {
 		ev.Text = formatText(ev)
 	}
-	go func() {
-		body, err := json.Marshal(ev)
-		if err != nil {
-			log.Printf("webhook: marshal error: %v", err)
+	body, err := json.Marshal(ev)
+	if err != nil {
+		log.Printf("webhook: marshal error: %v", err)
+		return
+	}
+	go s.deliver(ctx, body)
+}
+
+// deliver runs the retry loop for a single serialized event.
+func (s *Sender) deliver(ctx context.Context, body []byte) {
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if attempt > 1 {
+			delay := backoffDuration(attempt - 1)
+			select {
+			case <-ctx.Done():
+				log.Printf("webhook: canceled before attempt %d: %v", attempt, ctx.Err())
+				return
+			case <-time.After(delay):
+			}
+		}
+		retryable, err := s.postOnce(ctx, body)
+		if err == nil {
 			return
 		}
-		resp, err := s.client.Post(s.url, "application/json", bytes.NewReader(body))
-		if err != nil {
-			log.Printf("webhook: POST error: %v", err)
+		lastErr = err
+		if !retryable {
+			log.Printf("webhook: permanent failure on attempt %d: %v", attempt, err)
 			return
 		}
-		resp.Body.Close()
-		if resp.StatusCode >= 300 {
-			log.Printf("webhook: POST returned %d", resp.StatusCode)
-		}
-	}()
+	}
+	log.Printf("webhook: giving up after %d attempts: %v", maxAttempts, lastErr)
+}
+
+// postOnce performs a single POST. Returns (retryable, err).
+func (s *Sender) postOnce(ctx context.Context, body []byte) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.url, bytes.NewReader(body))
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return true, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+		return true, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	if resp.StatusCode >= 300 {
+		return false, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	return false, nil
+}
+
+// backoffDuration returns the wait time before the Nth retry (1-indexed:
+// attempt=1 → first retry). Exponential base with ±jitterFactor jitter,
+// clamped to maxBackoff.
+func backoffDuration(attempt int) time.Duration {
+	base := min(baseBackoff<<(attempt-1), maxBackoff)
+	jitter := 1.0 + (rand.Float64()*2-1)*jitterFactor
+	return time.Duration(float64(base) * jitter)
 }
 
 func formatText(ev Event) string {

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -98,6 +99,101 @@ func TestSendCustomText(t *testing.T) {
 	defer mu.Unlock()
 	if received.Text != "custom message" {
 		t.Fatalf("text = %q, want 'custom message'", received.Text)
+	}
+}
+
+func TestSendRetriesOn503ThenSucceeds(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := hits.Add(1)
+		if n < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	sender := newUnsafe(srv.URL)
+	sender.Send(context.Background(), Event{Type: "card_invalidated", RepoID: "r"})
+
+	// Two retries with baseBackoff=500ms and jitterFactor=0.5 mean max
+	// combined backoff is ~1.5s + 1.5s = 3s. 5s timeout leaves headroom.
+	deadline := time.Now().Add(5 * time.Second)
+	for hits.Load() < 3 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got := hits.Load(); got != 3 {
+		t.Fatalf("expected 3 attempts, got %d", got)
+	}
+}
+
+func TestSendDoesNotRetryOn404(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	sender := newUnsafe(srv.URL)
+	sender.Send(context.Background(), Event{Type: "card_invalidated", RepoID: "r"})
+
+	// 4xx (other than 429) is permanent — wait long enough that any
+	// misbehaving retry loop would hit again, then confirm it didn't.
+	time.Sleep(1500 * time.Millisecond)
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("expected 1 attempt (no retry on 404), got %d", got)
+	}
+}
+
+func TestSendRetriesOn429(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := hits.Add(1)
+		if n == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	sender := newUnsafe(srv.URL)
+	sender.Send(context.Background(), Event{Type: "card_invalidated", RepoID: "r"})
+
+	deadline := time.Now().Add(3 * time.Second)
+	for hits.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got := hits.Load(); got != 2 {
+		t.Fatalf("expected 2 attempts (initial + retry on 429), got %d", got)
+	}
+}
+
+func TestSendGivesUpAfterMaxAttempts(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+
+	sender := newUnsafe(srv.URL)
+	sender.Send(context.Background(), Event{Type: "card_invalidated", RepoID: "r"})
+
+	// Wait long enough for all retries to complete + a bit of slack.
+	deadline := time.Now().Add(5 * time.Second)
+	for hits.Load() < int32(maxAttempts) && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got := hits.Load(); got != int32(maxAttempts) {
+		t.Fatalf("expected %d attempts, got %d", maxAttempts, got)
+	}
+	// And make sure it doesn't keep going.
+	time.Sleep(200 * time.Millisecond)
+	if got := hits.Load(); got != int32(maxAttempts) {
+		t.Fatalf("expected to stop at %d attempts, got %d", maxAttempts, got)
 	}
 }
 
