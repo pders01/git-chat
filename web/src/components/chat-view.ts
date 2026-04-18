@@ -538,6 +538,51 @@ export class GcChatView extends LitElement {
     this.announce(e.detail.message);
   };
 
+  // Slash-action dispatch. Composer parses /model, /profile etc. and
+  // fires this event; we handle the RPC and surface success/failure
+  // through the toast system. Keeping the RPC out of the composer
+  // means new actions can be added by editing chat-view alone.
+  private onComposerSlashAction = async (
+    e: CustomEvent<{ command: string; args: string[] }>,
+  ) => {
+    const { command, args } = e.detail;
+    try {
+      if (command === "model") {
+        const modelId = args[0] ?? "";
+        if (!modelId) {
+          this.toast("warn", "usage: /model <model-id>");
+          return;
+        }
+        await repoClient.updateConfig({ key: "LLM_MODEL", value: modelId });
+        this.toast("success", `model set to ${modelId}`);
+      } else if (command === "profile") {
+        const name = args[0] ?? "";
+        if (!name) {
+          this.toast("warn", "usage: /profile <name>");
+          return;
+        }
+        const resp = await repoClient.listProfiles({});
+        const match = resp.profiles?.find((p) => p.name === name);
+        if (!match) {
+          this.toast("warn", `no profile named "${name}" — check spelling`);
+          return;
+        }
+        await repoClient.activateProfile({ id: match.id });
+        this.toast("success", `profile "${name}" activated`);
+      } else {
+        this.toast("warn", `unknown slash command: /${command}`);
+      }
+    } catch (err) {
+      this.toast("error", err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  private toast(kind: "info" | "success" | "warn" | "error", message: string) {
+    this.dispatchEvent(
+      new CustomEvent("gc:toast", { bubbles: true, composed: true, detail: { kind, message } }),
+    );
+  }
+
   private onMessageRetry = () => this.retryLast();
   private onMessageRegenerate = () => this.regenerateLast();
   private onMessageEdit = (
@@ -674,6 +719,7 @@ export class GcChatView extends LitElement {
             @gc:stop=${this.onComposerStop}
             @gc:error=${this.onComposerError}
             @gc:announce=${this.onComposerAnnounce}
+            @gc:slash-action=${this.onComposerSlashAction}
           ></gc-composer>
         </section>
         <div class="sr-only" role="status" aria-live="assertive">${this.announcement}</div>

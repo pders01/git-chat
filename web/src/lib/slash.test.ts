@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { transformSlashCommands, SLASH_COMMANDS } from "./slash.js";
+import { transformSlashCommands, parseSlashAction, SLASH_COMMANDS } from "./slash.js";
 
 describe("transformSlashCommands", () => {
   test("passes through text with no slash commands", () => {
@@ -93,5 +93,56 @@ describe("SLASH_COMMANDS", () => {
     expect(diff).toBeDefined();
     expect(diff?.label).toBe("/diff");
     expect(diff?.example).toContain("..");
+  });
+
+  test("each command has a kind", () => {
+    for (const c of SLASH_COMMANDS) {
+      expect(c.kind === "transform" || c.kind === "action").toBe(true);
+    }
+  });
+});
+
+describe("parseSlashAction", () => {
+  test("returns null for non-slash text", () => {
+    expect(parseSlashAction("hello world")).toBeNull();
+    expect(parseSlashAction("")).toBeNull();
+  });
+
+  test("returns null for transform commands (not actions)", () => {
+    // /diff is a transform, not an action — transformSlashCommands
+    // handles it elsewhere. parseSlashAction should ignore it.
+    expect(parseSlashAction("/diff HEAD~3..HEAD")).toBeNull();
+  });
+
+  test("returns null for unknown slash triggers", () => {
+    expect(parseSlashAction("/nonsense foo")).toBeNull();
+  });
+
+  test("/model with id parses to {command, args}", () => {
+    const p = parseSlashAction("/model claude-opus-4-7");
+    expect(p).toEqual({ command: "model", args: ["claude-opus-4-7"] });
+  });
+
+  test("/profile with multi-word name keeps the name whole", () => {
+    // Profile names can have spaces — whole remainder stays in args[0].
+    const p = parseSlashAction("/profile Local Gemma");
+    expect(p).toEqual({ command: "profile", args: ["Local Gemma"] });
+  });
+
+  test("/help with no args parses cleanly", () => {
+    expect(parseSlashAction("/help")).toEqual({ command: "help", args: [] });
+  });
+
+  test("action commands only parse on a single line", () => {
+    // Mixing an action command with extra prose means the user likely
+    // meant to send a message, not trigger an action.
+    expect(parseSlashAction("/profile Local\nextra text")).toBeNull();
+  });
+
+  test("leading/trailing whitespace is trimmed", () => {
+    expect(parseSlashAction("  /model gpt-4o  ")).toEqual({
+      command: "model",
+      args: ["gpt-4o"],
+    });
   });
 });

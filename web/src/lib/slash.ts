@@ -6,6 +6,20 @@
 // start of a line transforms into the same marker on submit. Anything
 // else on the line — or lines above/below — is preserved verbatim.
 
+// Slash commands come in two flavors:
+//
+//   - "transform" commands rewrite the message text at submit time
+//     (e.g. /diff → [[diff ...]]). They still flow to the LLM.
+//   - "action" commands trigger a side effect (switch model, show help)
+//     and don't submit to the LLM. The composer fires a gc:slash-action
+//     event; the parent (chat-view) handles the RPC + user feedback.
+//
+// Commands that overlap with the command palette (new chat, focus,
+// theme, tab navigation) are deliberately NOT exposed here — palette
+// is the right entry point for app-wide actions; slash is for chat-
+// context operations only.
+export type SlashCommandKind = "transform" | "action";
+
 export interface SlashCommand {
   /** Trigger word after the leading `/`, e.g. "diff". */
   trigger: string;
@@ -15,6 +29,8 @@ export interface SlashCommand {
   hint: string;
   /** Example syntax shown under the hint. */
   example: string;
+  /** How the composer handles this command on submit. */
+  kind: SlashCommandKind;
 }
 
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
@@ -23,8 +39,61 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     label: "/diff",
     hint: "insert a diff marker",
     example: "/diff HEAD~3..HEAD web/src/foo.ts",
+    kind: "transform",
+  },
+  {
+    trigger: "model",
+    label: "/model",
+    hint: "switch the model for this chat",
+    example: "/model claude-opus-4-7",
+    kind: "action",
+  },
+  {
+    trigger: "profile",
+    label: "/profile",
+    hint: "activate a saved LLM profile",
+    example: "/profile Local Gemma",
+    kind: "action",
+  },
+  {
+    trigger: "help",
+    label: "/help",
+    hint: "list all slash commands",
+    example: "/help",
+    kind: "action",
   },
 ];
+
+/** Parsed action command result. For non-action input, returns null. */
+export interface ParsedAction {
+  command: string;
+  args: string[];
+}
+
+/** Parse a composer input as a slash action command. Returns null if
+ * the input is not a recognized action (transform commands return null
+ * too — they're handled by transformSlashCommands instead). Matches
+ * only when the FIRST non-whitespace line is the slash command and
+ * nothing else follows — we don't want `/profile foo\nextra prose`
+ * to look like a bare action.
+ */
+export function parseSlashAction(raw: string): ParsedAction | null {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("/")) return null;
+  // Action commands must be a single line.
+  if (trimmed.includes("\n")) return null;
+  const rest = trimmed.slice(1);
+  const firstSpace = rest.indexOf(" ");
+  const command = firstSpace < 0 ? rest : rest.slice(0, firstSpace);
+  const argsStr = firstSpace < 0 ? "" : rest.slice(firstSpace + 1).trim();
+  const spec = SLASH_COMMANDS.find((c) => c.trigger === command);
+  if (!spec || spec.kind !== "action") return null;
+  // Profile names can have spaces ("Local Gemma") — keep args as a
+  // single-element array containing the whole remainder. Individual
+  // commands that need tokenization can split themselves.
+  const args = argsStr ? [argsStr] : [];
+  return { command, args };
+}
 
 /** Transform `/diff`-style slash commands to `[[diff ...]]` markers.
  *

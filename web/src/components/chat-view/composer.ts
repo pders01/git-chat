@@ -10,7 +10,12 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   readFileToAttachment,
 } from "../../lib/attachments.js";
-import { SLASH_COMMANDS, transformSlashCommands, type SlashCommand } from "../../lib/slash.js";
+import {
+  SLASH_COMMANDS,
+  transformSlashCommands,
+  parseSlashAction,
+  type SlashCommand,
+} from "../../lib/slash.js";
 
 @customElement("gc-composer")
 export class GcComposer extends LitElement {
@@ -255,10 +260,23 @@ export class GcComposer extends LitElement {
   }
 
   private submit() {
+    if (this.sending) return;
+    // Action commands short-circuit the LLM send and fire an event
+    // for the parent to handle (switch model, activate profile, etc.).
+    // /help is handled locally via a toast rather than eventing up.
+    const action = parseSlashAction(this.input);
+    if (action) {
+      if (action.command === "help") {
+        this.fire("gc:toast", { kind: "info", message: helpToastMessage() });
+      } else {
+        this.fire("gc:slash-action", { command: action.command, args: action.args });
+      }
+      this.input = "";
+      return;
+    }
     const text = transformSlashCommands(this.input).trim();
     const attachments = this.pendingAttachments;
     if (!text && attachments.length === 0) return;
-    if (this.sending) return;
     this.fire("gc:send", { text, attachments });
   }
 
@@ -872,8 +890,16 @@ export class GcComposer extends LitElement {
   `;
 }
 
+function helpToastMessage(): string {
+  const lines = SLASH_COMMANDS.map((c) => `${c.label} — ${c.hint}`);
+  return "Slash commands:\n" + lines.join("\n");
+}
+
 declare global {
   interface HTMLElementTagNameMap {
     "gc-composer": GcComposer;
+  }
+  interface HTMLElementEventMap {
+    "gc:slash-action": CustomEvent<{ command: string; args: string[] }>;
   }
 }
