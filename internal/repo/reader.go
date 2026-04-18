@@ -21,16 +21,17 @@ import (
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 )
 
-// DefaultMaxFileBytes is used when GetFileRequest.max_bytes is zero.
-var DefaultMaxFileBytes int64 = envInt64Reader("GITCHAT_DEFAULT_FILE_BYTES", 512*1024)
-
-// Package-level tunables, configurable via environment variables.
-var (
-	maxWholeDiffBytes_    = envIntReader("GITCHAT_MAX_DIFF_BYTES", 512*1024)
-	defaultCommitLimit    = envIntReader("GITCHAT_DEFAULT_COMMIT_LIMIT", 50)
-	diffContextLines      = envIntReader("GITCHAT_DIFF_CONTEXT_LINES", 3)
-	maxChurnCommits       = envIntReader("GITCHAT_MAX_CHURN_COMMITS", 5000)
-	churnTimeWindowDays   = envIntReader("GITCHAT_CHURN_WINDOW_DAYS", 90)
+// Compiled-in fallbacks for tunables whose canonical source is the
+// config Registry (DB override → env → registered default → here).
+// The Registry path honours live UI edits; these constants only apply
+// if no Registry was wired in or the key isn't registered.
+const (
+	defaultMaxFileBytesFallback      int64 = 512 * 1024
+	defaultMaxDiffBytesFallback            = 512 * 1024
+	defaultCommitLimitFallback             = 50
+	defaultDiffContextLinesFallback        = 3
+	defaultMaxChurnCommitsFallback         = 5000
+	defaultChurnWindowDaysFallback         = 90
 )
 
 // errPathEscape is returned when a caller-supplied path would escape the
@@ -225,7 +226,9 @@ func (e *Entry) GetFile(ref, path string, maxBytes int64) (*gitchatv1.GetFileRes
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if maxBytes <= 0 {
-		maxBytes = DefaultMaxFileBytes
+		// GetFile's public signature has no ctx; Registry's own DB lookup
+		// is timeout-guarded so Background is safe here.
+		maxBytes = e.cfgInt64(context.Background(), "GITCHAT_DEFAULT_FILE_BYTES", defaultMaxFileBytesFallback)
 	}
 	commit, _, err := e.resolveCommit(ref)
 	if err != nil {
@@ -286,7 +289,7 @@ func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, 
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if limit <= 0 {
-		limit = defaultCommitLimit
+		limit = e.cfgInt(ctx, "GITCHAT_DEFAULT_COMMIT_LIMIT", defaultCommitLimitFallback)
 	}
 	// Cap limit to prevent memory issues on large repos
 	if limit > 200 {
@@ -503,13 +506,13 @@ func (e *Entry) GetFileChurnMap(ctx context.Context, ref string, since, until in
 	// Apply sensible defaults for large repos to avoid walking entire history
 	if since == 0 && until == 0 {
 		until = time.Now().Unix()
-		since = until - int64(churnTimeWindowDays*24*3600)
+		since = until - int64(e.cfgInt(ctx, "GITCHAT_CHURN_WINDOW_DAYS", defaultChurnWindowDaysFallback)*24*3600)
 	}
 
 	// Resolve the effective cap: 0 = server default; non-zero = client
 	// override clamped to churnHardCap. Kept separate from the package
 	// var so tests and the default path aren't disturbed.
-	effCap := maxChurnCommits
+	effCap := e.cfgInt(ctx, "GITCHAT_MAX_CHURN_COMMITS", defaultMaxChurnCommitsFallback)
 	if maxCommitsOverride > 0 {
 		effCap = maxCommitsOverride
 		if effCap > churnHardCap {
@@ -809,6 +812,7 @@ func (e *Entry) GetCommitTimeRange(ctx context.Context, ref string) (int64, int6
 func (e *Entry) CompareBranches(ctx context.Context, baseRef, headRef string, detectRenames bool) ([]*gitchatv1.ChangedFile, int32, int32, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	maxDiffBytes := e.cfgInt(ctx, "GITCHAT_MAX_DIFF_BYTES", defaultMaxDiffBytesFallback)
 	baseCommit, _, err := e.resolveCommit(baseRef)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("resolve base: %w", err)
@@ -864,8 +868,8 @@ func (e *Entry) CompareBranches(ctx context.Context, baseRef, headRef string, de
 			status = "renamed"
 			fromPath = c.From.Name
 		}
-		fromContent, _ := fileContent(baseCommit, c.From.Name)
-		toContent, _ := fileContent(headCommit, c.To.Name)
+		fromContent, _ := fileContent(baseCommit, c.From.Name, maxDiffBytes)
+		toContent, _ := fileContent(headCommit, c.To.Name, maxDiffBytes)
 		adds, dels := countDiffLines(fromContent, toContent)
 		out = append(out, &gitchatv1.ChangedFile{
 			Path:      name,
@@ -980,7 +984,7 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 //   - path != "":  patch for just that file between fromRef and toRef.
 //   - path == "":  patch for every file changed between fromRef and
 //     toRef, concatenated into one multi-file unified diff, capped at
-//     maxWholeDiffBytes_ with a truncation note.
+//     GITCHAT_MAX_DIFF_BYTES with a truncation note.
 //
 // Empty fromRef defaults to the parent of toRef (i.e. "what did this
 // commit do"); empty toRef defaults to HEAD. Returns empty=true if
@@ -1016,10 +1020,15 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path string, detect
 		fromResolved = resolved
 	}
 
+	// Resolve tunables once per GetDiff call so a UI edit mid-session
+	// takes effect on the next request without restart.
+	maxDiffBytes := e.cfgInt(ctx, "GITCHAT_MAX_DIFF_BYTES", defaultMaxDiffBytesFallback)
+	contextLines := e.cfgInt(ctx, "GITCHAT_DIFF_CONTEXT_LINES", defaultDiffContextLinesFallback)
+
 	// ── Single-file path ───────────────────────────────────────────
 	if path != "" {
-		from, fromErr := fileContentDetail(fromCommit, path)
-		to, toErr := fileContentDetail(toCommit, path)
+		from, fromErr := fileContentDetail(fromCommit, path, maxDiffBytes)
+		to, toErr := fileContentDetail(toCommit, path, maxDiffBytes)
 		if fromErr != nil && toErr != nil {
 			return "", fromResolved, toResolved, false, nil, ErrNotFound
 		}
@@ -1035,7 +1044,7 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path string, detect
 		if from.kind != "" || to.kind != "" {
 			return renderPlaceholderPatch(path, from, to), fromResolved, toResolved, false, nil, nil
 		}
-		patch := renderUnifiedDiff(path, fromResolved, toResolved, from.content, to.content)
+		patch := renderUnifiedDiff(path, fromResolved, toResolved, from.content, to.content, contextLines)
 		return patch, fromResolved, toResolved, false, nil, nil
 	}
 
@@ -1066,8 +1075,8 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path string, detect
 	var sb bytes.Buffer
 	truncated := 0
 	for i, p := range changed {
-		from, _ := fileContentDetail(fromCommit, p)
-		to, _ := fileContentDetail(toCommit, p)
+		from, _ := fileContentDetail(fromCommit, p, maxDiffBytes)
+		to, _ := fileContentDetail(toCommit, p, maxDiffBytes)
 		// True no-change: same kind + same blob SHA on both sides.
 		// Placeholder text alone isn't authoritative because two
 		// "too-large" sides over different blobs share the same kind
@@ -1082,9 +1091,9 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path string, detect
 		if from.kind != "" || to.kind != "" {
 			filePatch = renderPlaceholderPatch(p, from, to)
 		} else {
-			filePatch = renderUnifiedDiff(p, fromResolved, toResolved, from.content, to.content)
+			filePatch = renderUnifiedDiff(p, fromResolved, toResolved, from.content, to.content, contextLines)
 		}
-		if sb.Len()+len(filePatch) > maxWholeDiffBytes_ {
+		if sb.Len()+len(filePatch) > maxDiffBytes {
 			truncated = len(changed) - i
 			break
 		}
@@ -1203,7 +1212,10 @@ func countDiffLines(fromContent, toContent string) (adds, dels int32) {
 	}
 	fromLines := splitLinesKeepNL(fromContent)
 	toLines := splitLinesKeepNL(toContent)
-	for _, h := range diffHunks(fromLines, toLines) {
+	// countDiffLines only needs the +/- tally, which is independent of
+	// how hunks are grouped for rendering. Pass the fallback context so
+	// we don't drag a tunable resolve into hot-loop stat computation.
+	for _, h := range diffHunks(fromLines, toLines, defaultDiffContextLinesFallback) {
 		for _, line := range h.lines {
 			if line == "" {
 				continue
@@ -1299,11 +1311,15 @@ func (e *Entry) GetWorkingTreeDiff(path string) (string, bool, error) {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	// No ctx in signature; Registry's own DB lookup is timeout-guarded.
+	ctx := context.Background()
+	maxDiffBytes := e.cfgInt(ctx, "GITCHAT_MAX_DIFF_BYTES", defaultMaxDiffBytesFallback)
+	contextLines := e.cfgInt(ctx, "GITCHAT_DIFF_CONTEXT_LINES", defaultDiffContextLinesFallback)
 	headCommit, _, err := e.resolveCommit("")
 	if err != nil {
 		return "", false, err
 	}
-	headContent, _ := fileContent(headCommit, clean)
+	headContent, _ := fileContent(headCommit, clean, maxDiffBytes)
 
 	diskPath := filepath.Join(e.Path, clean)
 	diskBytes, err := os.ReadFile(diskPath)
@@ -1313,7 +1329,7 @@ func (e *Entry) GetWorkingTreeDiff(path string) (string, bool, error) {
 			if headContent == "" {
 				return "", true, nil
 			}
-			patch := renderUnifiedDiff(path, "HEAD", "working tree", headContent, "")
+			patch := renderUnifiedDiff(path, "HEAD", "working tree", headContent, "", contextLines)
 			return patch, false, nil
 		}
 		return "", false, fmt.Errorf("read %s: %w", path, err)
@@ -1323,7 +1339,7 @@ func (e *Entry) GetWorkingTreeDiff(path string) (string, bool, error) {
 	if headContent == diskContent {
 		return "", true, nil
 	}
-	patch := renderUnifiedDiff(path, "HEAD", "working tree", headContent, diskContent)
+	patch := renderUnifiedDiff(path, "HEAD", "working tree", headContent, diskContent, contextLines)
 	return patch, false, nil
 }
 
@@ -1348,7 +1364,10 @@ type fileSide struct {
 // paths return kind="missing" with empty sha; oversized or binary blobs
 // return sentinel content tagged with the blob SHA so equality checks
 // across sides only collapse when the underlying blobs truly match.
-func fileContentDetail(commit *object.Commit, path string) (fileSide, error) {
+// `maxBytes` is the per-file size cap; blobs above it get a sentinel
+// instead of their contents. Callers resolve this from the config
+// Registry so UI edits to GITCHAT_MAX_DIFF_BYTES take effect live.
+func fileContentDetail(commit *object.Commit, path string, maxBytes int) (fileSide, error) {
 	if commit == nil {
 		return fileSide{kind: "missing"}, nil
 	}
@@ -1364,7 +1383,7 @@ func fileContentDetail(commit *object.Commit, path string) (fileSide, error) {
 		return fileSide{}, fmt.Errorf("find file: %w", err)
 	}
 	sha := f.Hash.String()
-	if f.Size > int64(maxWholeDiffBytes_) {
+	if f.Size > int64(maxBytes) {
 		return fileSide{
 			content: fmt.Sprintf("(file too large for inline diff: %s, %d bytes)", sha[:12], f.Size),
 			kind:    "too-large",
@@ -1394,8 +1413,8 @@ func fileContentDetail(commit *object.Commit, path string) (fileSide, error) {
 // render). The returned string still carries the SHA-tagged placeholder
 // for oversized/binary content so any equality check downstream won't
 // silently collide when the blobs actually differ.
-func fileContent(commit *object.Commit, path string) (string, error) {
-	side, err := fileContentDetail(commit, path)
+func fileContent(commit *object.Commit, path string, maxBytes int) (string, error) {
+	side, err := fileContentDetail(commit, path, maxBytes)
 	return side.content, err
 }
 
@@ -1472,10 +1491,10 @@ func fileDiffStats(from, to fileSide) (int32, int32) {
 // tree diff; for a single-file view we compute it directly from the
 // two content strings with a line-level LCS. That's cheaper and gives
 // us full control over the output format.
-func renderUnifiedDiff(path, fromSHA, toSHA, fromContent, toContent string) string {
+func renderUnifiedDiff(path, fromSHA, toSHA, fromContent, toContent string, contextLines int) string {
 	fromLines := splitLinesKeepNL(fromContent)
 	toLines := splitLinesKeepNL(toContent)
-	hunks := diffHunks(fromLines, toLines)
+	hunks := diffHunks(fromLines, toLines, contextLines)
 
 	var sb bytes.Buffer
 	// Header mimics git's shape so Shiki's diff grammar highlights it.
@@ -1583,14 +1602,14 @@ type diffHunk struct {
 // diff. Good enough for file-pair diffing; not optimized for huge
 // files. The file cap is already ~16 KiB via GetFile's max, so
 // O(m*n) here is fine.
-func diffHunks(a, b []string) []diffHunk {
+func diffHunks(a, b []string, contextLines int) []diffHunk {
 	ops := lcsDiffOps(a, b)
 	if len(ops) == 0 {
 		return nil
 	}
 
 	// Group non-equal ops into hunks with context lines around.
-	context := diffContextLines
+	context := contextLines
 	var hunks []diffHunk
 	n := len(ops)
 	i := 0
@@ -1841,22 +1860,3 @@ func min64(a, b int64) int64 {
 	return b
 }
 
-// envIntReader reads an env var as int, returning def if unset or invalid.
-func envIntReader(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return n
-		}
-	}
-	return def
-}
-
-// envInt64Reader reads an env var as int64, returning def if unset or invalid.
-func envInt64Reader(key string, def int64) int64 {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			return n
-		}
-	}
-	return def
-}

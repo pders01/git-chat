@@ -15,11 +15,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+
+	"github.com/pders01/git-chat/internal/config"
 )
 
 // Entry is a registered repository. The mu mutex serializes go-git
@@ -41,6 +44,12 @@ type Entry struct {
 	Label         string
 	Path          string // absolute
 	DefaultBranch string
+	// Config is the live config Registry. Entry methods read tunables
+	// (diff byte caps, commit limits, churn window) through it so UI
+	// settings changes take effect without a restart. Nil-safe: the
+	// helper methods below fall back to env + compiled defaults when
+	// Config is unset (e.g., tests that construct Entry directly).
+	Config        *config.Registry
 	mu            sync.Mutex
 	repo          *git.Repository
 	blameCache    map[string]any // key: commitSHA + "\x00" + path → []*gitchatv1.BlameLine (declared as any to keep this file free of gen/ imports)
@@ -49,15 +58,34 @@ type Entry struct {
 
 // Registry holds every repository the server exposes. Thread-safe for
 // concurrent reads after startup.
+//
+// Config, when set, is propagated to every Entry created via Add so
+// reader.go can resolve tunables through the DB → env → default chain
+// instead of reading env at package init.
 type Registry struct {
-	mu    sync.RWMutex
-	byID  map[string]*Entry
-	order []string
+	mu     sync.RWMutex
+	byID   map[string]*Entry
+	order  []string
+	Config *config.Registry
 }
 
 // NewRegistry returns an empty registry.
 func NewRegistry() *Registry {
 	return &Registry{byID: make(map[string]*Entry)}
+}
+
+// SetConfig attaches a config Registry to this repo Registry and
+// propagates it to every already-registered Entry. Call once at
+// startup after opening the DB and registering defaults, before the
+// server starts answering requests — not safe to call concurrently
+// with Add. Subsequent Add calls inherit the config automatically.
+func (r *Registry) SetConfig(cfg *config.Registry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Config = cfg
+	for _, e := range r.byID {
+		e.Config = cfg
+	}
 }
 
 // Add opens the repository at path and registers it. Fails if the path is
@@ -106,6 +134,7 @@ func (r *Registry) addInternal(path string, skipDuplicates bool) (*Entry, error)
 		Label:         filepath.Base(abs),
 		Path:          abs,
 		DefaultBranch: defaultBranch,
+		Config:        r.Config,
 		repo:          gitRepo,
 	}
 	r.byID[id] = entry
@@ -118,6 +147,35 @@ func (r *Registry) addInternal(path string, skipDuplicates bool) (*Entry, error)
 		go entry.prewarmChurnAll(context.Background())
 	}
 	return entry, nil
+}
+
+// cfgInt resolves a Registry-backed int tunable, falling back to env
+// then `def` when no Config is attached (e.g. tests construct Entry
+// directly). Per-call so live UI updates take effect; the Registry's
+// DB lookup has a 5s timeout internally, so latency is bounded.
+func (e *Entry) cfgInt(ctx context.Context, key string, def int) int {
+	if e.Config != nil {
+		return e.Config.GetIntCtx(ctx, key, def)
+	}
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
+// cfgInt64 is the int64 counterpart of cfgInt.
+func (e *Entry) cfgInt64(ctx context.Context, key string, def int64) int64 {
+	if e.Config != nil {
+		return e.Config.GetInt64Ctx(ctx, key, def)
+	}
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
+	}
+	return def
 }
 
 // prewarmChurn is resolved once at package init from the environment

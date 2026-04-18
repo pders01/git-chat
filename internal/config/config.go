@@ -181,6 +181,36 @@ func (r *Registry) GetInt64(key string) int64 {
 	return n
 }
 
+// GetIntCtx resolves a config value as int, returning fallback when the
+// key is unset or its value is unparseable. Use this when you previously
+// held a compiled-in default — fallback preserves that contract across
+// live reads from the Registry (DB override → env → registered default
+// → fallback if all else fails).
+func (r *Registry) GetIntCtx(ctx context.Context, key string, fallback int) int {
+	v := r.GetCtx(ctx, key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+// GetInt64Ctx is the int64 counterpart of GetIntCtx.
+func (r *Registry) GetInt64Ctx(ctx context.Context, key string, fallback int64) int64 {
+	v := r.GetCtx(ctx, key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
 // Set writes (or overwrites) a config override in SQLite.
 // Secret entries are encrypted before writing.
 func (r *Registry) Set(ctx context.Context, key, value string) error {

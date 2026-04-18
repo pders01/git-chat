@@ -82,6 +82,10 @@ func runServe(args []string) error {
 	if err := cfg.InitEncryption(db.Path); err != nil {
 		return fmt.Errorf("init config encryption: %w", err)
 	}
+	// Wire the config Registry into the repo Registry so Entry methods
+	// resolve tunables (diff caps, commit limits, churn windows) live
+	// — UI edits take effect on the next request instead of next boot.
+	registry.SetConfig(cfg)
 
 	pairings := auth.NewPairingStore()
 	sessions := auth.NewSessionStore(*behindTLS)
