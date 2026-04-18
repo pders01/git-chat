@@ -2,8 +2,19 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { chatClient, repoClient } from "../../lib/transport.js";
-import { renderMarkdown } from "../../lib/markdown.js";
 import "./../../components/loading-indicator.js";
+
+// Lazy-import markdown because it pulls marked + Shiki (~270 kB
+// gzipped). A static import here defeats the dynamic imports in
+// chat-view.ts and kb-view.ts — vite warns "dynamic import will not
+// move module into another chunk" because the module is already in
+// the main bundle. Sharing the lazy pattern keeps the dashboard off
+// the cold-start chunk for users who haven't opened a chat yet.
+let markdownModule: Promise<typeof import("../../lib/markdown.js")> | null = null;
+function loadMarkdown() {
+  if (!markdownModule) markdownModule = import("../../lib/markdown.js");
+  return markdownModule;
+}
 
 @customElement("gc-chat-dashboard")
 export class GcChatDashboard extends LitElement {
@@ -59,7 +70,12 @@ export class GcChatDashboard extends LitElement {
       this.summaryLoading = true;
       const resp = await chatClient.summarizeActivity({ repoId: this.repoId });
       this.activitySummary = resp.summary || "";
-      this.activityHtml = this.activitySummary ? await renderMarkdown(this.activitySummary) : "";
+      if (this.activitySummary) {
+        const { renderMarkdown } = await loadMarkdown();
+        this.activityHtml = await renderMarkdown(this.activitySummary);
+      } else {
+        this.activityHtml = "";
+      }
       this.cachedSummaryKey = cacheKey;
     } catch {
       this.activitySummary = "";
