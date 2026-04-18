@@ -1575,8 +1575,6 @@ export class GcCommitLog extends LitElement {
       padding: var(--space-6);
       opacity: 0.5;
     }
-    /* Diff rendering (.diff-empty, .diff-content, .diff-placeholder,
-       .split-*, .word-*) lives inside gc-diff-pane's shadow DOM now. */
 
     /* ── Commit filter input ───────────────────────────────────── */
     .commit-filter-input {
