@@ -38,6 +38,7 @@ func runServe(args []string) error {
 	llmTemp := fs.Float64("llm-temperature", envFloat("LLM_TEMPERATURE", 0), "LLM temperature")
 	llmMaxTok := fs.Int("llm-max-tokens", envIntFlag("LLM_MAX_TOKENS", 0), "LLM max tokens")
 	dbPath := fs.String("db", envOr("GITCHAT_DB", ""), "SQLite state file path (default: ~/.local/state/git-chat/state.db)")
+	behindTLS := fs.Bool("behind-tls", false, "set Secure flag on session cookies (enable when behind a TLS reverse proxy)")
 	var repos repoFlags
 	fs.Var(&repos, "repo", "path to a git repository to serve (repeatable)")
 	_ = fs.Parse(args)
@@ -83,7 +84,7 @@ func runServe(args []string) error {
 	}
 
 	pairings := auth.NewPairingStore()
-	sessions := auth.NewSessionStore(false) // HTTP, not TLS
+	sessions := auth.NewSessionStore(*behindTLS)
 	llmAdapter, err := buildLLM(*llmBackend, *llmBase, *llmKey, llmModel)
 	if err != nil {
 		return err
