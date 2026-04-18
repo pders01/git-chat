@@ -2,34 +2,41 @@ version: 2
 
 before:
   hooks:
-    - cmd: cd web && bun install --frozen-lockfile && bun run build
+    - sh -c "cd web && bun install --frozen-lockfile && NODE_ENV=production bun run build"
 
 builds:
-  - main: ./cmd/git-chat
+  - id: git-chat
+    main: ./cmd/git-chat
     binary: git-chat
     env:
       - CGO_ENABLED=0
     ldflags:
       - -s -w -X main.version={{.Version}}
+    flags:
+      - -trimpath
     goos:
       - linux
       - darwin
+      - windows
     goarch:
       - amd64
       - arm64
-    flags:
-      - -trimpath
 
 archives:
-  - formats:
+  - id: default
+    formats:
       - tar.gz
     format_overrides:
-      - goos: darwin
+      - goos: windows
         formats:
           - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
       - LICENSE
+
+checksum:
+  name_template: checksums.txt
 
 changelog:
   sort: asc
@@ -39,3 +46,10 @@ changelog:
       - "^test:"
       - "^ci:"
       - "^chore:"
+
+release:
+  github:
+    owner: pders01
+    name: git-chat
+  draft: true
+  prerelease: auto
