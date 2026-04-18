@@ -85,7 +85,7 @@ flowchart TB
         direction TB
         http["HTTP server :8080<br/>- embed.FS static<br/>- Connect RPC"]
         ssh["SSH server :2222<br/>(wish)<br/>- pubkey handshake<br/>- 'pair CODE' exec only"]
-        mcp["MCP server (stdio)<br/>- 5 tools"]
+        mcp["MCP server (stdio)<br/>- 10 tools"]
         workers["Workers<br/>- KB invalidation loop<br/>- LLM dispatch<br/>- Webhook sender"]
         config["Config registry<br/>DB > env > default"]
 
@@ -113,8 +113,9 @@ The binary runs two network listeners plus an optional stdio server:
   exactly one command: `pair <CODE>`. Not a shell. Its sole job is to
   complete the device pairing flow.
 - **MCP (stdio)** -- `git chat mcp` runs a JSON-RPC MCP server on stdin/stdout,
-  exposing 5 tools: `search_knowledge`, `get_file`, `get_diff`, `list_commits`,
-  `search_files`. Used by Claude Code and other MCP-compatible agents.
+  exposing 10 tools: `search_knowledge`, `get_file`, `get_diff`, `list_commits`,
+  `search_files`, `search_code` (ripgrep), `outline` (ctags), `list_tree`,
+  `list_branches`, `get_blame`. Used by Claude Code and other MCP-compatible agents.
 
 HTTP and SSH listeners share the same process memory -- the pairing code
 lookup table lives in RAM and is consumed by both.

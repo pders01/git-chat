@@ -88,7 +88,38 @@
 
 ---
 
-## 3. Recommendations
+## 3. Non-auth Security Hardening (2026-04-18)
+
+### 3.1 Path Traversal — Fixed
+
+- ✅ `GetWorkingTreeDiff` validated with `safePath()` — rejects `..` and absolute paths
+- ✅ `search_code` tool (ripgrep) path argument sanitized before exec
+- ✅ `outline` tool (ctags) path argument sanitized before exec
+- ✅ MCP tools apply same path validation
+
+### 3.2 Config Authorization — Fixed
+
+- ✅ Sensitive config keys (`LLM_API_KEY`, `LLM_BASE_URL`, `GITCHAT_WEBHOOK_URL`) restricted to `"local"` principal
+- ✅ Non-local users in serve mode get `PermissionDenied` on `UpdateConfig` for restricted keys
+- ✅ API keys encrypted at rest with AES-256-GCM (key file at 0600 alongside state.db)
+- ✅ `GetConfig` returns masked values for secrets (last 4 chars only)
+
+### 3.3 Webhook SSRF — Fixed
+
+- ✅ Webhook URL validated: only http/https schemes
+- ✅ Custom transport resolves DNS then blocks RFC-1918, loopback, link-local, and cloud metadata IPs (169.254.169.254)
+- ✅ Tests use package-internal `newUnsafe()` (unexported, not callable externally)
+
+### 3.4 Agentic Loop Hardening — Fixed
+
+- ✅ Per-tool 30s timeout prevents a single tool from blocking the turn
+- ✅ Context cancellation checked between rounds and between tool executions
+- ✅ Token counts accumulated across rounds (was last-round-only)
+- ✅ Stop button propagates abort through Connect RPC to server-side ctx
+
+---
+
+## 5. Recommendations
 
 ### Short-term
 

@@ -56,10 +56,10 @@ When running `git chat` on a directory that contains multiple git repositories:
 - **Session pinning** -- star/unstar important sessions
 - **Streaming token counter** -- live token count + cost estimate per turn
 - **LLM dashboard summaries** -- auto-generated activity summary with suggested questions
-- **Runtime-configurable settings** -- 18 GITCHAT_* env vars exposed in UI settings, 3-tier resolution (SQLite override -> env var -> compiled default)
+- **Runtime-configurable settings** -- sidebar-navigated settings UI with LLM provider/model switching, 3-tier resolution (SQLite override -> env var -> compiled default), API keys encrypted at rest (AES-256-GCM)
 - **Cross-tab navigation** -- "explain in chat" from log, "ask in chat" from browser, blame-to-log SHA linking, Cmd+click files
-- **MCP server mode** -- 5 tools: `search_knowledge`, `get_file`, `get_diff`, `list_commits`, `search_files`
-- **Two LLM backends** -- OpenAI-compatible (LM Studio, Ollama, vLLM, OpenAI, Groq) + Anthropic native
+- **MCP server mode** -- 10 tools: `search_knowledge`, `get_file`, `get_diff`, `list_commits`, `search_files`, `search_code`, `outline`, `list_tree`, `list_branches`, `get_blame`
+- **Two LLM backends** -- OpenAI-compatible (LM Studio, Ollama, vLLM, OpenAI, Groq, Fireworks) + Anthropic native, switchable at runtime via settings UI
 - **Theme support** -- system/light/dark with Shiki dual-theme
 - **Auth** -- local mode (token URL) or SSH key pairing for multi-user
 
@@ -129,7 +129,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design document.
 | `GITCHAT_DB` | `~/.local/state/git-chat/state.db` | SQLite state file |
 | `XDG_STATE_HOME` | `~/.local/state` | Base for default DB path |
 
-All `GITCHAT_*` variables are runtime-configurable via the settings UI. Values set in the UI are stored as SQLite overrides and take precedence over env vars.
+All `GITCHAT_*` and `LLM_*` variables are runtime-configurable via the settings UI. Values set in the UI are stored as SQLite overrides and take precedence over env vars. Secret values (`LLM_API_KEY`) are encrypted at rest with AES-256-GCM. Sensitive keys (`LLM_API_KEY`, `LLM_BASE_URL`, `GITCHAT_WEBHOOK_URL`) can only be changed in local mode.
 
 ## Keyboard shortcuts
 
