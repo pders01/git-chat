@@ -2,7 +2,13 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { authClient, repoClient, chatClient } from "./lib/transport.js";
 import { AuthMode } from "./gen/gitchat/v1/auth_pb.js";
-import type { Repo, ConfigEntry, LLMProfile, CatalogProvider, LocalEndpoint } from "./gen/gitchat/v1/repo_pb.js";
+import type {
+  Repo,
+  ConfigEntry,
+  LLMProfile,
+  CatalogProvider,
+  LocalEndpoint,
+} from "./gen/gitchat/v1/repo_pb.js";
 import "./components/pairing-view.js";
 import "./components/repo-browser.js";
 import "./components/chat-view.js";
@@ -686,6 +692,7 @@ export class GcApp extends LitElement {
             .initialCommitSha=${this.currentRoute.commitSha ?? ""}
             .initialLogFile=${this.currentRoute.logFile ?? ""}
             .initialSplitView=${this.currentRoute.splitView ?? false}
+            .initialLogView=${this.currentRoute.logView ?? "commits"}
             .filterPath=${this.currentRoute.filterPath ?? ""}
             class="tab-panel"
             ?hidden=${tab !== "log"}
@@ -828,8 +835,6 @@ export class GcApp extends LitElement {
     }
   }
 
-
-
   private async activateProfile(id: string) {
     try {
       await (repoClient as any).activateProfile({ id });
@@ -942,7 +947,9 @@ export class GcApp extends LitElement {
           description: [
             byUrl.name,
             m.contextWindow ? `${Math.round(Number(m.contextWindow) / 1000)}K` : "",
-          ].filter(Boolean).join(" · "),
+          ]
+            .filter(Boolean)
+            .join(" · "),
         }));
       }
 
@@ -959,7 +966,9 @@ export class GcApp extends LitElement {
             description: [
               c.name,
               m.contextWindow ? `${Math.round(Number(m.contextWindow) / 1000)}K` : "",
-            ].filter(Boolean).join(" · "),
+            ]
+              .filter(Boolean)
+              .join(" · "),
           })),
         );
     }
@@ -1050,10 +1059,7 @@ export class GcApp extends LitElement {
                       autocomplete="off"
                       .value=${entry.value}
                       @input=${(e: Event) => {
-                        this.updateConfigEntry(
-                          entry.key,
-                          (e.target as HTMLInputElement).value,
-                        );
+                        this.updateConfigEntry(entry.key, (e.target as HTMLInputElement).value);
                       }}
                     />`}
               ${entry.description
@@ -1187,20 +1193,30 @@ export class GcApp extends LitElement {
                   ? `${this.localEndpoints.length} local`
                   : "detect local"}
             </button>
-            <button class="action-btn" @click=${() => { this.editingProfile = null; this.editingProfile = {}; }}>
+            <button
+              class="action-btn"
+              @click=${() => {
+                this.editingProfile = null;
+                this.editingProfile = {};
+              }}
+            >
               + new connection
             </button>
           </div>
         </div>
         <div class="profiles-list">
           ${this.profiles.length === 0
-            ? html`<p class="config-empty">no profiles yet — click "+ new connection" to get started</p>`
+            ? html`<p class="config-empty">
+                no profiles yet — click "+ new connection" to get started
+              </p>`
             : this.profiles.map(
                 (p) => html`
                   <div class="profile-item ${this.activeProfileId === p.id ? "active" : ""}">
                     <button
                       class="profile-name"
-                      @click=${() => { this.editingProfile = { ...p }; }}
+                      @click=${() => {
+                        this.editingProfile = { ...p };
+                      }}
                     >
                       ${p.name}
                       <span class="profile-meta">${p.backend} · ${p.model || "(default)"}</span>
@@ -1208,7 +1224,10 @@ export class GcApp extends LitElement {
                     <div class="profile-actions">
                       ${this.activeProfileId === p.id
                         ? html`<span class="profile-active-badge">active</span>`
-                        : html`<button class="action-btn" @click=${() => this.activateProfile(p.id)}>
+                        : html`<button
+                            class="action-btn"
+                            @click=${() => this.activateProfile(p.id)}
+                          >
                             activate
                           </button>`}
                       <button
@@ -1216,15 +1235,21 @@ export class GcApp extends LitElement {
                         @click=${() => {
                           if (confirm(`Delete profile "${p.name}"?`)) this.deleteProfile(p.id);
                         }}
-                      >&times;</button>
+                      >
+                        &times;
+                      </button>
                     </div>
                   </div>
                 `,
               )}
         </div>
         ${this.activeProfileId
-          ? html`<button class="action-btn profile-deactivate"
-              @click=${() => this.activateProfile("")}>use manual settings</button>`
+          ? html`<button
+              class="action-btn profile-deactivate"
+              @click=${() => this.activateProfile("")}
+            >
+              use manual settings
+            </button>`
           : nothing}
       </div>
 
@@ -1243,7 +1268,9 @@ export class GcApp extends LitElement {
               }
               this.editingProfile = null;
             }}
-            @gc-profile-cancel=${() => { this.editingProfile = null; }}
+            @gc-profile-cancel=${() => {
+              this.editingProfile = null;
+            }}
           ></gc-connection-wizard>`
         : nothing}
 
@@ -1283,9 +1310,7 @@ export class GcApp extends LitElement {
                   }}
                 >
                   ${s.label}
-                  ${mod > 0
-                    ? html`<span class="config-modified-badge">${mod}</span>`
-                    : nothing}
+                  ${mod > 0 ? html`<span class="config-modified-badge">${mod}</span>` : nothing}
                 </button>
               `;
             })}
@@ -2178,7 +2203,9 @@ export class GcApp extends LitElement {
       font-size: var(--text-sm);
       cursor: pointer;
       opacity: 0.65;
-      transition: opacity 0.1s ease, background 0.1s ease;
+      transition:
+        opacity 0.1s ease,
+        background 0.1s ease;
     }
     .settings-nav-item:hover {
       opacity: 1;
@@ -2223,9 +2250,16 @@ export class GcApp extends LitElement {
         gap: var(--space-1);
         padding: var(--space-3);
       }
-      .settings-title { display: none; }
-      .settings-sidebar-footer { display: none; }
-      .settings-content { max-height: none; flex: 1; }
+      .settings-title {
+        display: none;
+      }
+      .settings-sidebar-footer {
+        display: none;
+      }
+      .settings-content {
+        max-height: none;
+        flex: 1;
+      }
     }
 
     /* ── Appearance settings ──────────────────────────────────── */

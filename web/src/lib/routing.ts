@@ -15,12 +15,14 @@
 //   ?file=path        log: selected file in commit diff
 //   ?split=1          log: split diff view
 //   ?filter=path      log: file history filter
+//   ?view=calendar    log: calendar overview (absent = commits view)
 
 export type Tab = "chat" | "browse" | "log" | "kb";
 
 const TABS = new Set<Tab>(["chat", "browse", "log", "kb"]);
 
 export type BrowseView = "file" | "city" | "changes";
+export type LogView = "commits" | "calendar";
 
 export interface ParsedRoute {
   repoId: string;
@@ -38,6 +40,7 @@ export interface ParsedRoute {
   logFile?: string;
   splitView?: boolean;
   filterPath?: string;
+  logView?: LogView;
   // kb
   cardId?: string;
 }
@@ -83,6 +86,7 @@ export function parseRoute(url: URL): ParsedRoute {
       if (params.has("file")) route.logFile = params.get("file")!;
       if (params.get("split") === "1") route.splitView = true;
       if (params.has("filter")) route.filterPath = params.get("filter")!;
+      if (params.get("view") === "calendar") route.logView = "calendar";
       break;
     case "kb":
       if (cleanSub) route.cardId = cleanSub;
@@ -124,6 +128,7 @@ export function buildRoute(route: ParsedRoute): string {
     if (route.logFile) params.set("file", route.logFile);
     if (route.splitView) params.set("split", "1");
     if (route.filterPath) params.set("filter", route.filterPath);
+    if (route.logView && route.logView !== "commits") params.set("view", route.logView);
   }
 
   const qs = params.toString();
@@ -171,6 +176,7 @@ export function clearStaleState(route: ParsedRoute): ParsedRoute {
       clean.logFile = route.logFile;
       clean.splitView = route.splitView;
       clean.filterPath = route.filterPath;
+      clean.logView = route.logView;
       break;
     case "kb":
       clean.cardId = route.cardId;
