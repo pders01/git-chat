@@ -70,6 +70,34 @@ export interface ParsedAction {
   args: string[];
 }
 
+/** Arg-completion context: set when the cursor is on an action
+ * command's arg position (e.g. `/model <partial>`). `partial` is the
+ * text already typed for the arg — the composer's autocomplete
+ * filters suggestions against it. Returns null if the line isn't
+ * `/ACTION ARGS`. */
+export interface ActionArgContext {
+  command: SlashCommand;
+  partial: string;
+}
+
+/** Detect whether the current line puts the cursor in arg-completion
+ * mode for an action command. Triggered only after the command itself
+ * has been fully typed and followed by whitespace — `/mod` stays in
+ * command-selection mode, `/model ` (note trailing space) enters arg
+ * mode with partial="". */
+export function matchActionArgContext(line: string): ActionArgContext | null {
+  const m = line.match(/^\s*\/(\w+)\s+(.*)$/);
+  if (!m) return null;
+  const trigger = m[1];
+  const partial = m[2];
+  // Newlines in the partial mean the user has moved past the command;
+  // don't offer arg completion across lines.
+  if (partial.includes("\n")) return null;
+  const spec = SLASH_COMMANDS.find((c) => c.trigger === trigger && c.kind === "action");
+  if (!spec) return null;
+  return { command: spec, partial };
+}
+
 /** Parse a composer input as a slash action command. Returns null if
  * the input is not a recognized action (transform commands return null
  * too — they're handled by transformSlashCommands instead). Matches

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { transformSlashCommands, parseSlashAction, SLASH_COMMANDS } from "./slash.js";
+import {
+  transformSlashCommands,
+  parseSlashAction,
+  matchActionArgContext,
+  SLASH_COMMANDS,
+} from "./slash.js";
 
 describe("transformSlashCommands", () => {
   test("passes through text with no slash commands", () => {
@@ -144,5 +149,46 @@ describe("parseSlashAction", () => {
       command: "model",
       args: ["gpt-4o"],
     });
+  });
+});
+
+describe("matchActionArgContext", () => {
+  test("returns null for no slash", () => {
+    expect(matchActionArgContext("hello")).toBeNull();
+    expect(matchActionArgContext("")).toBeNull();
+  });
+
+  test("returns null when command is not yet followed by space", () => {
+    // Bare command selection — still in command-picker mode, not arg mode.
+    expect(matchActionArgContext("/mod")).toBeNull();
+    expect(matchActionArgContext("/model")).toBeNull();
+  });
+
+  test("triggers on known action command + space (partial empty)", () => {
+    const ctx = matchActionArgContext("/model ");
+    expect(ctx?.command.trigger).toBe("model");
+    expect(ctx?.partial).toBe("");
+  });
+
+  test("triggers on known action command + partial text", () => {
+    const ctx = matchActionArgContext("/profile Loc");
+    expect(ctx?.command.trigger).toBe("profile");
+    expect(ctx?.partial).toBe("Loc");
+  });
+
+  test("returns null for transform commands (they don't arg-autocomplete here)", () => {
+    // /diff has its own completion path (branches/refs/paths) — kept
+    // separate because the suggestion source is completely different.
+    expect(matchActionArgContext("/diff HEAD~3")).toBeNull();
+  });
+
+  test("returns null for unknown commands", () => {
+    expect(matchActionArgContext("/unknown foo")).toBeNull();
+  });
+
+  test("leading whitespace on the line is allowed", () => {
+    const ctx = matchActionArgContext("  /model gp");
+    expect(ctx?.command.trigger).toBe("model");
+    expect(ctx?.partial).toBe("gp");
   });
 });

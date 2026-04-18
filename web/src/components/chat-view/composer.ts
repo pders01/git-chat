@@ -14,8 +14,19 @@ import {
   SLASH_COMMANDS,
   transformSlashCommands,
   parseSlashAction,
+  matchActionArgContext,
   type SlashCommand,
+  type ActionArgContext,
 } from "../../lib/slash.js";
+
+// Rendered form of an action-arg suggestion. Shape mirrors ComboboxOption
+// but is local to the composer so slash.ts stays pure — lib/ has no DOM
+// imports and should stay framework-agnostic.
+interface ArgSuggestion {
+  value: string;
+  label: string;
+  description?: string;
+}
 
 @customElement("gc-composer")
 export class GcComposer extends LitElement {
@@ -36,6 +47,17 @@ export class GcComposer extends LitElement {
   @state() private slashResults: SlashCommand[] = [];
   @state() private showSlash = false;
   @state() private slashIdx = 0;
+
+  // Arg-completion mode: engaged after the user types a space following
+  // an action command (e.g. `/model `). Suggestions come from RPC calls
+  // made lazily and cached for the lifetime of this composer instance.
+  @state() private argCtx: ActionArgContext | null = null;
+  @state() private argResults: ArgSuggestion[] = [];
+  @state() private showArgs = false;
+  @state() private argIdx = 0;
+  private argFetchSeq = 0;
+  private modelSuggestionCache: ArgSuggestion[] | null = null;
+  private profileSuggestionCache: ArgSuggestion[] | null = null;
 
   /** Public: set input text (used by parent for prefill / insert). */
   setInput(value: string) {
@@ -91,6 +113,106 @@ export class GcComposer extends LitElement {
     this.autoResize(ta);
     void this.checkMention();
     this.checkSlash();
+    void this.checkArgContext();
+  }
+
+  private async checkArgContext() {
+    const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
+    if (!ta) return;
+    const pos = ta.selectionStart;
+    const before = this.input.slice(0, pos);
+    const lineStart = before.lastIndexOf("\n") + 1;
+    const currentLine = before.slice(lineStart);
+    const ctx = matchActionArgContext(currentLine);
+    if (!ctx) {
+      this.argCtx = null;
+      this.argResults = [];
+      this.showArgs = false;
+      return;
+    }
+    // showSlash and showArgs are mutually exclusive — once we're in
+    // arg mode, the command-selection menu shouldn't be showing.
+    this.showSlash = false;
+    this.argCtx = ctx;
+    const seq = ++this.argFetchSeq;
+    const all = await this.loadArgSuggestions(ctx.command.trigger);
+    if (seq !== this.argFetchSeq) return;
+    const q = ctx.partial.toLowerCase();
+    this.argResults = q
+      ? all.filter((s) => s.label.toLowerCase().includes(q) || s.value.toLowerCase().includes(q))
+      : all.slice(0, 20);
+    this.argIdx = 0;
+    this.showArgs = this.argResults.length > 0;
+  }
+
+  private async loadArgSuggestions(trigger: string): Promise<ArgSuggestion[]> {
+    if (trigger === "profile") {
+      if (this.profileSuggestionCache) return this.profileSuggestionCache;
+      try {
+        const resp = await repoClient.listProfiles({});
+        const list = (resp.profiles ?? []).map((p) => ({
+          value: p.name,
+          label: p.name,
+          description: `${p.backend} · ${p.model || "backend default"}`,
+        }));
+        this.profileSuggestionCache = list;
+        return list;
+      } catch {
+        return [];
+      }
+    }
+    if (trigger === "model") {
+      if (this.modelSuggestionCache) return this.modelSuggestionCache;
+      try {
+        const [catResp, localResp] = await Promise.all([
+          repoClient.getProviderCatalog({}).catch(() => null),
+          repoClient.discoverLocalEndpoints({}).catch(() => null),
+        ]);
+        const seen = new Set<string>();
+        const out: ArgSuggestion[] = [];
+        for (const ep of localResp?.endpoints ?? []) {
+          for (const id of ep.models ?? []) {
+            if (seen.has(id)) continue;
+            seen.add(id);
+            out.push({ value: id, label: id, description: `${ep.name} (local)` });
+          }
+        }
+        for (const prov of catResp?.providers ?? []) {
+          for (const m of prov.models ?? []) {
+            if (seen.has(m.id)) continue;
+            seen.add(m.id);
+            out.push({ value: m.id, label: m.name || m.id, description: prov.name });
+          }
+        }
+        this.modelSuggestionCache = out;
+        return out;
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }
+
+  private acceptArgSuggestion(sugg: ArgSuggestion) {
+    const ta = this.renderRoot.querySelector<HTMLTextAreaElement>("textarea");
+    if (!ta || !this.argCtx) return;
+    const pos = ta.selectionStart;
+    const before = this.input.slice(0, pos);
+    const after = this.input.slice(pos);
+    const lineStart = before.lastIndexOf("\n") + 1;
+    // Replace the full current-line tail starting after the command +
+    // one space with the chosen value. Using the command trigger keeps
+    // us robust to leading whitespace variations in the user's input.
+    const replacementHead = before.slice(0, lineStart) + `/${this.argCtx.command.trigger} `;
+    this.input = replacementHead + sugg.value + after;
+    this.showArgs = false;
+    this.argResults = [];
+    this.argCtx = null;
+    requestAnimationFrame(() => {
+      ta.focus();
+      const newPos = replacementHead.length + sugg.value.length;
+      ta.setSelectionRange(newPos, newPos);
+    });
   }
 
   private checkSlash() {
@@ -253,6 +375,40 @@ export class GcComposer extends LitElement {
         return;
       }
     }
+    if (this.showArgs && this.argResults.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        this.argIdx = (this.argIdx + 1) % this.argResults.length;
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        this.argIdx = this.argIdx <= 0 ? this.argResults.length - 1 : this.argIdx - 1;
+        return;
+      }
+      if (e.key === "Tab") {
+        // Tab inserts the suggestion in place, composer stays open so
+        // the user can tweak (e.g. append extra args later).
+        e.preventDefault();
+        this.acceptArgSuggestion(this.argResults[this.argIdx]);
+        return;
+      }
+      if (e.key === "Enter") {
+        // Enter inserts + submits — the common case when picking a
+        // profile or model: you want to commit the action immediately.
+        e.preventDefault();
+        this.acceptArgSuggestion(this.argResults[this.argIdx]);
+        // acceptArgSuggestion mutates this.input synchronously; submit
+        // in the next microtask so the updated input is read.
+        queueMicrotask(() => this.submit());
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        this.showArgs = false;
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       this.submit();
@@ -405,7 +561,9 @@ export class GcComposer extends LitElement {
             aria-label="Message input — type @ for file autocomplete or / for slash commands, Enter to send, drop files to attach"
             aria-describedby="composer-status"
             aria-autocomplete="list"
-            aria-expanded=${this.showMentions || this.showSlash ? "true" : "false"}
+            aria-expanded=${this.showMentions || this.showSlash || this.showArgs
+              ? "true"
+              : "false"}
           ></textarea>
           ${this.showMentions
             ? html`<ul class="mention-list" role="listbox">
@@ -439,6 +597,33 @@ export class GcComposer extends LitElement {
                       <span class="slash-label">${c.label}</span>
                       <span class="slash-hint">${c.hint}</span>
                       <span class="slash-example">${c.example}</span>
+                    </button>
+                  </li>`,
+                )}
+              </ul>`
+            : nothing}
+          ${this.showArgs && this.argCtx
+            ? html`<ul
+                class="slash-list arg-list"
+                role="listbox"
+                aria-label="${this.argCtx.command.label} arguments"
+              >
+                ${this.argResults.map(
+                  (s, i) => html`<li
+                    role="option"
+                    aria-selected=${i === this.argIdx ? "true" : "false"}
+                  >
+                    <button
+                      class="slash-item arg-item ${i === this.argIdx ? "active" : ""}"
+                      @click=${() => {
+                        this.acceptArgSuggestion(s);
+                        queueMicrotask(() => this.submit());
+                      }}
+                    >
+                      <span class="arg-label">${s.label}</span>
+                      ${s.description
+                        ? html`<span class="slash-hint">${s.description}</span>`
+                        : nothing}
                     </button>
                   </li>`,
                 )}
@@ -680,6 +865,16 @@ export class GcComposer extends LitElement {
     .slash-example {
       opacity: 0.45;
       font-size: 0.68rem;
+    }
+    .arg-list {
+      max-height: 240px;
+    }
+    .arg-item {
+      grid-template-columns: max-content 1fr;
+    }
+    .arg-label {
+      color: var(--accent-user);
+      font-family: var(--font-mono, ui-monospace, monospace);
     }
     .composer.drag-active .composer-inner {
       border-color: var(--border-accent);
