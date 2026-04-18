@@ -136,6 +136,8 @@ func renderUsage() string {
 		{"git chat local [path] [revspec] [flags]", "explicit solo-local mode"},
 		{"git chat mcp [path]", "MCP server mode (stdio)"},
 		{"git chat add-key <principal>", "append SSH pubkey from stdin"},
+		{"git chat remove-key <principal>", "revoke a principal's SSH key"},
+		{"git chat list-keys", "show registered principals"},
 		{"git chat version", "print version"},
 		{"git chat help", "show this help"},
 	} {

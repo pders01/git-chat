@@ -111,6 +111,74 @@ func AppendAllowedSignersFile(path, principal string, pubkey ssh.PublicKey) erro
 	return err
 }
 
+// List returns all registered principals and their key types.
+func (s *AllowedSigners) List() []KeyEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []KeyEntry
+	for raw, principal := range s.byKey {
+		pk, err := gossh.ParsePublicKey([]byte(raw))
+		if err != nil {
+			continue
+		}
+		out = append(out, KeyEntry{
+			Principal: principal,
+			KeyType:   pk.Type(),
+			// Fingerprint in SHA256 format, same as ssh-keygen -l.
+			Fingerprint: gossh.FingerprintSHA256(pk),
+		})
+	}
+	return out
+}
+
+// KeyEntry describes one registered key.
+type KeyEntry struct {
+	Principal   string
+	KeyType     string
+	Fingerprint string
+}
+
+// RemoveAllowedSignersByPrincipal rewrites the allowed_signers file,
+// removing all entries for the given principal. Returns the number of
+// entries removed.
+func RemoveAllowedSignersByPrincipal(path, principal string) (int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	var kept []string
+	removed := 0
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			kept = append(kept, line)
+			continue
+		}
+		fields := strings.Fields(trimmed)
+		if len(fields) >= 1 && fields[0] == principal {
+			removed++
+			continue
+		}
+		kept = append(kept, line)
+	}
+	if err := scanner.Err(); err != nil {
+		f.Close()
+		return 0, err
+	}
+	f.Close()
+
+	if removed == 0 {
+		return 0, fmt.Errorf("principal %q not found in %s", principal, path)
+	}
+	content := strings.Join(kept, "\n")
+	if content != "" && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	return removed, os.WriteFile(path, []byte(content), 0o600)
+}
+
 func parentDir(path string) string {
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i] == '/' {

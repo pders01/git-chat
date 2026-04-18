@@ -11,6 +11,8 @@
 //	git chat mcp          MCP server mode (stdio)
 //	git chat chat "…"     headless one-shot chat, reply on stdout
 //	git chat add-key      append SSH pubkey from stdin
+//	git chat remove-key   revoke a principal's SSH key
+//	git chat list-keys    show registered principals
 package main
 
 import (
@@ -46,6 +48,14 @@ func main() {
 		}
 	case "add-key":
 		if err := runAddKey(args); err != nil {
+			fail(err)
+		}
+	case "remove-key":
+		if err := runRemoveKey(args); err != nil {
+			fail(err)
+		}
+	case "list-keys":
+		if err := runListKeys(args); err != nil {
 			fail(err)
 		}
 	case "mcp":
