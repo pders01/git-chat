@@ -634,12 +634,12 @@ export class GcCodeCity extends LitElement {
     this.error = "";
 
     try {
-      const resp = await (repoClient as any).getFileChurnMap(
+      const resp = await repoClient.getFileChurnMap(
         {
           repoId: this.repoId,
           ref: this.branch || "",
-          sinceTimestamp: String(sinceTimestamp ?? 0),
-          untilTimestamp: String(untilTimestamp ?? 0),
+          sinceTimestamp: BigInt(sinceTimestamp ?? 0),
+          untilTimestamp: BigInt(untilTimestamp ?? 0),
           maxCommits: maxCommits ?? 0,
         },
         { signal: abort.signal },

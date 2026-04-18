@@ -51,7 +51,7 @@ export class GcChatDashboard extends LitElement {
       if (cacheKey === this.cachedSummaryKey && this.activitySummary) return;
 
       this.summaryLoading = true;
-      const resp = await (chatClient as any).summarizeActivity({ repoId: this.repoId });
+      const resp = await chatClient.summarizeActivity({ repoId: this.repoId });
       this.activitySummary = resp.summary || "";
       this.cachedSummaryKey = cacheKey;
     } catch {

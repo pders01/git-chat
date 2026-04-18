@@ -761,7 +761,7 @@ export class GcApp extends LitElement {
   private async loadConfig() {
     this.configLoading = true;
     try {
-      const resp = await (repoClient as any).getConfig({});
+      const resp = await repoClient.getConfig({});
       this.configEntries = resp.entries ?? [];
     } catch {
       this.configEntries = [];
@@ -772,7 +772,7 @@ export class GcApp extends LitElement {
 
   private async loadProfiles() {
     try {
-      const resp = await (repoClient as any).listProfiles({});
+      const resp = await repoClient.listProfiles({});
       this.profiles = resp.profiles ?? [];
       this.activeProfileId = resp.activeProfileId ?? "";
     } catch {
@@ -782,7 +782,7 @@ export class GcApp extends LitElement {
 
   private async saveProfile(profile: any) {
     try {
-      const resp = await (repoClient as any).saveProfile({ profile });
+      const resp = await repoClient.saveProfile({ profile });
       if (!profile.id) profile.id = resp.id;
       await this.loadProfiles();
       this.editingProfile = null;
@@ -793,7 +793,7 @@ export class GcApp extends LitElement {
 
   private async deleteProfile(id: string) {
     try {
-      await (repoClient as any).deleteProfile({ id });
+      await repoClient.deleteProfile({ id });
       await this.loadProfiles();
       await this.loadConfig();
       this.editingProfile = null;
@@ -804,7 +804,7 @@ export class GcApp extends LitElement {
 
   private async loadCatalog() {
     try {
-      const resp = await (repoClient as any).getProviderCatalog({});
+      const resp = await repoClient.getProviderCatalog({});
       this.catalog = resp.providers ?? [];
     } catch {
       this.catalog = [];
@@ -814,7 +814,7 @@ export class GcApp extends LitElement {
   private async refreshCatalog() {
     this.catalogLoading = true;
     try {
-      const resp = await (repoClient as any).refreshProviderCatalog({});
+      const resp = await repoClient.refreshProviderCatalog({});
       this.catalog = resp.providers ?? [];
     } catch {
       // TODO: surface error
@@ -826,7 +826,7 @@ export class GcApp extends LitElement {
   private async discoverLocal() {
     this.localDiscovering = true;
     try {
-      const resp = await (repoClient as any).discoverLocalEndpoints({});
+      const resp = await repoClient.discoverLocalEndpoints({});
       this.localEndpoints = resp.endpoints ?? [];
     } catch {
       this.localEndpoints = [];
@@ -837,7 +837,7 @@ export class GcApp extends LitElement {
 
   private async activateProfile(id: string) {
     try {
-      await (repoClient as any).activateProfile({ id });
+      await repoClient.activateProfile({ id });
       await this.loadProfiles();
       await this.loadConfig();
     } catch {
@@ -855,7 +855,7 @@ export class GcApp extends LitElement {
       key,
       setTimeout(async () => {
         try {
-          await (repoClient as any).updateConfig({ key, value });
+          await repoClient.updateConfig({ key, value });
         } catch {
           /* toast could go here */
         }

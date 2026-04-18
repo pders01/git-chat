@@ -75,7 +75,7 @@ export class GcConnectionWizard extends LitElement {
    */
   private async discoverModelsForEdit() {
     try {
-      const resp = await (repoClient as any).discoverModels({
+      const resp = await repoClient.discoverModels({
         baseUrl: this.baseUrl,
         apiKey: this.apiKey,
       });
@@ -172,7 +172,7 @@ export class GcConnectionWizard extends LitElement {
     this.discoverError = "";
     this.discoveredModels = [];
     try {
-      const resp = await (repoClient as any).discoverModels({
+      const resp = await repoClient.discoverModels({
         baseUrl: this.baseUrl,
         apiKey: this.apiKey,
       });

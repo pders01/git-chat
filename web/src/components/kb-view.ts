@@ -114,7 +114,7 @@ export class GcKbView extends LitElement {
     this.cardDetail = null;
     this.detailHtml = "";
     try {
-      const resp = await (chatClient as any).getCard({ cardId });
+      const resp = await chatClient.getCard({ cardId });
       this.cardDetail = {
         id: resp.id,
         question: resp.question,
