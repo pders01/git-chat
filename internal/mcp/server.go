@@ -86,7 +86,7 @@ func NewServer(cfg Config) *server.MCPServer {
 			}
 			return mcp.NewToolResultText(fmt.Sprintf(
 				"**Knowledge Card** (hit #%d, model: %s, commit: %s)\n\n%s",
-				card.HitCount+1, card.Model, shortSHA(card.CreatedCommit), card.AnswerMD,
+				card.HitCount+1, card.Model, repo.ShortSHA(card.CreatedCommit), card.AnswerMD,
 			)), nil
 		},
 	)
@@ -451,7 +451,7 @@ func NewServer(cfg Config) *server.MCPServer {
 			}
 			var sb strings.Builder
 			for _, b := range branches {
-				fmt.Fprintf(&sb, "%s %s %s\n", b.Name, shortSHA(b.Commit), b.Subject)
+				fmt.Fprintf(&sb, "%s %s %s\n", b.Name, repo.ShortSHA(b.Commit), b.Subject)
 			}
 			return mcp.NewToolResultText(sb.String()), nil
 		},
@@ -487,7 +487,7 @@ func NewServer(cfg Config) *server.MCPServer {
 			var sb strings.Builder
 			for i, l := range lines {
 				fmt.Fprintf(&sb, "%s %-16s %4d: %s\n",
-					shortSHA(l.CommitSha), l.AuthorName, i+1, l.Text)
+					repo.ShortSHA(l.CommitSha), l.AuthorName, i+1, l.Text)
 			}
 			out := sb.String()
 			if len(out) > 64*1024 {
@@ -500,4 +500,3 @@ func NewServer(cfg Config) *server.MCPServer {
 	return s
 }
 
-func shortSHA(s string) string { return repo.ShortSHA(s) }

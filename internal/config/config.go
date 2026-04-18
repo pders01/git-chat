@@ -63,7 +63,7 @@ func (r *Registry) InitEncryption(dbPath string) error {
 // Register adds a config entry to the registry. Duplicate keys are
 // silently ignored (first registration wins).
 func (r *Registry) Register(key, defaultVal, desc, group string) {
-	r.register(key, defaultVal, desc, group, false)
+	r.registerFull(key, defaultVal, desc, group, false, false)
 }
 
 // RegisterSecret is like Register but marks the entry as a secret.
@@ -78,10 +78,6 @@ func (r *Registry) RegisterSecret(key, defaultVal, desc, group string) {
 // behaviour (e.g. LLM base URL, webhook URL).
 func (r *Registry) RegisterRestricted(key, defaultVal, desc, group string) {
 	r.registerFull(key, defaultVal, desc, group, false, true)
-}
-
-func (r *Registry) register(key, defaultVal, desc, group string, secret bool) {
-	r.registerFull(key, defaultVal, desc, group, secret, false)
 }
 
 func (r *Registry) registerFull(key, defaultVal, desc, group string, secret, restricted bool) {
@@ -201,6 +197,27 @@ func (r *Registry) Set(ctx context.Context, key, value string) error {
 		storeVal = enc
 	}
 	return r.db.SetConfigOverride(ctx, key, storeVal)
+}
+
+// SetBatch atomically writes multiple config overrides in a single
+// transaction. Secret entries are encrypted before writing.
+func (r *Registry) SetBatch(ctx context.Context, kvs map[string]string) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	store := make(map[string]string, len(kvs))
+	for k, v := range kvs {
+		sv := v
+		if e, ok := r.byKey[k]; ok && e.Secret && r.encKey != nil && v != "" {
+			enc, err := encrypt(r.encKey, v)
+			if err != nil {
+				return fmt.Errorf("encrypt %s: %w", k, err)
+			}
+			sv = enc
+		}
+		store[k] = sv
+	}
+	return r.db.SetConfigOverrides(ctx, store)
 }
 
 // Delete removes a config override, reverting to env/default.

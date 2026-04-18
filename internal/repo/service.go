@@ -484,20 +484,18 @@ func (s *Service) ActivateProfile(
 	if plain, err := s.Config.DecryptSecret(apiKey); err == nil {
 		apiKey = plain
 	}
-	// Write profile values into config overrides.
-	for _, kv := range []struct{ k, v string }{
-		{"LLM_BACKEND", p.Backend},
-		{"LLM_BASE_URL", p.BaseURL},
-		{"LLM_MODEL", p.Model},
-		{"LLM_API_KEY", apiKey},
-		{"LLM_TEMPERATURE", p.Temperature},
-		{"LLM_MAX_TOKENS", p.MaxTokens},
-		{"LLM_SYSTEM_PROMPT", p.SystemPrompt},
-		{"LLM_ACTIVE_PROFILE", req.Msg.Id},
-	} {
-		if err := s.Config.Set(ctx, kv.k, kv.v); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
+	// Write profile values into config overrides atomically.
+	if err := s.Config.SetBatch(ctx, map[string]string{
+		"LLM_BACKEND":        p.Backend,
+		"LLM_BASE_URL":       p.BaseURL,
+		"LLM_MODEL":          p.Model,
+		"LLM_API_KEY":        apiKey,
+		"LLM_TEMPERATURE":    p.Temperature,
+		"LLM_MAX_TOKENS":     p.MaxTokens,
+		"LLM_SYSTEM_PROMPT":  p.SystemPrompt,
+		"LLM_ACTIVE_PROFILE": req.Msg.Id,
+	}); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&gitchatv1.ActivateProfileResponse{}), nil
 }

@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -25,14 +24,6 @@ import (
 	"github.com/pders01/git-chat/internal/repo"
 )
 
-// safePath validates that a relative path does not escape the repo root.
-func safePath(p string) (string, error) {
-	clean := filepath.Clean(p)
-	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", errors.New("path must be relative to repository root")
-	}
-	return clean, nil
-}
 
 // ErrUnknownTool is returned when the model emits a tool_use for a
 // name that is not in the registry. The service surfaces this as a
@@ -393,7 +384,7 @@ func handleSearchCode(ctx context.Context, entry *repo.Entry, raw json.RawMessag
 	cli = append(cli, "--", args.Query)
 	scope := "."
 	if args.Path != "" {
-		clean, err := safePath(args.Path)
+		clean, err := repo.SafePath(args.Path)
 		if err != nil {
 			return "", fmt.Errorf("search_code: %w", err)
 		}
@@ -487,7 +478,7 @@ func handleOutline(ctx context.Context, entry *repo.Entry, raw json.RawMessage) 
 	if args.Path == "" {
 		return "", errors.New("outline: path is required")
 	}
-	clean, err := safePath(args.Path)
+	clean, err := repo.SafePath(args.Path)
 	if err != nil {
 		return "", fmt.Errorf("outline: %w", err)
 	}
@@ -612,7 +603,7 @@ func handleListBranches(ctx context.Context, entry *repo.Entry, _ json.RawMessag
 	}
 	var sb strings.Builder
 	for _, b := range branches {
-		fmt.Fprintf(&sb, "%s %s %s\n", b.Name, shortSHA(b.Commit), b.Subject)
+		fmt.Fprintf(&sb, "%s %s %s\n", b.Name, repo.ShortSHA(b.Commit), b.Subject)
 	}
 	return sb.String(), nil
 }
@@ -655,7 +646,7 @@ func handleGetBlame(ctx context.Context, entry *repo.Entry, raw json.RawMessage)
 	var sb strings.Builder
 	for i, l := range lines {
 		fmt.Fprintf(&sb, "%s %-16s %4d: %s\n",
-			shortSHA(l.CommitSha), l.AuthorName, i+1, l.Text)
+			repo.ShortSHA(l.CommitSha), l.AuthorName, i+1, l.Text)
 	}
 	out := sb.String()
 	if len(out) > blameMaxBytes {
@@ -663,8 +654,6 @@ func handleGetBlame(ctx context.Context, entry *repo.Entry, raw json.RawMessage)
 	}
 	return out, nil
 }
-
-func shortSHA(s string) string { return repo.ShortSHA(s) }
 
 func firstNonEmpty(a, b string) string {
 	if a != "" {

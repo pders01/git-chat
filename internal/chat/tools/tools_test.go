@@ -264,12 +264,12 @@ func TestSafePath(t *testing.T) {
 		{"", true},           // Clean("") = "."
 	}
 	for _, tt := range tests {
-		clean, err := safePath(tt.input)
+		clean, err := repo.SafePath(tt.input)
 		if tt.ok && err != nil {
-			t.Errorf("safePath(%q) unexpected error: %v", tt.input, err)
+			t.Errorf("repo.SafePath(%q) unexpected error: %v", tt.input, err)
 		}
 		if !tt.ok && err == nil {
-			t.Errorf("safePath(%q) should have failed, got %q", tt.input, clean)
+			t.Errorf("repo.SafePath(%q) should have failed, got %q", tt.input, clean)
 		}
 	}
 }

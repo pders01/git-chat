@@ -37,9 +37,9 @@ var (
 // repository root after cleaning.
 var errPathEscape = errors.New("path escapes repository boundary")
 
-// safePath validates that a relative path does not escape the repo root.
+// SafePath validates that a relative path does not escape the repo root.
 // Returns the cleaned path or an error.
-func safePath(p string) (string, error) {
+func SafePath(p string) (string, error) {
 	clean := filepath.Clean(p)
 	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return "", errPathEscape
@@ -1278,7 +1278,7 @@ func mapStatusCode(c git.StatusCode) string {
 // GetWorkingTreeDiff returns a unified diff for a single file between
 // its HEAD version and its current working tree content.
 func (e *Entry) GetWorkingTreeDiff(path string) (string, bool, error) {
-	clean, err := safePath(path)
+	clean, err := SafePath(path)
 	if err != nil {
 		return "", false, err
 	}
@@ -1360,7 +1360,7 @@ func renderUnifiedDiff(path, fromSHA, toSHA, fromContent, toContent string) stri
 	// Header mimics git's shape so Shiki's diff grammar highlights it.
 	fmt.Fprintf(&sb, "diff --git a/%s b/%s\n", path, path)
 	if fromSHA != "" && toSHA != "" {
-		fmt.Fprintf(&sb, "index %s..%s\n", shortSHA(fromSHA), shortSHA(toSHA))
+		fmt.Fprintf(&sb, "index %s..%s\n", ShortSHA(fromSHA), ShortSHA(toSHA))
 	}
 	if fromContent == "" {
 		sb.WriteString("--- /dev/null\n")
@@ -1396,7 +1396,6 @@ func ShortSHA(s string) string {
 	return s
 }
 
-func shortSHA(s string) string { return ShortSHA(s) }
 
 // splitLinesKeepNL splits s into lines, keeping trailing newlines so
 // the diff output preserves line terminators. An input ending in "\n"

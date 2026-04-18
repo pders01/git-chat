@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repoClient } from "../lib/transport.js";
+import type { CatalogProvider, LLMProfile, LocalEndpoint } from "../gen/gitchat/v1/repo_pb.js";
 import "./combobox.js";
 import type { ComboboxOption } from "./combobox.js";
 
@@ -19,13 +20,13 @@ type Step = "provider" | "auth" | "model" | "save";
 @customElement("gc-connection-wizard")
 export class GcConnectionWizard extends LitElement {
   /** Catalog providers for the combobox. */
-  @property({ type: Array }) catalog: any[] = [];
+  @property({ type: Array }) catalog: CatalogProvider[] = [];
 
   /** Local discovered endpoints. */
-  @property({ type: Array }) localEndpoints: any[] = [];
+  @property({ type: Array }) localEndpoints: LocalEndpoint[] = [];
 
   /** Existing profile for editing (null = new). */
-  @property({ type: Object }) profile: any | null = null;
+  @property({ type: Object }) profile: LLMProfile | null = null;
 
   @state() private step: Step = "provider";
   @state() private manual = false;
@@ -65,14 +66,14 @@ export class GcConnectionWizard extends LitElement {
   // ── Provider options ────────────────────────────────────────
 
   private get providerOptions(): ComboboxOption[] {
-    const local: ComboboxOption[] = this.localEndpoints.map((ep: any) => ({
+    const local: ComboboxOption[] = this.localEndpoints.map((ep) => ({
       value: `local:${ep.url}`,
       label: ep.name,
       description: `local · ${ep.models?.length ?? 0} models`,
     }));
     const cat: ComboboxOption[] = [...this.catalog]
-      .sort((a: any, b: any) => a.name.localeCompare(b.name))
-      .map((c: any) => ({
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((c) => ({
         value: c.id,
         label: c.name,
         description: `${c.type} · ${c.models?.length ?? 0} models`,
@@ -101,14 +102,14 @@ export class GcConnectionWizard extends LitElement {
       this.backend = "openai";
       this.baseUrl = url;
       this.providerName = opt.label;
-      const ep = this.localEndpoints.find((e: any) => e.url === url);
+      const ep = this.localEndpoints.find((e) => e.url === url);
       if (ep?.models?.length) {
         this.discoveredModels = ep.models;
         this.step = "model";
         return;
       }
     } else {
-      const prov = this.catalog.find((c: any) => c.id === opt.value);
+      const prov = this.catalog.find((c) => c.id === opt.value);
       if (prov) {
         this.backend = prov.type;
         this.baseUrl = prov.defaultBaseUrl ?? "";
@@ -253,7 +254,7 @@ export class GcConnectionWizard extends LitElement {
               <div class="quick-connect">
                 <span class="quick-label">Local</span>
                 ${this.localEndpoints.map(
-                  (ep: any) => html`
+                  (ep) => html`
                     <button class="quick-btn" @click=${() =>
                       this.selectProvider({ value: `local:${ep.url}`, label: ep.name, description: "" })
                     }>${ep.name}</button>
