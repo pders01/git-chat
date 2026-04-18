@@ -34,6 +34,7 @@ func RegisterDefaults(r *Registry) {
 	r.Register("LLM_MODEL", "", "Model name (empty = backend default)", "llm")
 	r.RegisterSecret("LLM_API_KEY", "", "API key (required for anthropic)", "llm")
 	r.Register("LLM_ACTIVE_PROFILE", "", "Active LLM profile ID (empty = use individual LLM_* settings)", "llm")
+	r.Register("LLM_SYSTEM_PROMPT", "", "Custom system prompt snippet (appended to base prompt)", "llm")
 	r.Register("LLM_TEMPERATURE", "", "Sampling temperature (empty = use startup flag, 0 = deterministic)", "llm")
 	r.Register("LLM_MAX_TOKENS", "", "Max tokens per response (empty = use startup flag, 0 = provider default)", "llm")
 

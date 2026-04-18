@@ -80,6 +80,8 @@ service RepoService {
 
   // Discover OpenAI-compatible endpoints on localhost (user-triggered, opt-in).
   rpc DiscoverLocalEndpoints(DiscoverLocalEndpointsRequest) returns (DiscoverLocalEndpointsResponse);
+  // Discover models available at any base URL (probes GET /models with optional API key).
+  rpc DiscoverModels(DiscoverModelsRequest) returns (DiscoverModelsResponse);
 
   // LLM profile management.
   rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
@@ -400,6 +402,7 @@ message LLMProfile {
   string api_key = 6;     // masked in list responses, plaintext in save requests
   string temperature = 7;
   string max_tokens = 8;
+  string system_prompt = 9; // appended to base system prompt when profile is active
 }
 
 message ListProfilesRequest {}
@@ -429,5 +432,18 @@ message LocalEndpoint {
 
 message DiscoverLocalEndpointsResponse {
   repeated LocalEndpoint endpoints = 1;
+}
+
+// ─── Model Discovery ──────────────────────────────────────────────────
+
+message DiscoverModelsRequest {
+  string base_url = 1;
+  string api_key = 2;
+}
+
+message DiscoverModelsResponse {
+  repeated string model_ids = 1;
+  string provider_name = 2;
+  string error = 3;
 }
 

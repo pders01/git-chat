@@ -299,6 +299,34 @@ func (s *Service) RefreshProviderCatalog(
 	}), nil
 }
 
+// ─── Model Discovery ──────────────────────────────────────────────────
+
+func (s *Service) DiscoverModels(
+	ctx context.Context,
+	req *connect.Request[gitchatv1.DiscoverModelsRequest],
+) (*connect.Response[gitchatv1.DiscoverModelsResponse], error) {
+	ids, err := DiscoverModels(ctx, req.Msg.BaseUrl, req.Msg.ApiKey)
+	if err != nil {
+		return connect.NewResponse(&gitchatv1.DiscoverModelsResponse{
+			Error: err.Error(),
+		}), nil
+	}
+	// Try to resolve provider name from catalog.
+	providerName := ""
+	if s.Catalog != nil {
+		for _, p := range s.Catalog.Get(ctx) {
+			if p.DefaultBaseUrl != "" && req.Msg.BaseUrl == p.DefaultBaseUrl {
+				providerName = p.Name
+				break
+			}
+		}
+	}
+	return connect.NewResponse(&gitchatv1.DiscoverModelsResponse{
+		ModelIds:     ids,
+		ProviderName: providerName,
+	}), nil
+}
+
 // ─── Local Discovery ──────────────────────────────────────────────────
 
 func (s *Service) DiscoverLocalEndpoints(
@@ -333,14 +361,15 @@ func (s *Service) ListProfiles(
 			masked = "••••••••"
 		}
 		out = append(out, &gitchatv1.LLMProfile{
-			Id:          p.ID,
-			Name:        p.Name,
-			Backend:     p.Backend,
-			BaseUrl:     p.BaseURL,
-			Model:       p.Model,
-			ApiKey:      masked,
-			Temperature: p.Temperature,
-			MaxTokens:   p.MaxTokens,
+			Id:           p.ID,
+			Name:         p.Name,
+			Backend:      p.Backend,
+			BaseUrl:      p.BaseURL,
+			Model:        p.Model,
+			ApiKey:       masked,
+			Temperature:  p.Temperature,
+			MaxTokens:    p.MaxTokens,
+			SystemPrompt: p.SystemPrompt,
 		})
 	}
 	activeID := s.Config.GetCtx(ctx, "LLM_ACTIVE_PROFILE")
@@ -392,14 +421,15 @@ func (s *Service) SaveProfile(
 		apiKey = enc
 	}
 	if err := s.DB.SaveProfile(ctx, storage.LLMProfile{
-		ID:          id,
-		Name:        p.Name,
-		Backend:     p.Backend,
-		BaseURL:     p.BaseUrl,
-		Model:       p.Model,
-		APIKey:      apiKey,
-		Temperature: p.Temperature,
-		MaxTokens:   p.MaxTokens,
+		ID:           id,
+		Name:         p.Name,
+		Backend:      p.Backend,
+		BaseURL:      p.BaseUrl,
+		Model:        p.Model,
+		APIKey:       apiKey,
+		Temperature:  p.Temperature,
+		MaxTokens:    p.MaxTokens,
+		SystemPrompt: p.SystemPrompt,
 	}); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -462,6 +492,7 @@ func (s *Service) ActivateProfile(
 		{"LLM_API_KEY", apiKey},
 		{"LLM_TEMPERATURE", p.Temperature},
 		{"LLM_MAX_TOKENS", p.MaxTokens},
+		{"LLM_SYSTEM_PROMPT", p.SystemPrompt},
 		{"LLM_ACTIVE_PROFILE", req.Msg.Id},
 	} {
 		if err := s.Config.Set(ctx, kv.k, kv.v); err != nil {

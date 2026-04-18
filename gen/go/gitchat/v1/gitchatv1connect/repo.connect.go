@@ -73,6 +73,9 @@ const (
 	// RepoServiceDiscoverLocalEndpointsProcedure is the fully-qualified name of the RepoService's
 	// DiscoverLocalEndpoints RPC.
 	RepoServiceDiscoverLocalEndpointsProcedure = "/gitchat.v1.RepoService/DiscoverLocalEndpoints"
+	// RepoServiceDiscoverModelsProcedure is the fully-qualified name of the RepoService's
+	// DiscoverModels RPC.
+	RepoServiceDiscoverModelsProcedure = "/gitchat.v1.RepoService/DiscoverModels"
 	// RepoServiceListProfilesProcedure is the fully-qualified name of the RepoService's ListProfiles
 	// RPC.
 	RepoServiceListProfilesProcedure = "/gitchat.v1.RepoService/ListProfiles"
@@ -142,6 +145,8 @@ type RepoServiceClient interface {
 	RefreshProviderCatalog(context.Context, *connect.Request[v1.RefreshProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error)
 	// Discover OpenAI-compatible endpoints on localhost (user-triggered, opt-in).
 	DiscoverLocalEndpoints(context.Context, *connect.Request[v1.DiscoverLocalEndpointsRequest]) (*connect.Response[v1.DiscoverLocalEndpointsResponse], error)
+	// Discover models available at any base URL (probes GET /models with optional API key).
+	DiscoverModels(context.Context, *connect.Request[v1.DiscoverModelsRequest]) (*connect.Response[v1.DiscoverModelsResponse], error)
 	// LLM profile management.
 	ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error)
 	SaveProfile(context.Context, *connect.Request[v1.SaveProfileRequest]) (*connect.Response[v1.SaveProfileResponse], error)
@@ -256,6 +261,12 @@ func NewRepoServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(repoServiceMethods.ByName("DiscoverLocalEndpoints")),
 			connect.WithClientOptions(opts...),
 		),
+		discoverModels: connect.NewClient[v1.DiscoverModelsRequest, v1.DiscoverModelsResponse](
+			httpClient,
+			baseURL+RepoServiceDiscoverModelsProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("DiscoverModels")),
+			connect.WithClientOptions(opts...),
+		),
 		listProfiles: connect.NewClient[v1.ListProfilesRequest, v1.ListProfilesResponse](
 			httpClient,
 			baseURL+RepoServiceListProfilesProcedure,
@@ -301,6 +312,7 @@ type repoServiceClient struct {
 	getProviderCatalog     *connect.Client[v1.GetProviderCatalogRequest, v1.GetProviderCatalogResponse]
 	refreshProviderCatalog *connect.Client[v1.RefreshProviderCatalogRequest, v1.GetProviderCatalogResponse]
 	discoverLocalEndpoints *connect.Client[v1.DiscoverLocalEndpointsRequest, v1.DiscoverLocalEndpointsResponse]
+	discoverModels         *connect.Client[v1.DiscoverModelsRequest, v1.DiscoverModelsResponse]
 	listProfiles           *connect.Client[v1.ListProfilesRequest, v1.ListProfilesResponse]
 	saveProfile            *connect.Client[v1.SaveProfileRequest, v1.SaveProfileResponse]
 	deleteProfile          *connect.Client[v1.DeleteProfileRequest, v1.DeleteProfileResponse]
@@ -387,6 +399,11 @@ func (c *repoServiceClient) DiscoverLocalEndpoints(ctx context.Context, req *con
 	return c.discoverLocalEndpoints.CallUnary(ctx, req)
 }
 
+// DiscoverModels calls gitchat.v1.RepoService.DiscoverModels.
+func (c *repoServiceClient) DiscoverModels(ctx context.Context, req *connect.Request[v1.DiscoverModelsRequest]) (*connect.Response[v1.DiscoverModelsResponse], error) {
+	return c.discoverModels.CallUnary(ctx, req)
+}
+
 // ListProfiles calls gitchat.v1.RepoService.ListProfiles.
 func (c *repoServiceClient) ListProfiles(ctx context.Context, req *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error) {
 	return c.listProfiles.CallUnary(ctx, req)
@@ -463,6 +480,8 @@ type RepoServiceHandler interface {
 	RefreshProviderCatalog(context.Context, *connect.Request[v1.RefreshProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error)
 	// Discover OpenAI-compatible endpoints on localhost (user-triggered, opt-in).
 	DiscoverLocalEndpoints(context.Context, *connect.Request[v1.DiscoverLocalEndpointsRequest]) (*connect.Response[v1.DiscoverLocalEndpointsResponse], error)
+	// Discover models available at any base URL (probes GET /models with optional API key).
+	DiscoverModels(context.Context, *connect.Request[v1.DiscoverModelsRequest]) (*connect.Response[v1.DiscoverModelsResponse], error)
 	// LLM profile management.
 	ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error)
 	SaveProfile(context.Context, *connect.Request[v1.SaveProfileRequest]) (*connect.Response[v1.SaveProfileResponse], error)
@@ -573,6 +592,12 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(repoServiceMethods.ByName("DiscoverLocalEndpoints")),
 		connect.WithHandlerOptions(opts...),
 	)
+	repoServiceDiscoverModelsHandler := connect.NewUnaryHandler(
+		RepoServiceDiscoverModelsProcedure,
+		svc.DiscoverModels,
+		connect.WithSchema(repoServiceMethods.ByName("DiscoverModels")),
+		connect.WithHandlerOptions(opts...),
+	)
 	repoServiceListProfilesHandler := connect.NewUnaryHandler(
 		RepoServiceListProfilesProcedure,
 		svc.ListProfiles,
@@ -631,6 +656,8 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 			repoServiceRefreshProviderCatalogHandler.ServeHTTP(w, r)
 		case RepoServiceDiscoverLocalEndpointsProcedure:
 			repoServiceDiscoverLocalEndpointsHandler.ServeHTTP(w, r)
+		case RepoServiceDiscoverModelsProcedure:
+			repoServiceDiscoverModelsHandler.ServeHTTP(w, r)
 		case RepoServiceListProfilesProcedure:
 			repoServiceListProfilesHandler.ServeHTTP(w, r)
 		case RepoServiceSaveProfileProcedure:
@@ -710,6 +737,10 @@ func (UnimplementedRepoServiceHandler) RefreshProviderCatalog(context.Context, *
 
 func (UnimplementedRepoServiceHandler) DiscoverLocalEndpoints(context.Context, *connect.Request[v1.DiscoverLocalEndpointsRequest]) (*connect.Response[v1.DiscoverLocalEndpointsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.DiscoverLocalEndpoints is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) DiscoverModels(context.Context, *connect.Request[v1.DiscoverModelsRequest]) (*connect.Response[v1.DiscoverModelsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.DiscoverModels is not implemented"))
 }
 
 func (UnimplementedRepoServiceHandler) ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error) {

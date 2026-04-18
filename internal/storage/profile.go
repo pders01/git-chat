@@ -9,23 +9,24 @@ import (
 
 // LLMProfile is a saved LLM configuration preset.
 type LLMProfile struct {
-	ID          string
-	Name        string
-	Backend     string
-	BaseURL     string
-	Model       string
-	APIKey      string // plaintext in memory; caller encrypts before save
-	Temperature string
-	MaxTokens   string
-	CreatedAt   int64
-	UpdatedAt   int64
+	ID           string
+	Name         string
+	Backend      string
+	BaseURL      string
+	Model        string
+	APIKey       string // plaintext in memory; caller encrypts before save
+	Temperature  string
+	MaxTokens    string
+	SystemPrompt string
+	CreatedAt    int64
+	UpdatedAt    int64
 }
 
 // ListProfiles returns all saved profiles ordered by name.
 func (d *DB) ListProfiles(ctx context.Context) ([]LLMProfile, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT id, name, backend, base_url, model, api_key,
-		       temperature, max_tokens, created_at, updated_at
+		       temperature, max_tokens, system_prompt, created_at, updated_at
 		FROM llm_profile
 		ORDER BY name`)
 	if err != nil {
@@ -37,7 +38,7 @@ func (d *DB) ListProfiles(ctx context.Context) ([]LLMProfile, error) {
 		var p LLMProfile
 		if err := rows.Scan(&p.ID, &p.Name, &p.Backend, &p.BaseURL,
 			&p.Model, &p.APIKey, &p.Temperature, &p.MaxTokens,
-			&p.CreatedAt, &p.UpdatedAt); err != nil {
+			&p.SystemPrompt, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -50,11 +51,11 @@ func (d *DB) GetProfile(ctx context.Context, id string) (LLMProfile, error) {
 	var p LLMProfile
 	err := d.QueryRowContext(ctx, `
 		SELECT id, name, backend, base_url, model, api_key,
-		       temperature, max_tokens, created_at, updated_at
+		       temperature, max_tokens, system_prompt, created_at, updated_at
 		FROM llm_profile WHERE id = ?`, id).
 		Scan(&p.ID, &p.Name, &p.Backend, &p.BaseURL,
 			&p.Model, &p.APIKey, &p.Temperature, &p.MaxTokens,
-			&p.CreatedAt, &p.UpdatedAt)
+			&p.SystemPrompt, &p.CreatedAt, &p.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -67,8 +68,8 @@ func (d *DB) SaveProfile(ctx context.Context, p LLMProfile) error {
 	now := time.Now().Unix()
 	_, err := d.ExecContext(ctx, `
 		INSERT INTO llm_profile (id, name, backend, base_url, model, api_key,
-		                         temperature, max_tokens, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                         temperature, max_tokens, system_prompt, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			backend = excluded.backend,
@@ -77,9 +78,10 @@ func (d *DB) SaveProfile(ctx context.Context, p LLMProfile) error {
 			api_key = excluded.api_key,
 			temperature = excluded.temperature,
 			max_tokens = excluded.max_tokens,
+			system_prompt = excluded.system_prompt,
 			updated_at = excluded.updated_at`,
 		p.ID, p.Name, p.Backend, p.BaseURL, p.Model, p.APIKey,
-		p.Temperature, p.MaxTokens, now, now)
+		p.Temperature, p.MaxTokens, p.SystemPrompt, now, now)
 	return err
 }
 

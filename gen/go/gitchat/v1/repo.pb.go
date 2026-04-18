@@ -2634,6 +2634,7 @@ type LLMProfile struct {
 	ApiKey        string                 `protobuf:"bytes,6,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"` // masked in list responses, plaintext in save requests
 	Temperature   string                 `protobuf:"bytes,7,opt,name=temperature,proto3" json:"temperature,omitempty"`
 	MaxTokens     string                 `protobuf:"bytes,8,opt,name=max_tokens,json=maxTokens,proto3" json:"max_tokens,omitempty"`
+	SystemPrompt  string                 `protobuf:"bytes,9,opt,name=system_prompt,json=systemPrompt,proto3" json:"system_prompt,omitempty"` // appended to base system prompt when profile is active
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2720,6 +2721,13 @@ func (x *LLMProfile) GetTemperature() string {
 func (x *LLMProfile) GetMaxTokens() string {
 	if x != nil {
 		return x.MaxTokens
+	}
+	return ""
+}
+
+func (x *LLMProfile) GetSystemPrompt() string {
+	if x != nil {
+		return x.SystemPrompt
 	}
 	return ""
 }
@@ -3200,6 +3208,118 @@ func (x *DiscoverLocalEndpointsResponse) GetEndpoints() []*LocalEndpoint {
 	return nil
 }
 
+type DiscoverModelsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	BaseUrl       string                 `protobuf:"bytes,1,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	ApiKey        string                 `protobuf:"bytes,2,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiscoverModelsRequest) Reset() {
+	*x = DiscoverModelsRequest{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiscoverModelsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiscoverModelsRequest) ProtoMessage() {}
+
+func (x *DiscoverModelsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiscoverModelsRequest.ProtoReflect.Descriptor instead.
+func (*DiscoverModelsRequest) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *DiscoverModelsRequest) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
+}
+
+func (x *DiscoverModelsRequest) GetApiKey() string {
+	if x != nil {
+		return x.ApiKey
+	}
+	return ""
+}
+
+type DiscoverModelsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ModelIds      []string               `protobuf:"bytes,1,rep,name=model_ids,json=modelIds,proto3" json:"model_ids,omitempty"`
+	ProviderName  string                 `protobuf:"bytes,2,opt,name=provider_name,json=providerName,proto3" json:"provider_name,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiscoverModelsResponse) Reset() {
+	*x = DiscoverModelsResponse{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiscoverModelsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiscoverModelsResponse) ProtoMessage() {}
+
+func (x *DiscoverModelsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiscoverModelsResponse.ProtoReflect.Descriptor instead.
+func (*DiscoverModelsResponse) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *DiscoverModelsResponse) GetModelIds() []string {
+	if x != nil {
+		return x.ModelIds
+	}
+	return nil
+}
+
+func (x *DiscoverModelsResponse) GetProviderName() string {
+	if x != nil {
+		return x.ProviderName
+	}
+	return ""
+}
+
+func (x *DiscoverModelsResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_gitchat_v1_repo_proto protoreflect.FileDescriptor
 
 const file_gitchat_v1_repo_proto_rawDesc = "" +
@@ -3390,7 +3510,7 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x10default_model_id\x18\x05 \x01(\tR\x0edefaultModelId\x120\n" +
 	"\x06models\x18\x06 \x03(\v2\x18.gitchat.v1.CatalogModelR\x06models\"W\n" +
 	"\x1aGetProviderCatalogResponse\x129\n" +
-	"\tproviders\x18\x01 \x03(\v2\x1b.gitchat.v1.CatalogProviderR\tproviders\"\xd5\x01\n" +
+	"\tproviders\x18\x01 \x03(\v2\x1b.gitchat.v1.CatalogProviderR\tproviders\"\xfa\x01\n" +
 	"\n" +
 	"LLMProfile\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -3401,7 +3521,8 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\aapi_key\x18\x06 \x01(\tR\x06apiKey\x12 \n" +
 	"\vtemperature\x18\a \x01(\tR\vtemperature\x12\x1d\n" +
 	"\n" +
-	"max_tokens\x18\b \x01(\tR\tmaxTokens\"\x15\n" +
+	"max_tokens\x18\b \x01(\tR\tmaxTokens\x12#\n" +
+	"\rsystem_prompt\x18\t \x01(\tR\fsystemPrompt\"\x15\n" +
 	"\x13ListProfilesRequest\"v\n" +
 	"\x14ListProfilesResponse\x122\n" +
 	"\bprofiles\x18\x01 \x03(\v2\x16.gitchat.v1.LLMProfileR\bprofiles\x12*\n" +
@@ -3422,13 +3543,20 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
 	"\x06models\x18\x03 \x03(\tR\x06models\"Y\n" +
 	"\x1eDiscoverLocalEndpointsResponse\x127\n" +
-	"\tendpoints\x18\x01 \x03(\v2\x19.gitchat.v1.LocalEndpointR\tendpoints*\x82\x01\n" +
+	"\tendpoints\x18\x01 \x03(\v2\x19.gitchat.v1.LocalEndpointR\tendpoints\"K\n" +
+	"\x15DiscoverModelsRequest\x12\x19\n" +
+	"\bbase_url\x18\x01 \x01(\tR\abaseUrl\x12\x17\n" +
+	"\aapi_key\x18\x02 \x01(\tR\x06apiKey\"p\n" +
+	"\x16DiscoverModelsResponse\x12\x1b\n" +
+	"\tmodel_ids\x18\x01 \x03(\tR\bmodelIds\x12#\n" +
+	"\rprovider_name\x18\x02 \x01(\tR\fproviderName\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error*\x82\x01\n" +
 	"\tEntryType\x12\x1a\n" +
 	"\x16ENTRY_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fENTRY_TYPE_FILE\x10\x01\x12\x12\n" +
 	"\x0eENTRY_TYPE_DIR\x10\x02\x12\x16\n" +
 	"\x12ENTRY_TYPE_SYMLINK\x10\x03\x12\x18\n" +
-	"\x14ENTRY_TYPE_SUBMODULE\x10\x042\xac\r\n" +
+	"\x14ENTRY_TYPE_SUBMODULE\x10\x042\x85\x0e\n" +
 	"\vRepoService\x12H\n" +
 	"\tListRepos\x12\x1c.gitchat.v1.ListReposRequest\x1a\x1d.gitchat.v1.ListReposResponse\x12Q\n" +
 	"\fListBranches\x12\x1f.gitchat.v1.ListBranchesRequest\x1a .gitchat.v1.ListBranchesResponse\x12E\n" +
@@ -3445,7 +3573,8 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\fUpdateConfig\x12\x1f.gitchat.v1.UpdateConfigRequest\x1a .gitchat.v1.UpdateConfigResponse\x12c\n" +
 	"\x12GetProviderCatalog\x12%.gitchat.v1.GetProviderCatalogRequest\x1a&.gitchat.v1.GetProviderCatalogResponse\x12k\n" +
 	"\x16RefreshProviderCatalog\x12).gitchat.v1.RefreshProviderCatalogRequest\x1a&.gitchat.v1.GetProviderCatalogResponse\x12o\n" +
-	"\x16DiscoverLocalEndpoints\x12).gitchat.v1.DiscoverLocalEndpointsRequest\x1a*.gitchat.v1.DiscoverLocalEndpointsResponse\x12Q\n" +
+	"\x16DiscoverLocalEndpoints\x12).gitchat.v1.DiscoverLocalEndpointsRequest\x1a*.gitchat.v1.DiscoverLocalEndpointsResponse\x12W\n" +
+	"\x0eDiscoverModels\x12!.gitchat.v1.DiscoverModelsRequest\x1a\".gitchat.v1.DiscoverModelsResponse\x12Q\n" +
 	"\fListProfiles\x12\x1f.gitchat.v1.ListProfilesRequest\x1a .gitchat.v1.ListProfilesResponse\x12N\n" +
 	"\vSaveProfile\x12\x1e.gitchat.v1.SaveProfileRequest\x1a\x1f.gitchat.v1.SaveProfileResponse\x12T\n" +
 	"\rDeleteProfile\x12 .gitchat.v1.DeleteProfileRequest\x1a!.gitchat.v1.DeleteProfileResponse\x12Z\n" +
@@ -3467,7 +3596,7 @@ func file_gitchat_v1_repo_proto_rawDescGZIP() []byte {
 }
 
 var file_gitchat_v1_repo_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_gitchat_v1_repo_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
+var file_gitchat_v1_repo_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
 var file_gitchat_v1_repo_proto_goTypes = []any{
 	(EntryType)(0),                         // 0: gitchat.v1.EntryType
 	(*Repo)(nil),                           // 1: gitchat.v1.Repo
@@ -3522,6 +3651,8 @@ var file_gitchat_v1_repo_proto_goTypes = []any{
 	(*DiscoverLocalEndpointsRequest)(nil),  // 50: gitchat.v1.DiscoverLocalEndpointsRequest
 	(*LocalEndpoint)(nil),                  // 51: gitchat.v1.LocalEndpoint
 	(*DiscoverLocalEndpointsResponse)(nil), // 52: gitchat.v1.DiscoverLocalEndpointsResponse
+	(*DiscoverModelsRequest)(nil),          // 53: gitchat.v1.DiscoverModelsRequest
+	(*DiscoverModelsResponse)(nil),         // 54: gitchat.v1.DiscoverModelsResponse
 }
 var file_gitchat_v1_repo_proto_depIdxs = []int32{
 	1,  // 0: gitchat.v1.ListReposResponse.repos:type_name -> gitchat.v1.Repo
@@ -3559,32 +3690,34 @@ var file_gitchat_v1_repo_proto_depIdxs = []int32{
 	36, // 32: gitchat.v1.RepoService.GetProviderCatalog:input_type -> gitchat.v1.GetProviderCatalogRequest
 	37, // 33: gitchat.v1.RepoService.RefreshProviderCatalog:input_type -> gitchat.v1.RefreshProviderCatalogRequest
 	50, // 34: gitchat.v1.RepoService.DiscoverLocalEndpoints:input_type -> gitchat.v1.DiscoverLocalEndpointsRequest
-	42, // 35: gitchat.v1.RepoService.ListProfiles:input_type -> gitchat.v1.ListProfilesRequest
-	44, // 36: gitchat.v1.RepoService.SaveProfile:input_type -> gitchat.v1.SaveProfileRequest
-	46, // 37: gitchat.v1.RepoService.DeleteProfile:input_type -> gitchat.v1.DeleteProfileRequest
-	48, // 38: gitchat.v1.RepoService.ActivateProfile:input_type -> gitchat.v1.ActivateProfileRequest
-	3,  // 39: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
-	5,  // 40: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
-	8,  // 41: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
-	11, // 42: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
-	13, // 43: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
-	16, // 44: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
-	19, // 45: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
-	22, // 46: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
-	24, // 47: gitchat.v1.RepoService.GetStatus:output_type -> gitchat.v1.GetStatusResponse
-	27, // 48: gitchat.v1.RepoService.GetWorkingTreeDiff:output_type -> gitchat.v1.GetWorkingTreeDiffResponse
-	35, // 49: gitchat.v1.RepoService.GetFileChurnMap:output_type -> gitchat.v1.GetFileChurnMapResponse
-	30, // 50: gitchat.v1.RepoService.GetConfig:output_type -> gitchat.v1.GetConfigResponse
-	32, // 51: gitchat.v1.RepoService.UpdateConfig:output_type -> gitchat.v1.UpdateConfigResponse
-	40, // 52: gitchat.v1.RepoService.GetProviderCatalog:output_type -> gitchat.v1.GetProviderCatalogResponse
-	40, // 53: gitchat.v1.RepoService.RefreshProviderCatalog:output_type -> gitchat.v1.GetProviderCatalogResponse
-	52, // 54: gitchat.v1.RepoService.DiscoverLocalEndpoints:output_type -> gitchat.v1.DiscoverLocalEndpointsResponse
-	43, // 55: gitchat.v1.RepoService.ListProfiles:output_type -> gitchat.v1.ListProfilesResponse
-	45, // 56: gitchat.v1.RepoService.SaveProfile:output_type -> gitchat.v1.SaveProfileResponse
-	47, // 57: gitchat.v1.RepoService.DeleteProfile:output_type -> gitchat.v1.DeleteProfileResponse
-	49, // 58: gitchat.v1.RepoService.ActivateProfile:output_type -> gitchat.v1.ActivateProfileResponse
-	39, // [39:59] is the sub-list for method output_type
-	19, // [19:39] is the sub-list for method input_type
+	53, // 35: gitchat.v1.RepoService.DiscoverModels:input_type -> gitchat.v1.DiscoverModelsRequest
+	42, // 36: gitchat.v1.RepoService.ListProfiles:input_type -> gitchat.v1.ListProfilesRequest
+	44, // 37: gitchat.v1.RepoService.SaveProfile:input_type -> gitchat.v1.SaveProfileRequest
+	46, // 38: gitchat.v1.RepoService.DeleteProfile:input_type -> gitchat.v1.DeleteProfileRequest
+	48, // 39: gitchat.v1.RepoService.ActivateProfile:input_type -> gitchat.v1.ActivateProfileRequest
+	3,  // 40: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
+	5,  // 41: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
+	8,  // 42: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
+	11, // 43: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
+	13, // 44: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
+	16, // 45: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
+	19, // 46: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
+	22, // 47: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
+	24, // 48: gitchat.v1.RepoService.GetStatus:output_type -> gitchat.v1.GetStatusResponse
+	27, // 49: gitchat.v1.RepoService.GetWorkingTreeDiff:output_type -> gitchat.v1.GetWorkingTreeDiffResponse
+	35, // 50: gitchat.v1.RepoService.GetFileChurnMap:output_type -> gitchat.v1.GetFileChurnMapResponse
+	30, // 51: gitchat.v1.RepoService.GetConfig:output_type -> gitchat.v1.GetConfigResponse
+	32, // 52: gitchat.v1.RepoService.UpdateConfig:output_type -> gitchat.v1.UpdateConfigResponse
+	40, // 53: gitchat.v1.RepoService.GetProviderCatalog:output_type -> gitchat.v1.GetProviderCatalogResponse
+	40, // 54: gitchat.v1.RepoService.RefreshProviderCatalog:output_type -> gitchat.v1.GetProviderCatalogResponse
+	52, // 55: gitchat.v1.RepoService.DiscoverLocalEndpoints:output_type -> gitchat.v1.DiscoverLocalEndpointsResponse
+	54, // 56: gitchat.v1.RepoService.DiscoverModels:output_type -> gitchat.v1.DiscoverModelsResponse
+	43, // 57: gitchat.v1.RepoService.ListProfiles:output_type -> gitchat.v1.ListProfilesResponse
+	45, // 58: gitchat.v1.RepoService.SaveProfile:output_type -> gitchat.v1.SaveProfileResponse
+	47, // 59: gitchat.v1.RepoService.DeleteProfile:output_type -> gitchat.v1.DeleteProfileResponse
+	49, // 60: gitchat.v1.RepoService.ActivateProfile:output_type -> gitchat.v1.ActivateProfileResponse
+	40, // [40:61] is the sub-list for method output_type
+	19, // [19:40] is the sub-list for method input_type
 	19, // [19:19] is the sub-list for extension type_name
 	19, // [19:19] is the sub-list for extension extendee
 	0,  // [0:19] is the sub-list for field type_name
@@ -3601,7 +3734,7 @@ func file_gitchat_v1_repo_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gitchat_v1_repo_proto_rawDesc), len(file_gitchat_v1_repo_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   52,
+			NumMessages:   54,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

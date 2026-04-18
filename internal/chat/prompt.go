@@ -130,6 +130,13 @@ func (s *Service) buildPrompt(
 	if overview, label := overviewDoc(repoEntry); overview != "" {
 		fmt.Fprintf(&stable, "\n\n## Project overview (from `%s`)\n\n```\n%s\n```", label, overview)
 	}
+	// Append per-profile custom system prompt if configured.
+	if s.Config != nil {
+		if custom := s.Config.GetCtx(ctx, "LLM_SYSTEM_PROMPT"); custom != "" {
+			stable.WriteString("\n\n## Additional instructions\n\n")
+			stable.WriteString(custom)
+		}
+	}
 
 	var volatile strings.Builder
 	fmt.Fprintf(&volatile, "## Current repo state\n\n- default branch: %s\n- HEAD: %s\n",

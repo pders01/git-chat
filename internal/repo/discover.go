@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +31,55 @@ type openAIModelsResponse struct {
 	Data []struct {
 		ID string `json:"id"`
 	} `json:"data"`
+}
+
+// DiscoverModels queries a base URL's /models endpoint to list available
+// models. Supports OpenAI-compatible APIs (including Fireworks, Groq,
+// OpenRouter, etc.). The API key is sent as a Bearer token.
+func DiscoverModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+	if baseURL == "" {
+		return nil, fmt.Errorf("base URL is required")
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// Normalize: strip trailing slash, ensure /models path.
+	modelsURL := strings.TrimRight(baseURL, "/") + "/models"
+
+	req, err := http.NewRequestWithContext(ctx, "GET", modelsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("connect failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, fmt.Errorf("authentication failed (HTTP %d) — check your API key", resp.StatusCode)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected HTTP %d from %s", resp.StatusCode, modelsURL)
+	}
+
+	var models openAIModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&models); err != nil {
+		return nil, fmt.Errorf("parse models response: %w", err)
+	}
+
+	var ids []string
+	for _, m := range models.Data {
+		if m.ID != "" {
+			ids = append(ids, m.ID)
+		}
+	}
+	sort.Strings(ids)
+	return ids, nil
 }
 
 // DiscoverLocal probes known localhost ports for OpenAI-compatible
