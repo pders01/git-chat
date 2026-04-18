@@ -3060,6 +3060,146 @@ func (*ActivateProfileResponse) Descriptor() ([]byte, []int) {
 	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{48}
 }
 
+type DiscoverLocalEndpointsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiscoverLocalEndpointsRequest) Reset() {
+	*x = DiscoverLocalEndpointsRequest{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiscoverLocalEndpointsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiscoverLocalEndpointsRequest) ProtoMessage() {}
+
+func (x *DiscoverLocalEndpointsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiscoverLocalEndpointsRequest.ProtoReflect.Descriptor instead.
+func (*DiscoverLocalEndpointsRequest) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{49}
+}
+
+type LocalEndpoint struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Models        []string               `protobuf:"bytes,3,rep,name=models,proto3" json:"models,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LocalEndpoint) Reset() {
+	*x = LocalEndpoint{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LocalEndpoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LocalEndpoint) ProtoMessage() {}
+
+func (x *LocalEndpoint) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LocalEndpoint.ProtoReflect.Descriptor instead.
+func (*LocalEndpoint) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *LocalEndpoint) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *LocalEndpoint) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *LocalEndpoint) GetModels() []string {
+	if x != nil {
+		return x.Models
+	}
+	return nil
+}
+
+type DiscoverLocalEndpointsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Endpoints     []*LocalEndpoint       `protobuf:"bytes,1,rep,name=endpoints,proto3" json:"endpoints,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiscoverLocalEndpointsResponse) Reset() {
+	*x = DiscoverLocalEndpointsResponse{}
+	mi := &file_gitchat_v1_repo_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiscoverLocalEndpointsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiscoverLocalEndpointsResponse) ProtoMessage() {}
+
+func (x *DiscoverLocalEndpointsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gitchat_v1_repo_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiscoverLocalEndpointsResponse.ProtoReflect.Descriptor instead.
+func (*DiscoverLocalEndpointsResponse) Descriptor() ([]byte, []int) {
+	return file_gitchat_v1_repo_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *DiscoverLocalEndpointsResponse) GetEndpoints() []*LocalEndpoint {
+	if x != nil {
+		return x.Endpoints
+	}
+	return nil
+}
+
 var File_gitchat_v1_repo_proto protoreflect.FileDescriptor
 
 const file_gitchat_v1_repo_proto_rawDesc = "" +
@@ -3275,13 +3415,20 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x15DeleteProfileResponse\"(\n" +
 	"\x16ActivateProfileRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x19\n" +
-	"\x17ActivateProfileResponse*\x82\x01\n" +
+	"\x17ActivateProfileResponse\"\x1f\n" +
+	"\x1dDiscoverLocalEndpointsRequest\"M\n" +
+	"\rLocalEndpoint\x12\x10\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
+	"\x06models\x18\x03 \x03(\tR\x06models\"Y\n" +
+	"\x1eDiscoverLocalEndpointsResponse\x127\n" +
+	"\tendpoints\x18\x01 \x03(\v2\x19.gitchat.v1.LocalEndpointR\tendpoints*\x82\x01\n" +
 	"\tEntryType\x12\x1a\n" +
 	"\x16ENTRY_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fENTRY_TYPE_FILE\x10\x01\x12\x12\n" +
 	"\x0eENTRY_TYPE_DIR\x10\x02\x12\x16\n" +
 	"\x12ENTRY_TYPE_SYMLINK\x10\x03\x12\x18\n" +
-	"\x14ENTRY_TYPE_SUBMODULE\x10\x042\xbb\f\n" +
+	"\x14ENTRY_TYPE_SUBMODULE\x10\x042\xac\r\n" +
 	"\vRepoService\x12H\n" +
 	"\tListRepos\x12\x1c.gitchat.v1.ListReposRequest\x1a\x1d.gitchat.v1.ListReposResponse\x12Q\n" +
 	"\fListBranches\x12\x1f.gitchat.v1.ListBranchesRequest\x1a .gitchat.v1.ListBranchesResponse\x12E\n" +
@@ -3297,7 +3444,8 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\tGetConfig\x12\x1c.gitchat.v1.GetConfigRequest\x1a\x1d.gitchat.v1.GetConfigResponse\x12Q\n" +
 	"\fUpdateConfig\x12\x1f.gitchat.v1.UpdateConfigRequest\x1a .gitchat.v1.UpdateConfigResponse\x12c\n" +
 	"\x12GetProviderCatalog\x12%.gitchat.v1.GetProviderCatalogRequest\x1a&.gitchat.v1.GetProviderCatalogResponse\x12k\n" +
-	"\x16RefreshProviderCatalog\x12).gitchat.v1.RefreshProviderCatalogRequest\x1a&.gitchat.v1.GetProviderCatalogResponse\x12Q\n" +
+	"\x16RefreshProviderCatalog\x12).gitchat.v1.RefreshProviderCatalogRequest\x1a&.gitchat.v1.GetProviderCatalogResponse\x12o\n" +
+	"\x16DiscoverLocalEndpoints\x12).gitchat.v1.DiscoverLocalEndpointsRequest\x1a*.gitchat.v1.DiscoverLocalEndpointsResponse\x12Q\n" +
 	"\fListProfiles\x12\x1f.gitchat.v1.ListProfilesRequest\x1a .gitchat.v1.ListProfilesResponse\x12N\n" +
 	"\vSaveProfile\x12\x1e.gitchat.v1.SaveProfileRequest\x1a\x1f.gitchat.v1.SaveProfileResponse\x12T\n" +
 	"\rDeleteProfile\x12 .gitchat.v1.DeleteProfileRequest\x1a!.gitchat.v1.DeleteProfileResponse\x12Z\n" +
@@ -3319,58 +3467,61 @@ func file_gitchat_v1_repo_proto_rawDescGZIP() []byte {
 }
 
 var file_gitchat_v1_repo_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_gitchat_v1_repo_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
+var file_gitchat_v1_repo_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
 var file_gitchat_v1_repo_proto_goTypes = []any{
-	(EntryType)(0),                        // 0: gitchat.v1.EntryType
-	(*Repo)(nil),                          // 1: gitchat.v1.Repo
-	(*ListReposRequest)(nil),              // 2: gitchat.v1.ListReposRequest
-	(*ListReposResponse)(nil),             // 3: gitchat.v1.ListReposResponse
-	(*ListBranchesRequest)(nil),           // 4: gitchat.v1.ListBranchesRequest
-	(*ListBranchesResponse)(nil),          // 5: gitchat.v1.ListBranchesResponse
-	(*Branch)(nil),                        // 6: gitchat.v1.Branch
-	(*ListTreeRequest)(nil),               // 7: gitchat.v1.ListTreeRequest
-	(*ListTreeResponse)(nil),              // 8: gitchat.v1.ListTreeResponse
-	(*TreeEntry)(nil),                     // 9: gitchat.v1.TreeEntry
-	(*GetFileRequest)(nil),                // 10: gitchat.v1.GetFileRequest
-	(*GetFileResponse)(nil),               // 11: gitchat.v1.GetFileResponse
-	(*ListCommitsRequest)(nil),            // 12: gitchat.v1.ListCommitsRequest
-	(*ListCommitsResponse)(nil),           // 13: gitchat.v1.ListCommitsResponse
-	(*CommitEntry)(nil),                   // 14: gitchat.v1.CommitEntry
-	(*GetBlameRequest)(nil),               // 15: gitchat.v1.GetBlameRequest
-	(*GetBlameResponse)(nil),              // 16: gitchat.v1.GetBlameResponse
-	(*BlameLine)(nil),                     // 17: gitchat.v1.BlameLine
-	(*CompareBranchesRequest)(nil),        // 18: gitchat.v1.CompareBranchesRequest
-	(*CompareBranchesResponse)(nil),       // 19: gitchat.v1.CompareBranchesResponse
-	(*ChangedFile)(nil),                   // 20: gitchat.v1.ChangedFile
-	(*GetDiffRequest)(nil),                // 21: gitchat.v1.GetDiffRequest
-	(*GetDiffResponse)(nil),               // 22: gitchat.v1.GetDiffResponse
-	(*GetStatusRequest)(nil),              // 23: gitchat.v1.GetStatusRequest
-	(*GetStatusResponse)(nil),             // 24: gitchat.v1.GetStatusResponse
-	(*StatusFile)(nil),                    // 25: gitchat.v1.StatusFile
-	(*GetWorkingTreeDiffRequest)(nil),     // 26: gitchat.v1.GetWorkingTreeDiffRequest
-	(*GetWorkingTreeDiffResponse)(nil),    // 27: gitchat.v1.GetWorkingTreeDiffResponse
-	(*GetConfigRequest)(nil),              // 28: gitchat.v1.GetConfigRequest
-	(*ConfigEntry)(nil),                   // 29: gitchat.v1.ConfigEntry
-	(*GetConfigResponse)(nil),             // 30: gitchat.v1.GetConfigResponse
-	(*UpdateConfigRequest)(nil),           // 31: gitchat.v1.UpdateConfigRequest
-	(*UpdateConfigResponse)(nil),          // 32: gitchat.v1.UpdateConfigResponse
-	(*GetFileChurnMapRequest)(nil),        // 33: gitchat.v1.GetFileChurnMapRequest
-	(*FileChurn)(nil),                     // 34: gitchat.v1.FileChurn
-	(*GetFileChurnMapResponse)(nil),       // 35: gitchat.v1.GetFileChurnMapResponse
-	(*GetProviderCatalogRequest)(nil),     // 36: gitchat.v1.GetProviderCatalogRequest
-	(*RefreshProviderCatalogRequest)(nil), // 37: gitchat.v1.RefreshProviderCatalogRequest
-	(*CatalogModel)(nil),                  // 38: gitchat.v1.CatalogModel
-	(*CatalogProvider)(nil),               // 39: gitchat.v1.CatalogProvider
-	(*GetProviderCatalogResponse)(nil),    // 40: gitchat.v1.GetProviderCatalogResponse
-	(*LLMProfile)(nil),                    // 41: gitchat.v1.LLMProfile
-	(*ListProfilesRequest)(nil),           // 42: gitchat.v1.ListProfilesRequest
-	(*ListProfilesResponse)(nil),          // 43: gitchat.v1.ListProfilesResponse
-	(*SaveProfileRequest)(nil),            // 44: gitchat.v1.SaveProfileRequest
-	(*SaveProfileResponse)(nil),           // 45: gitchat.v1.SaveProfileResponse
-	(*DeleteProfileRequest)(nil),          // 46: gitchat.v1.DeleteProfileRequest
-	(*DeleteProfileResponse)(nil),         // 47: gitchat.v1.DeleteProfileResponse
-	(*ActivateProfileRequest)(nil),        // 48: gitchat.v1.ActivateProfileRequest
-	(*ActivateProfileResponse)(nil),       // 49: gitchat.v1.ActivateProfileResponse
+	(EntryType)(0),                         // 0: gitchat.v1.EntryType
+	(*Repo)(nil),                           // 1: gitchat.v1.Repo
+	(*ListReposRequest)(nil),               // 2: gitchat.v1.ListReposRequest
+	(*ListReposResponse)(nil),              // 3: gitchat.v1.ListReposResponse
+	(*ListBranchesRequest)(nil),            // 4: gitchat.v1.ListBranchesRequest
+	(*ListBranchesResponse)(nil),           // 5: gitchat.v1.ListBranchesResponse
+	(*Branch)(nil),                         // 6: gitchat.v1.Branch
+	(*ListTreeRequest)(nil),                // 7: gitchat.v1.ListTreeRequest
+	(*ListTreeResponse)(nil),               // 8: gitchat.v1.ListTreeResponse
+	(*TreeEntry)(nil),                      // 9: gitchat.v1.TreeEntry
+	(*GetFileRequest)(nil),                 // 10: gitchat.v1.GetFileRequest
+	(*GetFileResponse)(nil),                // 11: gitchat.v1.GetFileResponse
+	(*ListCommitsRequest)(nil),             // 12: gitchat.v1.ListCommitsRequest
+	(*ListCommitsResponse)(nil),            // 13: gitchat.v1.ListCommitsResponse
+	(*CommitEntry)(nil),                    // 14: gitchat.v1.CommitEntry
+	(*GetBlameRequest)(nil),                // 15: gitchat.v1.GetBlameRequest
+	(*GetBlameResponse)(nil),               // 16: gitchat.v1.GetBlameResponse
+	(*BlameLine)(nil),                      // 17: gitchat.v1.BlameLine
+	(*CompareBranchesRequest)(nil),         // 18: gitchat.v1.CompareBranchesRequest
+	(*CompareBranchesResponse)(nil),        // 19: gitchat.v1.CompareBranchesResponse
+	(*ChangedFile)(nil),                    // 20: gitchat.v1.ChangedFile
+	(*GetDiffRequest)(nil),                 // 21: gitchat.v1.GetDiffRequest
+	(*GetDiffResponse)(nil),                // 22: gitchat.v1.GetDiffResponse
+	(*GetStatusRequest)(nil),               // 23: gitchat.v1.GetStatusRequest
+	(*GetStatusResponse)(nil),              // 24: gitchat.v1.GetStatusResponse
+	(*StatusFile)(nil),                     // 25: gitchat.v1.StatusFile
+	(*GetWorkingTreeDiffRequest)(nil),      // 26: gitchat.v1.GetWorkingTreeDiffRequest
+	(*GetWorkingTreeDiffResponse)(nil),     // 27: gitchat.v1.GetWorkingTreeDiffResponse
+	(*GetConfigRequest)(nil),               // 28: gitchat.v1.GetConfigRequest
+	(*ConfigEntry)(nil),                    // 29: gitchat.v1.ConfigEntry
+	(*GetConfigResponse)(nil),              // 30: gitchat.v1.GetConfigResponse
+	(*UpdateConfigRequest)(nil),            // 31: gitchat.v1.UpdateConfigRequest
+	(*UpdateConfigResponse)(nil),           // 32: gitchat.v1.UpdateConfigResponse
+	(*GetFileChurnMapRequest)(nil),         // 33: gitchat.v1.GetFileChurnMapRequest
+	(*FileChurn)(nil),                      // 34: gitchat.v1.FileChurn
+	(*GetFileChurnMapResponse)(nil),        // 35: gitchat.v1.GetFileChurnMapResponse
+	(*GetProviderCatalogRequest)(nil),      // 36: gitchat.v1.GetProviderCatalogRequest
+	(*RefreshProviderCatalogRequest)(nil),  // 37: gitchat.v1.RefreshProviderCatalogRequest
+	(*CatalogModel)(nil),                   // 38: gitchat.v1.CatalogModel
+	(*CatalogProvider)(nil),                // 39: gitchat.v1.CatalogProvider
+	(*GetProviderCatalogResponse)(nil),     // 40: gitchat.v1.GetProviderCatalogResponse
+	(*LLMProfile)(nil),                     // 41: gitchat.v1.LLMProfile
+	(*ListProfilesRequest)(nil),            // 42: gitchat.v1.ListProfilesRequest
+	(*ListProfilesResponse)(nil),           // 43: gitchat.v1.ListProfilesResponse
+	(*SaveProfileRequest)(nil),             // 44: gitchat.v1.SaveProfileRequest
+	(*SaveProfileResponse)(nil),            // 45: gitchat.v1.SaveProfileResponse
+	(*DeleteProfileRequest)(nil),           // 46: gitchat.v1.DeleteProfileRequest
+	(*DeleteProfileResponse)(nil),          // 47: gitchat.v1.DeleteProfileResponse
+	(*ActivateProfileRequest)(nil),         // 48: gitchat.v1.ActivateProfileRequest
+	(*ActivateProfileResponse)(nil),        // 49: gitchat.v1.ActivateProfileResponse
+	(*DiscoverLocalEndpointsRequest)(nil),  // 50: gitchat.v1.DiscoverLocalEndpointsRequest
+	(*LocalEndpoint)(nil),                  // 51: gitchat.v1.LocalEndpoint
+	(*DiscoverLocalEndpointsResponse)(nil), // 52: gitchat.v1.DiscoverLocalEndpointsResponse
 }
 var file_gitchat_v1_repo_proto_depIdxs = []int32{
 	1,  // 0: gitchat.v1.ListReposResponse.repos:type_name -> gitchat.v1.Repo
@@ -3391,49 +3542,52 @@ var file_gitchat_v1_repo_proto_depIdxs = []int32{
 	39, // 15: gitchat.v1.GetProviderCatalogResponse.providers:type_name -> gitchat.v1.CatalogProvider
 	41, // 16: gitchat.v1.ListProfilesResponse.profiles:type_name -> gitchat.v1.LLMProfile
 	41, // 17: gitchat.v1.SaveProfileRequest.profile:type_name -> gitchat.v1.LLMProfile
-	2,  // 18: gitchat.v1.RepoService.ListRepos:input_type -> gitchat.v1.ListReposRequest
-	4,  // 19: gitchat.v1.RepoService.ListBranches:input_type -> gitchat.v1.ListBranchesRequest
-	7,  // 20: gitchat.v1.RepoService.ListTree:input_type -> gitchat.v1.ListTreeRequest
-	10, // 21: gitchat.v1.RepoService.GetFile:input_type -> gitchat.v1.GetFileRequest
-	12, // 22: gitchat.v1.RepoService.ListCommits:input_type -> gitchat.v1.ListCommitsRequest
-	15, // 23: gitchat.v1.RepoService.GetBlame:input_type -> gitchat.v1.GetBlameRequest
-	18, // 24: gitchat.v1.RepoService.CompareBranches:input_type -> gitchat.v1.CompareBranchesRequest
-	21, // 25: gitchat.v1.RepoService.GetDiff:input_type -> gitchat.v1.GetDiffRequest
-	23, // 26: gitchat.v1.RepoService.GetStatus:input_type -> gitchat.v1.GetStatusRequest
-	26, // 27: gitchat.v1.RepoService.GetWorkingTreeDiff:input_type -> gitchat.v1.GetWorkingTreeDiffRequest
-	33, // 28: gitchat.v1.RepoService.GetFileChurnMap:input_type -> gitchat.v1.GetFileChurnMapRequest
-	28, // 29: gitchat.v1.RepoService.GetConfig:input_type -> gitchat.v1.GetConfigRequest
-	31, // 30: gitchat.v1.RepoService.UpdateConfig:input_type -> gitchat.v1.UpdateConfigRequest
-	36, // 31: gitchat.v1.RepoService.GetProviderCatalog:input_type -> gitchat.v1.GetProviderCatalogRequest
-	37, // 32: gitchat.v1.RepoService.RefreshProviderCatalog:input_type -> gitchat.v1.RefreshProviderCatalogRequest
-	42, // 33: gitchat.v1.RepoService.ListProfiles:input_type -> gitchat.v1.ListProfilesRequest
-	44, // 34: gitchat.v1.RepoService.SaveProfile:input_type -> gitchat.v1.SaveProfileRequest
-	46, // 35: gitchat.v1.RepoService.DeleteProfile:input_type -> gitchat.v1.DeleteProfileRequest
-	48, // 36: gitchat.v1.RepoService.ActivateProfile:input_type -> gitchat.v1.ActivateProfileRequest
-	3,  // 37: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
-	5,  // 38: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
-	8,  // 39: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
-	11, // 40: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
-	13, // 41: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
-	16, // 42: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
-	19, // 43: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
-	22, // 44: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
-	24, // 45: gitchat.v1.RepoService.GetStatus:output_type -> gitchat.v1.GetStatusResponse
-	27, // 46: gitchat.v1.RepoService.GetWorkingTreeDiff:output_type -> gitchat.v1.GetWorkingTreeDiffResponse
-	35, // 47: gitchat.v1.RepoService.GetFileChurnMap:output_type -> gitchat.v1.GetFileChurnMapResponse
-	30, // 48: gitchat.v1.RepoService.GetConfig:output_type -> gitchat.v1.GetConfigResponse
-	32, // 49: gitchat.v1.RepoService.UpdateConfig:output_type -> gitchat.v1.UpdateConfigResponse
-	40, // 50: gitchat.v1.RepoService.GetProviderCatalog:output_type -> gitchat.v1.GetProviderCatalogResponse
-	40, // 51: gitchat.v1.RepoService.RefreshProviderCatalog:output_type -> gitchat.v1.GetProviderCatalogResponse
-	43, // 52: gitchat.v1.RepoService.ListProfiles:output_type -> gitchat.v1.ListProfilesResponse
-	45, // 53: gitchat.v1.RepoService.SaveProfile:output_type -> gitchat.v1.SaveProfileResponse
-	47, // 54: gitchat.v1.RepoService.DeleteProfile:output_type -> gitchat.v1.DeleteProfileResponse
-	49, // 55: gitchat.v1.RepoService.ActivateProfile:output_type -> gitchat.v1.ActivateProfileResponse
-	37, // [37:56] is the sub-list for method output_type
-	18, // [18:37] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	51, // 18: gitchat.v1.DiscoverLocalEndpointsResponse.endpoints:type_name -> gitchat.v1.LocalEndpoint
+	2,  // 19: gitchat.v1.RepoService.ListRepos:input_type -> gitchat.v1.ListReposRequest
+	4,  // 20: gitchat.v1.RepoService.ListBranches:input_type -> gitchat.v1.ListBranchesRequest
+	7,  // 21: gitchat.v1.RepoService.ListTree:input_type -> gitchat.v1.ListTreeRequest
+	10, // 22: gitchat.v1.RepoService.GetFile:input_type -> gitchat.v1.GetFileRequest
+	12, // 23: gitchat.v1.RepoService.ListCommits:input_type -> gitchat.v1.ListCommitsRequest
+	15, // 24: gitchat.v1.RepoService.GetBlame:input_type -> gitchat.v1.GetBlameRequest
+	18, // 25: gitchat.v1.RepoService.CompareBranches:input_type -> gitchat.v1.CompareBranchesRequest
+	21, // 26: gitchat.v1.RepoService.GetDiff:input_type -> gitchat.v1.GetDiffRequest
+	23, // 27: gitchat.v1.RepoService.GetStatus:input_type -> gitchat.v1.GetStatusRequest
+	26, // 28: gitchat.v1.RepoService.GetWorkingTreeDiff:input_type -> gitchat.v1.GetWorkingTreeDiffRequest
+	33, // 29: gitchat.v1.RepoService.GetFileChurnMap:input_type -> gitchat.v1.GetFileChurnMapRequest
+	28, // 30: gitchat.v1.RepoService.GetConfig:input_type -> gitchat.v1.GetConfigRequest
+	31, // 31: gitchat.v1.RepoService.UpdateConfig:input_type -> gitchat.v1.UpdateConfigRequest
+	36, // 32: gitchat.v1.RepoService.GetProviderCatalog:input_type -> gitchat.v1.GetProviderCatalogRequest
+	37, // 33: gitchat.v1.RepoService.RefreshProviderCatalog:input_type -> gitchat.v1.RefreshProviderCatalogRequest
+	50, // 34: gitchat.v1.RepoService.DiscoverLocalEndpoints:input_type -> gitchat.v1.DiscoverLocalEndpointsRequest
+	42, // 35: gitchat.v1.RepoService.ListProfiles:input_type -> gitchat.v1.ListProfilesRequest
+	44, // 36: gitchat.v1.RepoService.SaveProfile:input_type -> gitchat.v1.SaveProfileRequest
+	46, // 37: gitchat.v1.RepoService.DeleteProfile:input_type -> gitchat.v1.DeleteProfileRequest
+	48, // 38: gitchat.v1.RepoService.ActivateProfile:input_type -> gitchat.v1.ActivateProfileRequest
+	3,  // 39: gitchat.v1.RepoService.ListRepos:output_type -> gitchat.v1.ListReposResponse
+	5,  // 40: gitchat.v1.RepoService.ListBranches:output_type -> gitchat.v1.ListBranchesResponse
+	8,  // 41: gitchat.v1.RepoService.ListTree:output_type -> gitchat.v1.ListTreeResponse
+	11, // 42: gitchat.v1.RepoService.GetFile:output_type -> gitchat.v1.GetFileResponse
+	13, // 43: gitchat.v1.RepoService.ListCommits:output_type -> gitchat.v1.ListCommitsResponse
+	16, // 44: gitchat.v1.RepoService.GetBlame:output_type -> gitchat.v1.GetBlameResponse
+	19, // 45: gitchat.v1.RepoService.CompareBranches:output_type -> gitchat.v1.CompareBranchesResponse
+	22, // 46: gitchat.v1.RepoService.GetDiff:output_type -> gitchat.v1.GetDiffResponse
+	24, // 47: gitchat.v1.RepoService.GetStatus:output_type -> gitchat.v1.GetStatusResponse
+	27, // 48: gitchat.v1.RepoService.GetWorkingTreeDiff:output_type -> gitchat.v1.GetWorkingTreeDiffResponse
+	35, // 49: gitchat.v1.RepoService.GetFileChurnMap:output_type -> gitchat.v1.GetFileChurnMapResponse
+	30, // 50: gitchat.v1.RepoService.GetConfig:output_type -> gitchat.v1.GetConfigResponse
+	32, // 51: gitchat.v1.RepoService.UpdateConfig:output_type -> gitchat.v1.UpdateConfigResponse
+	40, // 52: gitchat.v1.RepoService.GetProviderCatalog:output_type -> gitchat.v1.GetProviderCatalogResponse
+	40, // 53: gitchat.v1.RepoService.RefreshProviderCatalog:output_type -> gitchat.v1.GetProviderCatalogResponse
+	52, // 54: gitchat.v1.RepoService.DiscoverLocalEndpoints:output_type -> gitchat.v1.DiscoverLocalEndpointsResponse
+	43, // 55: gitchat.v1.RepoService.ListProfiles:output_type -> gitchat.v1.ListProfilesResponse
+	45, // 56: gitchat.v1.RepoService.SaveProfile:output_type -> gitchat.v1.SaveProfileResponse
+	47, // 57: gitchat.v1.RepoService.DeleteProfile:output_type -> gitchat.v1.DeleteProfileResponse
+	49, // 58: gitchat.v1.RepoService.ActivateProfile:output_type -> gitchat.v1.ActivateProfileResponse
+	39, // [39:59] is the sub-list for method output_type
+	19, // [19:39] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_gitchat_v1_repo_proto_init() }
@@ -3447,7 +3601,7 @@ func file_gitchat_v1_repo_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gitchat_v1_repo_proto_rawDesc), len(file_gitchat_v1_repo_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   49,
+			NumMessages:   52,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

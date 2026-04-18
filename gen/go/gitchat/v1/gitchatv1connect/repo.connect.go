@@ -70,6 +70,9 @@ const (
 	// RepoServiceRefreshProviderCatalogProcedure is the fully-qualified name of the RepoService's
 	// RefreshProviderCatalog RPC.
 	RepoServiceRefreshProviderCatalogProcedure = "/gitchat.v1.RepoService/RefreshProviderCatalog"
+	// RepoServiceDiscoverLocalEndpointsProcedure is the fully-qualified name of the RepoService's
+	// DiscoverLocalEndpoints RPC.
+	RepoServiceDiscoverLocalEndpointsProcedure = "/gitchat.v1.RepoService/DiscoverLocalEndpoints"
 	// RepoServiceListProfilesProcedure is the fully-qualified name of the RepoService's ListProfiles
 	// RPC.
 	RepoServiceListProfilesProcedure = "/gitchat.v1.RepoService/ListProfiles"
@@ -137,6 +140,8 @@ type RepoServiceClient interface {
 	GetProviderCatalog(context.Context, *connect.Request[v1.GetProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error)
 	// Fetch latest catalog from catwalk.charm.sh (user-triggered, opt-in).
 	RefreshProviderCatalog(context.Context, *connect.Request[v1.RefreshProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error)
+	// Discover OpenAI-compatible endpoints on localhost (user-triggered, opt-in).
+	DiscoverLocalEndpoints(context.Context, *connect.Request[v1.DiscoverLocalEndpointsRequest]) (*connect.Response[v1.DiscoverLocalEndpointsResponse], error)
 	// LLM profile management.
 	ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error)
 	SaveProfile(context.Context, *connect.Request[v1.SaveProfileRequest]) (*connect.Response[v1.SaveProfileResponse], error)
@@ -245,6 +250,12 @@ func NewRepoServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(repoServiceMethods.ByName("RefreshProviderCatalog")),
 			connect.WithClientOptions(opts...),
 		),
+		discoverLocalEndpoints: connect.NewClient[v1.DiscoverLocalEndpointsRequest, v1.DiscoverLocalEndpointsResponse](
+			httpClient,
+			baseURL+RepoServiceDiscoverLocalEndpointsProcedure,
+			connect.WithSchema(repoServiceMethods.ByName("DiscoverLocalEndpoints")),
+			connect.WithClientOptions(opts...),
+		),
 		listProfiles: connect.NewClient[v1.ListProfilesRequest, v1.ListProfilesResponse](
 			httpClient,
 			baseURL+RepoServiceListProfilesProcedure,
@@ -289,6 +300,7 @@ type repoServiceClient struct {
 	updateConfig           *connect.Client[v1.UpdateConfigRequest, v1.UpdateConfigResponse]
 	getProviderCatalog     *connect.Client[v1.GetProviderCatalogRequest, v1.GetProviderCatalogResponse]
 	refreshProviderCatalog *connect.Client[v1.RefreshProviderCatalogRequest, v1.GetProviderCatalogResponse]
+	discoverLocalEndpoints *connect.Client[v1.DiscoverLocalEndpointsRequest, v1.DiscoverLocalEndpointsResponse]
 	listProfiles           *connect.Client[v1.ListProfilesRequest, v1.ListProfilesResponse]
 	saveProfile            *connect.Client[v1.SaveProfileRequest, v1.SaveProfileResponse]
 	deleteProfile          *connect.Client[v1.DeleteProfileRequest, v1.DeleteProfileResponse]
@@ -370,6 +382,11 @@ func (c *repoServiceClient) RefreshProviderCatalog(ctx context.Context, req *con
 	return c.refreshProviderCatalog.CallUnary(ctx, req)
 }
 
+// DiscoverLocalEndpoints calls gitchat.v1.RepoService.DiscoverLocalEndpoints.
+func (c *repoServiceClient) DiscoverLocalEndpoints(ctx context.Context, req *connect.Request[v1.DiscoverLocalEndpointsRequest]) (*connect.Response[v1.DiscoverLocalEndpointsResponse], error) {
+	return c.discoverLocalEndpoints.CallUnary(ctx, req)
+}
+
 // ListProfiles calls gitchat.v1.RepoService.ListProfiles.
 func (c *repoServiceClient) ListProfiles(ctx context.Context, req *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error) {
 	return c.listProfiles.CallUnary(ctx, req)
@@ -444,6 +461,8 @@ type RepoServiceHandler interface {
 	GetProviderCatalog(context.Context, *connect.Request[v1.GetProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error)
 	// Fetch latest catalog from catwalk.charm.sh (user-triggered, opt-in).
 	RefreshProviderCatalog(context.Context, *connect.Request[v1.RefreshProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error)
+	// Discover OpenAI-compatible endpoints on localhost (user-triggered, opt-in).
+	DiscoverLocalEndpoints(context.Context, *connect.Request[v1.DiscoverLocalEndpointsRequest]) (*connect.Response[v1.DiscoverLocalEndpointsResponse], error)
 	// LLM profile management.
 	ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error)
 	SaveProfile(context.Context, *connect.Request[v1.SaveProfileRequest]) (*connect.Response[v1.SaveProfileResponse], error)
@@ -548,6 +567,12 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(repoServiceMethods.ByName("RefreshProviderCatalog")),
 		connect.WithHandlerOptions(opts...),
 	)
+	repoServiceDiscoverLocalEndpointsHandler := connect.NewUnaryHandler(
+		RepoServiceDiscoverLocalEndpointsProcedure,
+		svc.DiscoverLocalEndpoints,
+		connect.WithSchema(repoServiceMethods.ByName("DiscoverLocalEndpoints")),
+		connect.WithHandlerOptions(opts...),
+	)
 	repoServiceListProfilesHandler := connect.NewUnaryHandler(
 		RepoServiceListProfilesProcedure,
 		svc.ListProfiles,
@@ -604,6 +629,8 @@ func NewRepoServiceHandler(svc RepoServiceHandler, opts ...connect.HandlerOption
 			repoServiceGetProviderCatalogHandler.ServeHTTP(w, r)
 		case RepoServiceRefreshProviderCatalogProcedure:
 			repoServiceRefreshProviderCatalogHandler.ServeHTTP(w, r)
+		case RepoServiceDiscoverLocalEndpointsProcedure:
+			repoServiceDiscoverLocalEndpointsHandler.ServeHTTP(w, r)
 		case RepoServiceListProfilesProcedure:
 			repoServiceListProfilesHandler.ServeHTTP(w, r)
 		case RepoServiceSaveProfileProcedure:
@@ -679,6 +706,10 @@ func (UnimplementedRepoServiceHandler) GetProviderCatalog(context.Context, *conn
 
 func (UnimplementedRepoServiceHandler) RefreshProviderCatalog(context.Context, *connect.Request[v1.RefreshProviderCatalogRequest]) (*connect.Response[v1.GetProviderCatalogResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.RefreshProviderCatalog is not implemented"))
+}
+
+func (UnimplementedRepoServiceHandler) DiscoverLocalEndpoints(context.Context, *connect.Request[v1.DiscoverLocalEndpointsRequest]) (*connect.Response[v1.DiscoverLocalEndpointsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gitchat.v1.RepoService.DiscoverLocalEndpoints is not implemented"))
 }
 
 func (UnimplementedRepoServiceHandler) ListProfiles(context.Context, *connect.Request[v1.ListProfilesRequest]) (*connect.Response[v1.ListProfilesResponse], error) {

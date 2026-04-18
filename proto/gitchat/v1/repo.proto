@@ -78,6 +78,9 @@ service RepoService {
   // Fetch latest catalog from catwalk.charm.sh (user-triggered, opt-in).
   rpc RefreshProviderCatalog(RefreshProviderCatalogRequest) returns (GetProviderCatalogResponse);
 
+  // Discover OpenAI-compatible endpoints on localhost (user-triggered, opt-in).
+  rpc DiscoverLocalEndpoints(DiscoverLocalEndpointsRequest) returns (DiscoverLocalEndpointsResponse);
+
   // LLM profile management.
   rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
   rpc SaveProfile(SaveProfileRequest) returns (SaveProfileResponse);
@@ -413,4 +416,18 @@ message DeleteProfileResponse {}
 
 message ActivateProfileRequest { string id = 1; }
 message ActivateProfileResponse {}
+
+// ─── Local Endpoint Discovery ─────────────────────────────────────────
+
+message DiscoverLocalEndpointsRequest {}
+
+message LocalEndpoint {
+  string url = 1;
+  string name = 2;
+  repeated string models = 3;
+}
+
+message DiscoverLocalEndpointsResponse {
+  repeated LocalEndpoint endpoints = 1;
+}
 

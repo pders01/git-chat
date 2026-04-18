@@ -76,6 +76,8 @@ export class GcApp extends LitElement {
   @state() private editingProfile: any | null = null;
   @state() private catalog: any[] = []; // CatalogProvider[]
   @state() private catalogLoading = false;
+  @state() private localEndpoints: any[] = []; // LocalEndpoint[]
+  @state() private localDiscovering = false;
 
   override async connectedCallback() {
     super.connectedCallback();
@@ -812,6 +814,18 @@ export class GcApp extends LitElement {
     }
   }
 
+  private async discoverLocal() {
+    this.localDiscovering = true;
+    try {
+      const resp = await (repoClient as any).discoverLocalEndpoints({});
+      this.localEndpoints = resp.endpoints ?? [];
+    } catch {
+      this.localEndpoints = [];
+    } finally {
+      this.localDiscovering = false;
+    }
+  }
+
   /** Models for a given provider ID from the catalog. */
   private catalogModelsFor(providerId: string): any[] {
     const p = this.catalog.find((c: any) => c.id === providerId);
@@ -820,30 +834,46 @@ export class GcApp extends LitElement {
 
   /** Sorted combobox options for providers. */
   private get providerOptions(): ComboboxOption[] {
-    if (this.catalog.length === 0) {
-      return [
-        { value: "openai", label: "openai" },
-        { value: "anthropic", label: "anthropic" },
-      ];
-    }
-    return [...this.catalog]
+    const local: ComboboxOption[] = this.localEndpoints.map((ep: any) => ({
+      value: `local:${ep.url}`,
+      label: ep.name,
+      description: `local · ${ep.models?.length ?? 0} models`,
+    }));
+    const catalog: ComboboxOption[] = [...this.catalog]
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
       .map((c: any) => ({
         value: c.id,
         label: c.name,
         description: `${c.type} · ${c.models?.length ?? 0} models`,
       }));
+    if (local.length === 0 && catalog.length === 0) {
+      return [
+        { value: "openai", label: "openai" },
+        { value: "anthropic", label: "anthropic" },
+      ];
+    }
+    return [...local, ...catalog];
   }
 
   /** Sorted combobox options for models of a given provider. */
   private modelOptionsFor(providerId: string): ComboboxOption[] {
+    // Local endpoint models.
+    if (providerId.startsWith("local:")) {
+      const url = providerId.slice(6);
+      const ep = this.localEndpoints.find((ep: any) => ep.url === url);
+      return (ep?.models ?? []).map((id: string) => ({
+        value: id,
+        label: id,
+        description: ep?.name ?? "local",
+      }));
+    }
     return this.catalogModelsFor(providerId)
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
       .map((m: any) => ({
         value: m.id,
         label: m.name,
         description: [
-          m.contextWindow ? `${Math.round(m.contextWindow / 1000)}K ctx` : "",
+          m.contextWindow ? `${Math.round(Number(m.contextWindow) / 1000)}K ctx` : "",
           m.costPer1MIn ? `$${m.costPer1MIn}/$${m.costPer1MOut} per 1M` : "",
           m.canReason ? "reasoning" : "",
         ]
@@ -854,14 +884,23 @@ export class GcApp extends LitElement {
 
   /** Combobox options for base URLs. */
   private get baseUrlOptions(): ComboboxOption[] {
-    const urls = new Set([
-      "http://localhost:1234/v1",
-      "http://localhost:11434/v1",
-      ...this.catalog
-        .filter((c: any) => c.defaultBaseUrl)
-        .map((c: any) => c.defaultBaseUrl as string),
-    ]);
-    return [...urls].sort().map((u) => ({ value: u, label: u }));
+    const seen = new Set<string>();
+    const result: ComboboxOption[] = [];
+    // Local discovered endpoints first.
+    for (const ep of this.localEndpoints) {
+      if (!seen.has(ep.url)) {
+        seen.add(ep.url);
+        result.push({ value: ep.url, label: ep.name, description: `${ep.models?.length ?? 0} models` });
+      }
+    }
+    // Catalog provider URLs.
+    for (const c of this.catalog) {
+      if (c.defaultBaseUrl && !seen.has(c.defaultBaseUrl)) {
+        seen.add(c.defaultBaseUrl);
+        result.push({ value: c.defaultBaseUrl, label: c.name, description: c.type });
+      }
+    }
+    return result;
   }
 
   private async activateProfile(id: string) {
@@ -908,25 +947,11 @@ export class GcApp extends LitElement {
     return !!entry.secret;
   }
 
-  // Combobox suggestions for config entries. Keys listed here get a
-  // <gc-combobox> with suggestions; all others get a plain <input>.
-  private static readonly CONFIG_SUGGESTIONS: Record<string, ComboboxOption[]> = {
+  // Static presets for config entries with fixed option sets.
+  private static readonly STATIC_SUGGESTIONS: Record<string, ComboboxOption[]> = {
     LLM_BACKEND: [
       { value: "openai", label: "openai" },
       { value: "anthropic", label: "anthropic" },
-    ],
-    LLM_BASE_URL: [
-      { value: "http://localhost:1234/v1", label: "LM Studio (localhost:1234)" },
-      { value: "http://localhost:11434/v1", label: "Ollama (localhost:11434)" },
-      { value: "https://api.openai.com/v1", label: "OpenAI" },
-      { value: "https://api.fireworks.ai/inference/v1", label: "Fireworks AI" },
-      { value: "https://openrouter.ai/api/v1", label: "OpenRouter" },
-      { value: "https://api.groq.com/openai/v1", label: "Groq" },
-    ],
-    LLM_MODEL: [
-      { value: "gemma-4-e4b-it", label: "Gemma 4 e4b", description: "local" },
-      { value: "gpt-4o", label: "GPT-4o", description: "OpenAI" },
-      { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", description: "Anthropic" },
     ],
     LLM_TEMPERATURE: [
       { value: "0", label: "0 (deterministic)" },
@@ -941,6 +966,59 @@ export class GcApp extends LitElement {
       { value: "8192", label: "8192" },
     ],
   };
+
+  /** Build combobox suggestions for a config key from catalog + local discovery. */
+  private configSuggestionsFor(key: string): ComboboxOption[] {
+    const s = (this.constructor as typeof GcApp).STATIC_SUGGESTIONS[key];
+    if (s) return s;
+
+    if (key === "LLM_BASE_URL") {
+      const local: ComboboxOption[] = this.localEndpoints.map((ep: any) => ({
+        value: ep.url,
+        label: ep.name,
+        description: ep.models?.length ? `${ep.models.length} models` : "detected",
+      }));
+      const catalog: ComboboxOption[] = this.catalog
+        .filter((c: any) => c.defaultBaseUrl)
+        .map((c: any) => ({ value: c.defaultBaseUrl, label: c.name, description: c.type }));
+      // Deduplicate by URL.
+      const seen = new Set<string>();
+      return [...local, ...catalog].filter((o) => {
+        if (seen.has(o.value)) return false;
+        seen.add(o.value);
+        return true;
+      });
+    }
+
+    if (key === "LLM_MODEL") {
+      const backend = this.configEntries.find((e: any) => e.key === "LLM_BACKEND")?.value;
+      const baseUrl = this.configEntries.find((e: any) => e.key === "LLM_BASE_URL")?.value;
+      // Local models for the currently configured base URL.
+      const localEp = this.localEndpoints.find((ep: any) => ep.url === baseUrl);
+      const localModels: ComboboxOption[] = (localEp?.models ?? []).map((id: string) => ({
+        value: id,
+        label: id,
+        description: localEp?.name ?? "local",
+      }));
+      // Catalog models filtered by backend type.
+      const catalogModels: ComboboxOption[] = this.catalog
+        .filter((c: any) => c.type === backend)
+        .flatMap((c: any) =>
+          (c.models ?? []).map((m: any) => ({
+            value: m.id,
+            label: m.name,
+            description: [
+              c.name,
+              m.contextWindow ? `${Math.round(Number(m.contextWindow) / 1000)}K` : "",
+            ].filter(Boolean).join(" · "),
+          })),
+        );
+      return [...localModels, ...catalogModels];
+    }
+
+    // LLM_ACTIVE_PROFILE and other keys with no suggestions.
+    return [];
+  }
 
   private static readonly SETTINGS_SECTIONS = [
     { id: "appearance", label: "Appearance" },
@@ -972,7 +1050,7 @@ export class GcApp extends LitElement {
         ${entries.map((entry: any) => {
           const isSecret = this.isSecretEntry(entry);
           const modified = entry.value !== entry.defaultValue;
-          const suggestions = (this.constructor as typeof GcApp).CONFIG_SUGGESTIONS[entry.key];
+          const suggestions = this.configSuggestionsFor(entry.key);
           return html`
             <div class="config-entry">
               <div class="config-entry-header">
@@ -1005,7 +1083,7 @@ export class GcApp extends LitElement {
                       if (v) this.updateConfigEntry(entry.key, v);
                     }}
                   />`
-                : suggestions
+                : suggestions.length > 0
                   ? html`<gc-combobox
                       .options=${suggestions}
                       .value=${entry.value}
@@ -1150,6 +1228,18 @@ export class GcApp extends LitElement {
             </button>
             <button
               class="action-btn"
+              ?disabled=${this.localDiscovering}
+              @click=${() => this.discoverLocal()}
+              title="Detect LM Studio, Ollama, and other local endpoints"
+            >
+              ${this.localDiscovering
+                ? "scanning…"
+                : this.localEndpoints.length > 0
+                  ? `${this.localEndpoints.length} local`
+                  : "detect local"}
+            </button>
+            <button
+              class="action-btn"
               @click=${() => {
               this.editingProfile = {
                 id: "",
@@ -1243,13 +1333,22 @@ export class GcApp extends LitElement {
               @gc-select=${(e: CustomEvent) => {
                 const opt = e.detail;
                 p._providerId = opt.value;
-                const prov = this.catalog.find((c: any) => c.id === opt.value);
-                if (prov) {
-                  p.backend = prov.type;
-                  p.baseUrl = prov.defaultBaseUrl || p.baseUrl || "";
-                  p.model = prov.defaultModelId || "";
+                // Local endpoint selected.
+                if (opt.value.startsWith("local:")) {
+                  const url = opt.value.slice(6);
+                  p.backend = "openai";
+                  p.baseUrl = url;
+                  const ep = this.localEndpoints.find((ep: any) => ep.url === url);
+                  p.model = ep?.models?.[0] || "";
                 } else {
-                  p.backend = opt.value;
+                  const prov = this.catalog.find((c: any) => c.id === opt.value);
+                  if (prov) {
+                    p.backend = prov.type;
+                    p.baseUrl = prov.defaultBaseUrl || p.baseUrl || "";
+                    p.model = prov.defaultModelId || "";
+                  } else {
+                    p.backend = opt.value;
+                  }
                 }
                 this.requestUpdate();
               }}

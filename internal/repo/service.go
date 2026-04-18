@@ -299,6 +299,18 @@ func (s *Service) RefreshProviderCatalog(
 	}), nil
 }
 
+// ─── Local Discovery ──────────────────────────────────────────────────
+
+func (s *Service) DiscoverLocalEndpoints(
+	ctx context.Context,
+	_ *connect.Request[gitchatv1.DiscoverLocalEndpointsRequest],
+) (*connect.Response[gitchatv1.DiscoverLocalEndpointsResponse], error) {
+	endpoints := DiscoverLocal(ctx)
+	return connect.NewResponse(&gitchatv1.DiscoverLocalEndpointsResponse{
+		Endpoints: endpoints,
+	}), nil
+}
+
 // ─── LLM Profiles ─────────────────────────────────────────────────────
 
 func (s *Service) ListProfiles(
