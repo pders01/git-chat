@@ -1,0 +1,41 @@
+version: 2
+
+before:
+  hooks:
+    - cmd: cd web && bun install --frozen-lockfile && bun run build
+
+builds:
+  - main: ./cmd/git-chat
+    binary: git-chat
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+
+archives:
+  - formats:
+      - tar.gz
+    format_overrides:
+      - goos: darwin
+        formats:
+          - zip
+    files:
+      - README.md
+      - LICENSE
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
