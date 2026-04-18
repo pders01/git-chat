@@ -73,6 +73,18 @@ export class GcApp extends LitElement {
   private _routing = false;
   private _paletteScrollRafId: number | null = null;
 
+  // Rapid-press fallthrough: pressing an intercepted shortcut twice in
+  // quick succession closes our overlay and lets the second press reach
+  // the browser (useful for Cmd+F → browser find, Cmd+K → browser URL,
+  // etc.). Tracked per shortcut so double-tapping Cmd+F doesn't eat a
+  // later, unrelated Cmd+K.
+  private lastShortcut = "";
+  private lastShortcutAt = 0;
+  // Advertise the fallthrough once per page load, total. Any further
+  // shortcut intercepts stay silent — the user only needs to learn the
+  // double-press convention once.
+  private advertisedFallthrough = false;
+
   // Only one overlay can be visible at a time. Before this guard, hitting
   // Cmd+K while settings was open would stack a palette on top of settings,
   // layering two backdrops and two input focus targets. openOverlay() is
@@ -251,6 +263,47 @@ export class GcApp extends LitElement {
     const mod = e.metaKey || e.ctrlKey;
     if (!mod) return;
 
+    // Ignore OS key-repeat while a shortcut is held. Repeats fire at
+    // ~33ms which falls well inside the double-press window below, so
+    // without this the overlay would toggle on every repeat. Still
+    // preventDefault so the browser's native (e.g. find) doesn't kick
+    // in during a hold — the initial press already handled everything.
+    if (e.repeat) {
+      e.preventDefault();
+      return;
+    }
+
+    // Rapid-press fallthrough for shortcuts that shadow a browser
+    // native (Cmd+F, Cmd+K). If the user presses the same combo twice
+    // within a tight window, close our overlay and let the second
+    // press reach the browser. Shortcuts that don't shadow a browser
+    // native (Cmd+1-4 for tabs, Cmd+\ for focus) opt out — double-
+    // pressing them has no meaningful browser fallback.
+    const fallthroughEligible = e.key === "f" || e.key === "k";
+    if (fallthroughEligible) {
+      const combo = `mod+${e.key}`;
+      const now = performance.now();
+      // 300ms is tight enough that a deliberate double-press clears it
+      // but an accidental stutter doesn't fall through. (Default double-
+      // click is 500ms on most OSes; key-combos feel faster.)
+      const isDouble = this.lastShortcut === combo && now - this.lastShortcutAt < 300;
+      if (isDouble) {
+        // Reset state so a subsequent rapid press starts a new cycle —
+        // otherwise the third press would also fall through, which is
+        // never what the user wanted.
+        this.lastShortcut = "";
+        this.lastShortcutAt = 0;
+        // Don't preventDefault — browser handles this press.
+        this.openOverlay(null);
+        return;
+      }
+      this.lastShortcut = combo;
+      this.lastShortcutAt = now;
+      // First press: intercept and, once per session total, advertise
+      // the fallthrough path.
+      this.advertiseFallthrough(e.key);
+    }
+
     switch (e.key) {
       case "k":
         e.preventDefault();
@@ -289,6 +342,23 @@ export class GcApp extends LitElement {
         break;
     }
   };
+
+  private advertiseFallthrough(key: string) {
+    if (this.advertisedFallthrough) return;
+    this.advertisedFallthrough = true;
+    const mod = navigator.platform.includes("Mac") ? "⌘" : "Ctrl+";
+    const label = `${mod}${key.toUpperCase()}`;
+    this.dispatchEvent(
+      new CustomEvent("gc:toast", {
+        bubbles: true,
+        composed: true,
+        detail: {
+          kind: "info",
+          message: `tip: double-press ${label} to reach the browser shortcut`,
+        },
+      }),
+    );
+  }
 
   // Toggle focus mode across all views that support it.
   // lib/focus.ts is the source of truth (shared across tabs via
