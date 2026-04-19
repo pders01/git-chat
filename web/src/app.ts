@@ -757,7 +757,7 @@ export class GcApp extends LitElement {
     const isMac = navigator.platform.includes("Mac");
     const mod = isMac ? "⌘" : "Ctrl+";
     const shortcuts = [
-      [mod + "K", "Command palette"],
+      [mod + "K", "Command palette (tabs, branches, repos, theme)"],
       [mod + "1", "Chat tab"],
       [mod + "2", "Browse tab"],
       [mod + "3", "Log tab"],
