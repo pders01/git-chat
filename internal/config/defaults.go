@@ -24,6 +24,14 @@ func RegisterDefaults(r *Registry) {
 	r.Register("GITCHAT_CARD_TIMEOUT", "10s", "Timeout for knowledge card operations", "chat")
 	r.Register("GITCHAT_KB_PROMOTION_THRESHOLD", "2", "Similar-question count before KB promotion", "chat")
 
+	// ── safety rails / spend caps ────────────────────────────────
+	// These guard against runaway agentic loops and unbounded spend.
+	// Defaults are generous enough for interactive use but low enough
+	// that a stuck loop or rogue tool-call sequence can't keep going.
+	r.Register("GITCHAT_TOOL_LOOP_MAX", "8", "Max rounds in the agentic tool-use loop per turn", "safety")
+	r.Register("GITCHAT_TOOL_LOOP_MAX_TOKENS", "100000", "Max cumulative tokens per turn (across all agentic rounds)", "safety")
+	r.Register("GITCHAT_SESSION_MAX_COST_USD", "1.00", "Soft cap on cumulative session cost in USD; UI prompts before exceeding", "safety")
+
 	// ── session ───────────────────────────────────────────────────
 	r.Register("GITCHAT_SESSION_TTL", "168h", "Browser session TTL (Go duration string)", "session")
 	r.Register("GITCHAT_DEFAULT_SESSION_LIMIT", "100", "Default number of sessions returned by list", "session")

@@ -80,6 +80,11 @@ export class GcChatView extends LitElement {
   @state() private drawerOpen = false;
   @state() private sessionTokensIn = 0;
   @state() private sessionTokensOut = 0;
+  // Cumulative USD spend for the current session. Updated on each
+  // turn's done event from the reported token counts × active pricing.
+  // Resets on new-session. Used by the pre-send cap check.
+  @state() private sessionCostUsd = 0;
+  @state() private sessionMaxCostUsd = 1.0;
 
   // Active-model indicator. Shown above the composer as a persistent
   // reminder of what the next turn will hit. Refreshed on mount and
@@ -108,6 +113,7 @@ export class GcChatView extends LitElement {
     route: RouteInfo;
     inputTokensEstimate: number;
     costEstimateUsd: number;
+    overCap: boolean;
   } | null = null;
   private confirmedRouteKey: string | null = null;
 
@@ -210,6 +216,16 @@ export class GcChatView extends LitElement {
       this.activeModelPricing = this.activeModel
         ? await this.priceFor(this.activeModel)
         : null;
+
+      // Session cost cap — pre-send check compares projected spend
+      // against this value. Stored as a float; falls back to the
+      // compiled default if the config value is missing or unparseable.
+      const capEntry = cfg.entries?.find((e) => e.key === "GITCHAT_SESSION_MAX_COST_USD");
+      const capStr = capEntry?.value || capEntry?.defaultValue || "1.00";
+      const capVal = parseFloat(capStr);
+      if (Number.isFinite(capVal) && capVal > 0) {
+        this.sessionMaxCostUsd = capVal;
+      }
     } catch {
       // Unreachable backend → leave indicator blank rather than error.
     }
@@ -387,6 +403,10 @@ export class GcChatView extends LitElement {
     this.error = "";
     this.sessionTokensIn = 0;
     this.sessionTokensOut = 0;
+    this.sessionCostUsd = 0;
+    // Reset consent on new session — a fresh session is a fresh
+    // decision point; don't carry confirmation across boundaries.
+    this.confirmedRouteKey = null;
   }
 
   /** Route send() through pre-send consent for remote paid providers.
@@ -409,22 +429,34 @@ export class GcChatView extends LitElement {
     if (this.sending || this.state.phase !== "ready") return false;
 
     const route = await this.resolveRoute();
-    if (!route.isLocal && routeKey(route) !== this.confirmedRouteKey) {
+    if (!route.isLocal) {
       const tokens = estimateTokensFromChars(
         text.length + attachments.reduce((n, a) => n + a.size, 0),
       );
-      this.pendingSend = {
-        text,
-        attachments,
-        replaceFromMessageId: opts.replaceFromMessageId,
-        route,
-        inputTokensEstimate: tokens,
-        // Assume parity output for the estimate — most chat turns come
-        // back within 0.5–2× the input. The real number will be known
-        // after the turn; this one is just to prevent sticker shock.
-        costEstimateUsd: estimateCostUsd(tokens, tokens, await this.priceFor(route.model)),
-      };
-      return false;
+      const pricing = await this.priceFor(route.model);
+      const turnCost = estimateCostUsd(tokens, tokens, pricing);
+      const overCap = this.sessionCostUsd + turnCost > this.sessionMaxCostUsd;
+      const routeUnconfirmed = routeKey(route) !== this.confirmedRouteKey;
+
+      // Force confirmation on either a new route OR when crossing the
+      // session cap. Over-cap confirmation is NOT cached — every
+      // subsequent over-cap turn re-prompts, because budget overruns
+      // deserve per-turn consent, not session-wide pre-approval.
+      if (routeUnconfirmed || overCap) {
+        this.pendingSend = {
+          text,
+          attachments,
+          replaceFromMessageId: opts.replaceFromMessageId,
+          route,
+          inputTokensEstimate: tokens,
+          // Assume parity output for the estimate — most chat turns come
+          // back within 0.5–2× the input. The real number will be known
+          // after the turn; this one is just to prevent sticker shock.
+          costEstimateUsd: turnCost,
+          overCap,
+        };
+        return false;
+      }
     }
 
     void this.doSend({ text, attachments, replaceFromMessageId: opts.replaceFromMessageId });
@@ -559,6 +591,12 @@ export class GcChatView extends LitElement {
           assistantTurn.tokensOut = tOut;
           this.sessionTokensIn += tIn;
           this.sessionTokensOut += tOut;
+          // Accrue session USD spend — used by the pre-send cap check
+          // before the next turn. Uses current activeModelPricing
+          // (loaded during loadActiveModel); cost stays 0 for unknown
+          // pricing, which errs on the side of "don't spuriously hit
+          // the cap" for local or unpriced models.
+          this.sessionCostUsd += estimateCostUsd(tIn, tOut, this.activeModelPricing);
           if (chunk.kind.value.error) {
             this.error = chunk.kind.value.error;
             assistantTurn.error = chunk.kind.value.error;
@@ -681,7 +719,12 @@ export class GcChatView extends LitElement {
 
   private confirmPendingSend() {
     if (!this.pendingSend) return;
-    this.confirmedRouteKey = routeKey(this.pendingSend.route);
+    // Route consent is session-wide, but only cache it when we're NOT
+    // over-cap. Over-cap confirmations are per-turn: every turn that
+    // would push session spend above the cap prompts again.
+    if (!this.pendingSend.overCap) {
+      this.confirmedRouteKey = routeKey(this.pendingSend.route);
+    }
     const { text, attachments, replaceFromMessageId } = this.pendingSend;
     this.pendingSend = null;
     void this.doSend({ text, attachments, replaceFromMessageId });
@@ -731,11 +774,17 @@ export class GcChatView extends LitElement {
     const routeLine = p.route.profileName
       ? `${p.route.destinationHost} · profile: ${p.route.profileName}`
       : p.route.destinationHost;
+    const projectedTotal = this.sessionCostUsd + p.costEstimateUsd;
+    const title = p.overCap ? "Session budget cap reached" : "Confirm remote call";
     return html`
-      <div class="presend-confirm" role="alertdialog" aria-labelledby="presend-title">
+      <div
+        class="presend-confirm ${p.overCap ? "over-cap" : ""}"
+        role="alertdialog"
+        aria-labelledby="presend-title"
+      >
         <div class="presend-head">
-          <span class="presend-icon" aria-hidden="true">⚠</span>
-          <strong id="presend-title">Confirm remote call</strong>
+          <span class="presend-icon" aria-hidden="true">${p.overCap ? "🛑" : "⚠"}</span>
+          <strong id="presend-title">${title}</strong>
         </div>
         <dl class="presend-meta">
           <dt>destination</dt>
@@ -744,14 +793,31 @@ export class GcChatView extends LitElement {
           <dd>${p.route.model || "(unset)"}</dd>
           <dt>input</dt>
           <dd>≈ ${p.inputTokensEstimate.toLocaleString()} tokens</dd>
-          <dt>cost</dt>
+          <dt>turn cost</dt>
           <dd>${costStr}</dd>
+          ${this.sessionCostUsd > 0 || p.overCap
+            ? html`<dt>session so far</dt>
+                <dd>$${this.sessionCostUsd.toFixed(3)} of $${this.sessionMaxCostUsd.toFixed(2)} cap</dd>
+                <dt>projected total</dt>
+                <dd
+                  class=${p.overCap ? "over-cap-value" : ""}
+                >
+                  $${projectedTotal.toFixed(3)}
+                </dd>`
+            : nothing}
         </dl>
         <p class="presend-note">
-          Your API key + this prompt will be sent to
-          <code>${p.route.destinationHost}</code>. Confirming remembers the
-          route for this session — subsequent turns on the same route don't
-          re-prompt until the model, base URL, or profile changes.
+          ${p.overCap
+            ? html`This turn would push session spend past the
+                <code>GITCHAT_SESSION_MAX_COST_USD</code> cap. Confirming
+                proceeds with this turn; the next over-cap turn will prompt
+                again. Raise the cap in settings if you want to turn the
+                prompts off.`
+            : html`Your API key + this prompt will be sent to
+                <code>${p.route.destinationHost}</code>. Confirming remembers
+                the route for this session — subsequent turns on the same
+                route don't re-prompt until the model, base URL, or profile
+                changes.`}
         </p>
         <div class="presend-actions">
           <button
@@ -1248,6 +1314,14 @@ export class GcChatView extends LitElement {
       border-left: 3px solid var(--danger, #e88);
       border-radius: 6px;
       font-size: var(--text-sm);
+    }
+    .presend-confirm.over-cap {
+      border-left-width: 4px;
+      background: color-mix(in srgb, var(--danger, #e88) 6%, var(--surface-2));
+    }
+    .over-cap-value {
+      color: var(--danger, #e88);
+      font-weight: 600;
     }
     .presend-head {
       display: flex;
