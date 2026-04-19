@@ -123,7 +123,11 @@ test.describe("routing", () => {
   // ── Cross-tab navigation ────────────────────────────────────
 
   test("browse → file-view history button routes to log with filter applied", async () => {
-    // Land on a file first so the history button is present.
+    // Start from chat so commit-log has no pre-loaded state that would
+    // mask a missed filter update. Then browse to the file and click
+    // history — this is the actual user-reported flow.
+    await navigateHash("#/git-chat/chat");
+    expect(await activeTab()).toBe("chat");
     await navigateHash("#/git-chat/browse/LICENSE");
     await waitForShadowElement(
       page,
@@ -146,8 +150,17 @@ test.describe("routing", () => {
     // URL should flip to /log?filter=LICENSE.
     await expect.poll(currentHash).toMatch(/\/log\?.*filter=LICENSE/);
     expect(await activeTab()).toBe("log");
-    // Commit list must actually populate — the failing symptom was an
-    // empty log view after the nav.
+    // The filter bar must be present AND name LICENSE. Without this
+    // check, the row-count assertion below would also pass on stale
+    // unfiltered commits from a prior load.
+    await waitForShadowElement(page, "gc-app gc-commit-log", ".path-filter-bar");
+    const filterLabel = await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const log = app?.shadowRoot?.querySelector("gc-commit-log");
+      return log?.shadowRoot?.querySelector(".path-filter-path")?.textContent?.trim() ?? "";
+    });
+    expect(filterLabel).toBe("LICENSE");
+    // Commit list must actually populate under the filter.
     await expect
       .poll(async () => {
         return page.evaluate(() => {
@@ -157,6 +170,58 @@ test.describe("routing", () => {
         });
       }, { timeout: 20_000 })
       .toBeGreaterThan(0);
+  });
+
+  test("log → blame tooltip view-commit routes to log with commit selected", async () => {
+    // Fresh state — chat first so commit-log's selection is clean.
+    await navigateHash("#/git-chat/chat");
+    expect(await activeTab()).toBe("chat");
+    // Dispatch gc:view-commit directly on the app (same event that the
+    // blame tooltip "view in log" button fires). Using a real commit
+    // SHA from this repo.
+    const firstSha = await page.evaluate(async () => {
+      // Ask the log for any commit SHA.
+      const app = document.querySelector("gc-app");
+      const log = app?.shadowRoot?.querySelector("gc-commit-log");
+      const rows = log?.shadowRoot?.querySelectorAll(".commit-row") ?? [];
+      for (const r of Array.from(rows)) {
+        const sha = (r as HTMLElement).getAttribute("data-sha");
+        if (sha) return sha;
+      }
+      return "";
+    });
+    // If no rows are loaded yet, skip (log tab hasn't been opened). Nav
+    // to log first to seed.
+    if (!firstSha) {
+      await navigateHash("#/git-chat/log");
+      await waitForShadowElement(page, "gc-app gc-commit-log", ".commit-row");
+    }
+    const sha = await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const log = app?.shadowRoot?.querySelector("gc-commit-log");
+      const row = log?.shadowRoot?.querySelector(".commit-row");
+      return (row as HTMLElement | null)?.getAttribute("data-sha") ?? "";
+    });
+    expect(sha.length).toBeGreaterThan(6);
+    // Navigate back to chat, then fire gc:view-commit like the blame
+    // tooltip does.
+    await navigateHash("#/git-chat/chat");
+    expect(await activeTab()).toBe("chat");
+    await page.evaluate((s) => {
+      const app = document.querySelector("gc-app");
+      app?.dispatchEvent(
+        new CustomEvent("gc:view-commit", {
+          bubbles: true,
+          composed: true,
+          detail: { sha: s },
+        }),
+      );
+    }, sha);
+    // Should land on /log/<sha> with the commit selected.
+    await expect.poll(currentHash).toMatch(/\/log\/[0-9a-f]+/);
+    expect(await activeTab()).toBe("log");
+    // The selected commit's diff-header should appear.
+    await waitForShadowElement(page, "gc-app gc-commit-log", ".diff-header");
   });
 
   // ── Cross-tab: log → file in commit diff ──────────────────

@@ -192,16 +192,24 @@ export class GcCommitLog extends LitElement {
     ) {
       void this.loadAllCommits();
     }
-    if (
-      changed.has("initialCommitSha") &&
-      this.initialCommitSha &&
-      this.initialCommitSha !== this._lastRestoredSha
-    ) {
-      this._lastRestoredSha = this.initialCommitSha;
-      if (this.state.phase === "ready") {
-        void this.selectCommit(this.initialCommitSha);
-      } else {
-        this.pendingSha = this.initialCommitSha;
+    if (changed.has("initialCommitSha")) {
+      if (
+        this.initialCommitSha &&
+        this.initialCommitSha !== this._lastRestoredSha
+      ) {
+        this._lastRestoredSha = this.initialCommitSha;
+        if (this.state.phase === "ready") {
+          void this.selectCommit(this.initialCommitSha);
+        } else {
+          this.pendingSha = this.initialCommitSha;
+        }
+      } else if (!this.initialCommitSha && this.selectedSha) {
+        // URL cleared the SHA (e.g. back-button from /log/sha to /log,
+        // or a nav that lands on the log tab without a selection).
+        // Drop the stale selection so the detail/diff panes reset.
+        this.selectedSha = "";
+        this.selectedFile = "";
+        this._lastRestoredSha = "";
       }
     }
     if (changed.has("initialSplitView")) {
@@ -314,15 +322,32 @@ export class GcCommitLog extends LitElement {
         offset,
         path: this.filterPath,
       });
+      const commits =
+        offset > 0 && this.state.phase === "ready"
+          ? [...this.state.commits, ...resp.commits]
+          : resp.commits;
       this.state = {
         phase: "ready",
-        commits:
-          offset > 0 && this.state.phase === "ready"
-            ? [...this.state.commits, ...resp.commits]
-            : resp.commits,
+        commits,
         hasMore: resp.hasMore,
         offset,
       };
+      // If a prior selection points at a commit that's not in the
+      // freshly-loaded list (filter changed, branch switched, repo
+      // switched), clear it so the detail pane doesn't show stale
+      // state and the diff pane doesn't fetch against a SHA the user
+      // can't see in the sidebar. A subsequent explicit selection (via
+      // click or initialCommitSha) restores a fresh selection.
+      if (
+        offset === 0 &&
+        this.selectedSha &&
+        !commits.some(
+          (c) => c.sha === this.selectedSha || c.sha.startsWith(this.selectedSha),
+        )
+      ) {
+        this.selectedSha = "";
+        this.selectedFile = "";
+      }
       if (this.pendingSha) {
         const sha = this.pendingSha;
         this.pendingSha = "";
