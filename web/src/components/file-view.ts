@@ -161,7 +161,7 @@ export class GcFileView extends LitElement {
             </div>`
           : html`
               ${this.renderHeader(this.view.file)}
-              <pre class="plain">${this.view.text}</pre>
+              ${this.renderPlainWithLineNumbers(this.view.text)}
               ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
             `;
       case "highlighted":
@@ -178,6 +178,17 @@ export class GcFileView extends LitElement {
               ${this.view.file.truncated ? html`<p class="note">truncated at 512 KiB</p>` : nothing}
             `;
     }
+  }
+
+  /** Wrap plain (non-highlighted) text in the same <pre><code>
+   * + .line span shape Shiki produces for the highlighted path. A
+   * single CSS counter rule then numbers both paths identically. */
+  private renderPlainWithLineNumbers(text: string) {
+    const lines = text.split("\n");
+    return html`<pre class="plain"><code>${lines.map(
+      (line, i) =>
+        html`<span class="line">${line}${i < lines.length - 1 ? "\n" : ""}</span>`,
+    )}</code></pre>`;
   }
 
   private renderBlameLoading() {
@@ -744,6 +755,32 @@ export class GcFileView extends LitElement {
     }
     .shiki-wrap code {
       font-size: 0.8rem;
+    }
+    /* Line numbers for plain + highlighted file-view rendering.
+       Both paths produce <pre><code> with <span class="line">...
+       children (plain path via renderPlainWithLineNumbers, highlighted
+       path via Shiki itself), so one rule covers both. Digits render
+       via CSS ::before + counter(); user-select: none keeps them out
+       of the copied-text region. */
+    .shiki-wrap code,
+    pre.plain code {
+      counter-reset: gc-line;
+    }
+    .shiki-wrap .line,
+    pre.plain .line {
+      counter-increment: gc-line;
+    }
+    .shiki-wrap .line::before,
+    pre.plain .line::before {
+      content: counter(gc-line);
+      display: inline-block;
+      width: 3em;
+      padding-right: 1em;
+      text-align: right;
+      opacity: 0.3;
+      user-select: none;
+      -webkit-user-select: none;
+      font-variant-numeric: tabular-nums;
     }
   `;
 }
