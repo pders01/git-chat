@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { splitDiffHtml, highlightWordDiffs } from "./diff-html.js";
+import { splitDiffHtml, highlightWordDiffs, addLineNumbers } from "./diff-html.js";
 
 // Shiki wraps each line in <span class="line">; the first visible
 // character is the diff prefix (space/+/-). These helpers construct
@@ -148,5 +148,106 @@ describe("highlightWordDiffs", () => {
     // Prefix chars should stay outside any <mark> wrapper.
     expect(out).not.toMatch(/<mark[^>]*>-/);
     expect(out).not.toMatch(/<mark[^>]*>\+/);
+  });
+});
+
+// ── addLineNumbers ─────────────────────────────────────────────────
+
+function parseLineNums(html: string): Array<{ old: string; new: string }> {
+  // Helper: extract the data-n values from .ln-old/.ln-new spans in
+  // order, one entry per .line. Empty dataset maps to "".
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  return Array.from(tmp.querySelectorAll(".line")).map((line) => ({
+    old: line.querySelector(".ln-old")?.getAttribute("data-n") ?? "",
+    new: line.querySelector(".ln-new")?.getAttribute("data-n") ?? "",
+  }));
+}
+
+describe("addLineNumbers", () => {
+  test("no <code> element → pass-through", () => {
+    const input = noCodeWrapper("nothing to number");
+    expect(addLineNumbers(input)).toBe(input);
+  });
+
+  test("single hunk with context + del + add assigns sequential numbers", () => {
+    // Hunk @@ -3,3 +3,3 @@ with:
+    //   context (old 3, new 3)
+    //   delete  (old 4)
+    //   add     (new 4)
+    //   context (old 5, new 5)
+    const out = addLineNumbers(
+      shikiDiff(["@@ -3,3 +3,3 @@", " ctx-a", "-deleted", "+added", " ctx-b"]),
+    );
+    const nums = parseLineNums(out);
+    expect(nums).toEqual([
+      { old: "", new: "" }, // hunk header
+      { old: "3", new: "3" }, // context
+      { old: "4", new: "" }, // delete advances old only
+      { old: "", new: "4" }, // add advances new only
+      { old: "5", new: "5" }, // context advances both
+    ]);
+  });
+
+  test("multi-hunk diff resets counters from each @@ header", () => {
+    const out = addLineNumbers(
+      shikiDiff([
+        "@@ -10,2 +10,2 @@",
+        " ctx-a",
+        "-old-a",
+        "+new-a",
+        "@@ -50,2 +100,2 @@",
+        " ctx-b",
+        "+new-b",
+      ]),
+    );
+    const nums = parseLineNums(out);
+    // Second hunk starts at old=50, new=100. Context consumes those,
+    // so the following +new-b sits at new=101.
+    expect(nums[5]).toEqual({ old: "50", new: "100" }); // " ctx-b"
+    expect(nums[6]).toEqual({ old: "", new: "101" }); // "+new-b"
+  });
+
+  test("hunk header without counts (single-line @@ -3 +3 @@) still parses", () => {
+    const out = addLineNumbers(shikiDiff(["@@ -3 +3 @@", " ctx"]));
+    const nums = parseLineNums(out);
+    expect(nums[1]).toEqual({ old: "3", new: "3" });
+  });
+
+  test("file header lines (--- a/foo, +++ b/foo) get no digits", () => {
+    const out = addLineNumbers(shikiDiff(["--- a/foo.ts", "+++ b/foo.ts", "@@ -1 +1 @@", " ctx"]));
+    const nums = parseLineNums(out);
+    expect(nums[0]).toEqual({ old: "", new: "" });
+    expect(nums[1]).toEqual({ old: "", new: "" });
+    expect(nums[2]).toEqual({ old: "", new: "" }); // hunk header
+    expect(nums[3]).toEqual({ old: "1", new: "1" }); // context
+  });
+
+  test("digits never leak into textContent (classifiers keep working)", () => {
+    // Critical contract: splitDiffHtml checks textContent.startsWith('-')
+    // to classify lines. After addLineNumbers, the textContent of a
+    // deletion line must still start with '-', not a digit.
+    const out = addLineNumbers(shikiDiff(["@@ -1 +1 @@", "-del", "+add"]));
+    const tmp = document.createElement("div");
+    tmp.innerHTML = out;
+    const lines = Array.from(tmp.querySelectorAll(".line"));
+    expect(lines[1].textContent?.startsWith("-")).toBe(true);
+    expect(lines[2].textContent?.startsWith("+")).toBe(true);
+  });
+
+  test("empty .line list → pass-through (non-Shiki input)", () => {
+    const input = "<pre><code>plain text</code></pre>";
+    expect(addLineNumbers(input)).toBe(input);
+  });
+
+  test("works as the last stage after splitDiffHtml still classifies correctly", () => {
+    // Integration: add line numbers first, then run splitDiffHtml.
+    // Should produce the same pair structure as without line numbers.
+    const withNums = addLineNumbers(
+      shikiDiff(["@@ -1 +1 @@", " ctx-a", "-del-x", "+add-x", " ctx-b"]),
+    );
+    const pairs = splitDiffHtml(withNums);
+    // 1 hunk header + 1 ctx + 1 del/add pair + 1 ctx = 4 rows
+    expect(pairs).toHaveLength(4);
   });
 });

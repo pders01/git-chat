@@ -83,6 +83,84 @@ export function highlightWordDiffs(htmlStr: string): string {
   return tmp.innerHTML;
 }
 
+/** Inject before/after line-number spans into each `.line`. Returns a
+ * fresh HTML string; the input is not mutated.
+ *
+ * The spans are *empty* at the DOM level — the actual digit is rendered
+ * via CSS `::before { content: attr(data-n); }`. That matters because
+ * splitDiffHtml and highlightWordDiffs classify lines by
+ * `textContent.startsWith("-"|"+"|" ")`; baking the digit into the
+ * element's text would corrupt that check. Pseudo-element content is
+ * purely presentational and never lands in textContent.
+ *
+ * Numbers are real old/new line numbers seeded from `@@ -N,M +P,Q @@`
+ * hunk headers — matches what GitHub / GitLab show in a diff view, as
+ * opposed to sequential "line N of the diff" counting.
+ *
+ * Line type → what spans get populated:
+ *   - `@@` hunk header: both empty (consumes gutter width, no digit)
+ *   - `---` / `+++` file headers: both empty
+ *   - `-del`: only .ln-old gets data-n (old line ticks)
+ *   - `+add`: only .ln-new gets data-n (new line ticks)
+ *   - ` ctx`: both get data-n
+ *   - `\ No newline …`: both empty
+ *
+ * Consumers must provide CSS like:
+ *   .ln-old, .ln-new { display: inline-block; user-select: none; }
+ *   .ln-old::before { content: attr(data-n); }
+ *   .ln-new::before { content: attr(data-n); }
+ */
+export function addLineNumbers(htmlStr: string): string {
+  const tmp = document.createElement("div");
+  tmp.innerHTML = htmlStr;
+  const code = tmp.querySelector("code");
+  if (!code) return htmlStr;
+  const lineEls = Array.from(code.querySelectorAll(".line"));
+  if (lineEls.length === 0) return htmlStr;
+
+  const hunkRE = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+  let oldLine = 0;
+  let newLine = 0;
+
+  for (const el of lineEls) {
+    const text = el.textContent ?? "";
+    let oldNum = "";
+    let newNum = "";
+
+    const hunk = text.match(hunkRE);
+    if (hunk) {
+      oldLine = parseInt(hunk[1], 10);
+      newLine = parseInt(hunk[2], 10);
+      // Hunk header itself gets no digits — gutter stays blank.
+    } else if (text.startsWith("---") || text.startsWith("+++")) {
+      // File header. No digits.
+    } else if (text.startsWith("-")) {
+      oldNum = String(oldLine);
+      oldLine++;
+    } else if (text.startsWith("+")) {
+      newNum = String(newLine);
+      newLine++;
+    } else if (text.startsWith(" ")) {
+      oldNum = String(oldLine);
+      newNum = String(newLine);
+      oldLine++;
+      newLine++;
+    }
+    // Fallthrough (e.g. "\ No newline at end of file") → both empty.
+
+    const oldSp = document.createElement("span");
+    oldSp.className = "ln-old";
+    if (oldNum) oldSp.dataset.n = oldNum;
+    const newSp = document.createElement("span");
+    newSp.className = "ln-new";
+    if (newNum) newSp.dataset.n = newNum;
+    // Insert at the head so the line prefix (' ', '+', '-') follows.
+    el.insertBefore(newSp, el.firstChild);
+    el.insertBefore(oldSp, el.firstChild);
+  }
+  return tmp.innerHTML;
+}
+
 // Compare two line elements word-by-word and wrap differing words in
 // <mark> elements. Skips highlighting when >80% of both sides changed
 // (treating the lines as unrelated rather than edits of each other).

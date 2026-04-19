@@ -4,7 +4,7 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
 import type { SideFilesState } from "../lib/diff-types.js";
-import { splitDiffHtml, highlightWordDiffs } from "../lib/diff-html.js";
+import { splitDiffHtml, highlightWordDiffs, addLineNumbers } from "../lib/diff-html.js";
 import "./loading-indicator.js";
 import "./three-pane-view.js";
 
@@ -135,6 +135,7 @@ export class GcDiffPane extends LitElement {
       let highlighted = await highlight(this.rawDiff, "diff");
       if (gen !== this.generation) return;
       highlighted = highlightWordDiffs(highlighted);
+      highlighted = addLineNumbers(highlighted);
       this.diff = {
         phase: "ready",
         rawDiff: this.rawDiff,
@@ -184,6 +185,7 @@ export class GcDiffPane extends LitElement {
         let highlighted = await highlight(resp.unifiedDiff, "diff");
         if (gen !== this.generation) return;
         highlighted = highlightWordDiffs(highlighted);
+        highlighted = addLineNumbers(highlighted);
         this.diff = {
           phase: "ready",
           rawDiff: resp.unifiedDiff,
@@ -231,6 +233,7 @@ export class GcDiffPane extends LitElement {
         let highlighted = await highlight(resp.unifiedDiff, "diff");
         if (gen !== this.generation) return;
         highlighted = highlightWordDiffs(highlighted);
+        highlighted = addLineNumbers(highlighted);
         this.diff = {
           phase: "ready",
           rawDiff: resp.unifiedDiff,
@@ -307,6 +310,7 @@ export class GcDiffPane extends LitElement {
     let highlighted = await highlight(raw, "diff");
     if (this.diff.phase !== "ready" || this.diff.rawDiff !== raw) return;
     highlighted = highlightWordDiffs(highlighted);
+    highlighted = addLineNumbers(highlighted);
     this.diff = { ...this.diff, diffHtml: highlighted };
     if (this.path === "" && this.fullDiff) {
       this.fullDiff = { ...this.fullDiff, diffHtml: highlighted };
@@ -484,6 +488,34 @@ export class GcDiffPane extends LitElement {
       background: rgba(63, 185, 80, 0.4);
       color: inherit;
       border-radius: 2px;
+    }
+    /* Line-number gutters. Digits render via ::before + attr(data-n)
+       so the spans stay empty at the DOM/textContent level — lets
+       splitDiffHtml and highlightWordDiffs keep classifying by the
+       diff prefix character ('-'/'+'/' ') that comes next. */
+    .ln-old,
+    .ln-new {
+      display: inline-block;
+      min-width: 3ch;
+      padding-right: var(--space-2);
+      text-align: right;
+      opacity: 0.35;
+      user-select: none;
+      -webkit-user-select: none;
+      font-variant-numeric: tabular-nums;
+    }
+    .ln-old::before {
+      content: attr(data-n);
+    }
+    .ln-new::before {
+      content: attr(data-n);
+    }
+    /* Split view: each side only shows its own side's number. The
+       opposite side's empty span still sits in place so the total
+       gutter width stays consistent across rows. */
+    .split-cell.del-cell .ln-new,
+    .split-cell.add-cell .ln-old {
+      visibility: hidden;
     }
     .split-diff {
       width: 100%;
