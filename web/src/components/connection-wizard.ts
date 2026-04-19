@@ -8,7 +8,7 @@ import type {
   LLMProfile,
   LocalEndpoint,
 } from "../gen/gitchat/v1/repo_pb.js";
-import { formatSources, providerSources } from "../lib/catalog.js";
+import { formatSources, providerSources, isLocalhostURL } from "../lib/catalog.js";
 import "./combobox.js";
 import type { ComboboxOption } from "./combobox.js";
 
@@ -82,10 +82,12 @@ export class GcConnectionWizard extends LitElement {
         this.catalogModels = prov.models;
         this.providerName = prov.name;
       }
-      // Pre-discover models so the model dropdown is populated without
-      // requiring the user to re-authenticate. Live results supersede
-      // the catalog seed above if they return anything.
-      if (this.baseUrl) {
+      // Silent remote probes are banned (see PATTERNS.md §7). For
+      // localhost the auto-probe is fine (no cost, no leak). For a
+      // remote profile we leave the dropdown seeded from the catalog
+      // above; the user hits "test connection" to force a live probe
+      // that exercises the stored key.
+      if (this.baseUrl && isLocalhostURL(this.baseUrl)) {
         this.discoverModelsForEdit();
       }
     }

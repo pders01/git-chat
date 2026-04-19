@@ -267,16 +267,22 @@ export class GcSettingsPanel extends LitElement {
     }, 400);
   }
 
-  private async discoverModelsForCurrentBaseUrl() {
+  private async discoverModelsForCurrentBaseUrl(opts: { force?: boolean } = {}) {
     const baseUrl = this.configEntries.find((e) => e.key === "LLM_BASE_URL")?.value?.trim() ?? "";
     if (!baseUrl) return;
+    // Silent remote probes are banned (see PATTERNS.md §7): auto-fire
+    // only for loopback URLs, otherwise require an explicit user click
+    // to avoid leaking presence + API key to third-party providers.
+    // force=true bypasses the gate for the in-panel "discover models"
+    // button.
+    if (!opts.force && !isLocalhostURL(baseUrl)) return;
     // Skip catalog/local — those already populate suggestions.
     const inCatalog = this.catalog.some(
       (c) => c.defaultBaseUrl && baseUrl.startsWith(c.defaultBaseUrl),
     );
     const inLocal = this.localEndpoints.some((ep) => ep.url === baseUrl);
     if (inCatalog || inLocal) return;
-    if (this.discoveredModelsByUrl.has(baseUrl)) return;
+    if (!opts.force && this.discoveredModelsByUrl.has(baseUrl)) return;
     const apiKey = this.configEntries.find((e) => e.key === "LLM_API_KEY")?.value ?? "";
     this.discoveringModelsForUrl = baseUrl;
     try {
@@ -331,6 +337,41 @@ export class GcSettingsPanel extends LitElement {
       { value: "8192", label: "8192" },
     ],
   };
+
+  /** Per-entry action row — currently only LLM_MODEL uses this, to
+   * surface a "discover models" button when the configured base URL
+   * is a remote endpoint. Auto-discover fires silently for loopback
+   * URLs (PATTERNS.md §7); for remote ones the user explicitly opts
+   * in so we don't leak presence + API key on every settings open. */
+  private renderEntryAction(entry: ConfigEntry) {
+    if (entry.key !== "LLM_MODEL") return nothing;
+    const baseUrl =
+      this.configEntries.find((e) => e.key === "LLM_BASE_URL")?.value?.trim() ?? "";
+    if (!baseUrl || isLocalhostURL(baseUrl)) return nothing;
+    const inCatalog = this.catalog.some(
+      (c) => c.defaultBaseUrl && baseUrl.startsWith(c.defaultBaseUrl),
+    );
+    if (inCatalog) return nothing; // catalog already seeds the combobox
+    const discovering = this.discoveringModelsForUrl === baseUrl;
+    const discovered = this.discoveredModelsByUrl.get(baseUrl);
+    return html`<div class="config-entry-action">
+      <button
+        class="config-action-btn"
+        ?disabled=${discovering}
+        @click=${() => void this.discoverModelsForCurrentBaseUrl({ force: true })}
+        title="Query ${hostOf(baseUrl) || baseUrl} for its model list"
+      >
+        ${discovering
+          ? "discovering…"
+          : discovered
+            ? `\u21BB ${discovered.length} models`
+            : "discover models"}
+      </button>
+      <span class="config-action-hint">
+        Remote probe — click to query the endpoint with your API key.
+      </span>
+    </div>`;
+  }
 
   /** Pick a contextual empty-hint for the combobox. LLM_MODEL surfaces
    * the discovery state so the user knows why the dropdown is empty
@@ -557,6 +598,7 @@ export class GcSettingsPanel extends LitElement {
                         this.updateConfigEntry(entry.key, (e.target as HTMLInputElement).value);
                       }}
                     />`}
+              ${this.renderEntryAction(entry)}
               ${entry.description
                 ? html`<span id="cfg-desc-${entry.key}" class="config-desc"
                     >${entry.description}</span
@@ -1184,6 +1226,33 @@ export class GcSettingsPanel extends LitElement {
       font-size: 0.65rem;
       opacity: 0.4;
       line-height: 1.3;
+    }
+    .config-entry-action {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      margin-top: var(--space-1);
+    }
+    .config-action-btn {
+      padding: 0.15rem var(--space-2);
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+    }
+    .config-action-btn:hover:not(:disabled) {
+      border-color: var(--border-strong);
+    }
+    .config-action-btn:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+    .config-action-hint {
+      font-size: 0.65rem;
+      opacity: 0.45;
     }
 
     /* ── Advanced config collapsible ─────────────────────────── */

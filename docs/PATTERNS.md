@@ -296,6 +296,33 @@ The `maybeWarnKeyReuse` check fires when `LLM_BASE_URL` changes
 hosts while `LLM_API_KEY` is still set. If you add a new write path
 for either key, route it through the same check.
 
+### 7.5 No silent remote probes
+
+git-chat must not initiate an LLM-adjacent network call to a
+non-loopback host without explicit user action. "Explicit" means a
+button click, a slash command, or a `send message` — not "panel
+opened," "profile edited," or "config loaded."
+
+Auto-probes ARE allowed for loopback URLs (localhost / 127.x / [::1])
+since they cost nothing and leak nothing. For remote URLs, the pattern
+is: show a "discover" / "test connection" button that fires the probe
+on click. The combobox falls back to catalog data until then.
+
+Why: opening settings or editing a profile shouldn't expose your
+presence (or key) to a third-party provider. The user made a local
+action; it should stay local unless they ask otherwise.
+
+Enforcement in code:
+- `web/src/components/settings-panel.ts`:
+  `discoverModelsForCurrentBaseUrl({force})` — auto-callers pass no
+  options; the force flag is reserved for the "discover models" button
+  rendered by `renderEntryAction`.
+- `web/src/components/connection-wizard.ts`: `connectedCallback`
+  checks `isLocalhostURL(this.baseUrl)` before calling
+  `discoverModelsForEdit`.
+
+If you add a new auto-probe call site, route it through the same gate.
+
 ---
 
 ## Section 8 — Testing
