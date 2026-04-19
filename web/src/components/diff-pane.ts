@@ -42,6 +42,10 @@ export class GcDiffPane extends LitElement {
   // full unified diff and fires gc:diff-files-loaded with the
   // changed-file list. Non-empty path fetches just that file.
   @property({ type: String }) path = "";
+  // fromPath: path on the from side when `path` is the new name of
+  // a rename. Passed to the server so it reads the old content from
+  // the correct location; without it, a rename looks like an add.
+  @property({ type: String }) fromPath = "";
   @property({ type: Boolean }) splitView = false;
   @property({ type: Boolean }) threePane = false;
   // 3-pane view labels. Parents that know human-readable names
@@ -113,7 +117,7 @@ export class GcDiffPane extends LitElement {
     if (this.rawDiff) return; // stay in raw-diff mode as long as prop holds
     if (changed.has("repoId") || changed.has("fromRef") || changed.has("toRef")) {
       this.maybeReload();
-    } else if (changed.has("path")) {
+    } else if (changed.has("path") || changed.has("fromPath")) {
       void this.loadForPath();
     }
     if (changed.has("threePane") && this.threePane && this.path) {
@@ -230,6 +234,7 @@ export class GcDiffPane extends LitElement {
         fromRef: this.fromRef,
         toRef: this.toRef,
         path: this.path,
+        fromPath: this.fromPath,
       });
       if (gen !== this.generation) return;
       const parentSha = resp.fromCommit || this.fullDiff?.parentSha || "";

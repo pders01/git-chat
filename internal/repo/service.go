@@ -160,7 +160,7 @@ func (s *Service) GetDiff(
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	diff, fromSHA, toSHA, empty, files, err := entry.GetDiff(ctx, req.Msg.FromRef, req.Msg.ToRef, req.Msg.Path, req.Msg.DetectRenames)
+	diff, fromSHA, toSHA, empty, files, err := entry.GetDiff(ctx, req.Msg.FromRef, req.Msg.ToRef, req.Msg.Path, req.Msg.FromPath, req.Msg.DetectRenames)
 	if err != nil {
 		return nil, mapErr(err)
 	}

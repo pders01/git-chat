@@ -248,11 +248,17 @@ message GetDiffRequest {
   string repo_id = 1;
   string from_ref = 2;  // branch/SHA; empty = parent of to_ref
   string to_ref = 3;    // branch/SHA; empty = HEAD
-  string path = 4;      // file path (required)
+  string path = 4;      // file path on the to side (required)
   // detect_renames: same semantics as on CompareBranchesRequest.
   // Only affects the whole-commit (path="") response; single-file
   // diffs don't care about renames.
   bool detect_renames = 5;
+  // from_path: path on the from side when the file was renamed
+  // between from_ref and to_ref. Empty means same as `path`.
+  // Without this hint the server reads the from-side under `path`,
+  // which doesn't exist for a rename and silently collapses the
+  // diff to add-only.
+  string from_path = 6;
 }
 
 message GetDiffResponse {

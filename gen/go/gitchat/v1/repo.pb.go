@@ -1385,11 +1385,17 @@ type GetDiffRequest struct {
 	RepoId  string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
 	FromRef string                 `protobuf:"bytes,2,opt,name=from_ref,json=fromRef,proto3" json:"from_ref,omitempty"` // branch/SHA; empty = parent of to_ref
 	ToRef   string                 `protobuf:"bytes,3,opt,name=to_ref,json=toRef,proto3" json:"to_ref,omitempty"`       // branch/SHA; empty = HEAD
-	Path    string                 `protobuf:"bytes,4,opt,name=path,proto3" json:"path,omitempty"`                      // file path (required)
+	Path    string                 `protobuf:"bytes,4,opt,name=path,proto3" json:"path,omitempty"`                      // file path on the to side (required)
 	// detect_renames: same semantics as on CompareBranchesRequest.
 	// Only affects the whole-commit (path="") response; single-file
 	// diffs don't care about renames.
 	DetectRenames bool `protobuf:"varint,5,opt,name=detect_renames,json=detectRenames,proto3" json:"detect_renames,omitempty"`
+	// from_path: path on the from side when the file was renamed
+	// between from_ref and to_ref. Empty means same as `path`.
+	// Without this hint the server reads the from-side under `path`,
+	// which doesn't exist for a rename and silently collapses the
+	// diff to add-only.
+	FromPath      string `protobuf:"bytes,6,opt,name=from_path,json=fromPath,proto3" json:"from_path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1457,6 +1463,13 @@ func (x *GetDiffRequest) GetDetectRenames() bool {
 		return x.DetectRenames
 	}
 	return false
+}
+
+func (x *GetDiffRequest) GetFromPath() string {
+	if x != nil {
+		return x.FromPath
+	}
+	return ""
 }
 
 type GetDiffResponse struct {
@@ -3519,13 +3532,14 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x1c\n" +
 	"\tadditions\x18\x03 \x01(\x05R\tadditions\x12\x1c\n" +
 	"\tdeletions\x18\x04 \x01(\x05R\tdeletions\x12\x1b\n" +
-	"\tfrom_path\x18\x05 \x01(\tR\bfromPath\"\x96\x01\n" +
+	"\tfrom_path\x18\x05 \x01(\tR\bfromPath\"\xb3\x01\n" +
 	"\x0eGetDiffRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x19\n" +
 	"\bfrom_ref\x18\x02 \x01(\tR\afromRef\x12\x15\n" +
 	"\x06to_ref\x18\x03 \x01(\tR\x05toRef\x12\x12\n" +
 	"\x04path\x18\x04 \x01(\tR\x04path\x12%\n" +
-	"\x0edetect_renames\x18\x05 \x01(\bR\rdetectRenames\"\xb7\x01\n" +
+	"\x0edetect_renames\x18\x05 \x01(\bR\rdetectRenames\x12\x1b\n" +
+	"\tfrom_path\x18\x06 \x01(\tR\bfromPath\"\xb7\x01\n" +
 	"\x0fGetDiffResponse\x12!\n" +
 	"\funified_diff\x18\x01 \x01(\tR\vunifiedDiff\x12\x1f\n" +
 	"\vfrom_commit\x18\x02 \x01(\tR\n" +

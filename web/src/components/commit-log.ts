@@ -937,6 +937,7 @@ export class GcCommitLog extends LitElement {
                           .repoId=${this.repoId}
                           .toRef=${this.selectedSha}
                           .path=${this.selectedFile}
+                          .fromPath=${this.selectedFileEntry()?.fromPath ?? ""}
                           .splitView=${this.splitView}
                           .threePane=${this.threePane}
                           .detectRenames=${this.wantRenameDetection}

@@ -1149,7 +1149,7 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 // Empty fromRef defaults to the parent of toRef (i.e. "what did this
 // commit do"); empty toRef defaults to HEAD. Returns empty=true if
 // nothing changed between the two commits for the scope requested.
-func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path string, detectRenames bool) (diff, fromSHA, toSHA string, empty bool, files []*gitchatv1.ChangedFile, err error) {
+func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath string, detectRenames bool) (diff, fromSHA, toSHA string, empty bool, files []*gitchatv1.ChangedFile, err error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	// Resolve to-side first so we can default fromRef to its parent.
@@ -1187,7 +1187,16 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path string, detect
 
 	// ── Single-file path ───────────────────────────────────────────
 	if path != "" {
-		from, fromErr := fileContentDetail(fromCommit, path, maxDiffBytes)
+		// Rename-aware: when the caller passes fromPath (the path on
+		// the from side of a rename), read from-content under that
+		// name instead of `path`. Without this hint, the from-side
+		// would be "missing" for a rename and renderUnifiedDiff would
+		// emit an add-only diff.
+		fromSidePath := path
+		if fromPath != "" {
+			fromSidePath = fromPath
+		}
+		from, fromErr := fileContentDetail(fromCommit, fromSidePath, maxDiffBytes)
 		to, toErr := fileContentDetail(toCommit, path, maxDiffBytes)
 		if fromErr != nil && toErr != nil {
 			return "", fromResolved, toResolved, false, nil, ErrNotFound
