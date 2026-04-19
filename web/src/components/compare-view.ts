@@ -1,26 +1,9 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
+import { statusLabel, fileName } from "../lib/diff-types.js";
 import "./loading-indicator.js";
 import "./diff-pane.js";
-
-function statusLabel(status: string): string {
-  switch (status) {
-    case "added":
-      return "A";
-    case "deleted":
-      return "D";
-    case "renamed":
-      return "R";
-    default:
-      return "M";
-  }
-}
-
-function fileName(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i >= 0 ? path.slice(i + 1) : path;
-}
 
 // CompareState models the file-list sidebar. Totals sum the per-file
 // stats the pane hands back in gc:diff-files-loaded — no separate

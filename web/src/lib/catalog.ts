@@ -126,6 +126,29 @@ export function isLocalhostURL(u: string): boolean {
   );
 }
 
+/** Fold the three pieces of "what routes are configured" (local
+ * endpoints, saved profiles, raw config entries) into one
+ * AvailabilityContext. Accepts narrow duck-typed shapes so both RPC
+ * responses and component @state fields can feed it without casts. */
+export function buildAvailabilityContext(
+  localEndpoints: ReadonlyArray<{ url?: string }>,
+  profiles: ReadonlyArray<{ baseUrl?: string; backend?: string }>,
+  configEntries: ReadonlyArray<{ key: string; value: string }>,
+): AvailabilityContext {
+  const readConfig = (key: string) =>
+    configEntries.find((e) => e.key === key)?.value ?? "";
+  return {
+    localUrls: localEndpoints.map((ep) => ep.url ?? "").filter(Boolean),
+    profileBaseUrls: profiles.map((p) => p.baseUrl ?? "").filter(Boolean),
+    profileBackends: profiles.map((p) => p.backend ?? "").filter(Boolean),
+    configBaseUrl: readConfig("LLM_BASE_URL"),
+    configBackend: readConfig("LLM_BACKEND") || "openai",
+    // API keys are returned masked ("••••••••") when set, empty when
+    // unset — truthiness is the right signal here.
+    configHasKey: !!readConfig("LLM_API_KEY"),
+  };
+}
+
 /** Extract hostname (without port) from a URL. Returns "" for blank
  * input or malformed strings — callers should treat empty as "unknown"
  * rather than "same as other empty". */

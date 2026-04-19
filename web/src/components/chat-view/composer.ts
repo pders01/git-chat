@@ -20,9 +20,9 @@ import {
   type ActionArgContext,
 } from "../../lib/slash.js";
 import {
+  buildAvailabilityContext,
   formatSources,
   isProviderAvailable,
-  type AvailabilityContext,
 } from "../../lib/catalog.js";
 
 // Rendered form of an action-arg suggestion. Shape mirrors ComboboxOption
@@ -202,7 +202,11 @@ export class GcComposer extends LitElement {
           repoClient.listProfiles({}).catch(() => null),
           repoClient.getConfig({}).catch(() => null),
         ]);
-        const ctx = buildAvailabilityContext(localResp, profilesResp, configResp);
+        const ctx = buildAvailabilityContext(
+          localResp?.endpoints ?? [],
+          profilesResp?.profiles ?? [],
+          configResp?.entries ?? [],
+        );
         const seen = new Set<string>();
         const out: ArgSuggestion[] = [];
         for (const ep of localResp?.endpoints ?? []) {
@@ -1256,35 +1260,6 @@ function helpToastMessage(): string {
   return "Slash commands:\n" + lines.join("\n");
 }
 
-// Derive an AvailabilityContext from the three RPC responses the
-// composer fetches. Pulled out of the main flow so the test suite and
-// future callers (profile picker, settings UI) can reuse the same
-// folding logic without re-reading shapes.
-function buildAvailabilityContext(
-  localResp: { endpoints?: Array<{ url?: string }> } | null,
-  profilesResp: { profiles?: Array<{ baseUrl?: string; backend?: string }> } | null,
-  configResp: { entries?: Array<{ key: string; value: string }> } | null,
-): AvailabilityContext {
-  const configEntries = configResp?.entries ?? [];
-  const readConfig = (key: string) =>
-    configEntries.find((e) => e.key === key)?.value ?? "";
-  return {
-    localUrls: (localResp?.endpoints ?? [])
-      .map((ep) => ep.url ?? "")
-      .filter(Boolean),
-    profileBaseUrls: (profilesResp?.profiles ?? [])
-      .map((p) => p.baseUrl ?? "")
-      .filter(Boolean),
-    profileBackends: (profilesResp?.profiles ?? [])
-      .map((p) => p.backend ?? "")
-      .filter(Boolean),
-    configBaseUrl: readConfig("LLM_BASE_URL"),
-    configBackend: readConfig("LLM_BACKEND") || "openai",
-    // API keys are returned masked ("••••••••") when set, empty when
-    // unset — checking truthiness is enough to tell them apart.
-    configHasKey: !!readConfig("LLM_API_KEY"),
-  };
-}
 
 declare global {
   interface HTMLElementTagNameMap {

@@ -7,6 +7,7 @@ import "./diff-pane.js";
 import { repoClient } from "../lib/transport.js";
 import type { CommitEntry, ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { copyText } from "../lib/clipboard.js";
+import { statusLabel, fileName } from "../lib/diff-types.js";
 import "./loading-indicator.js";
 import "./commit-log/commit-calendar.js";
 import { readFocus } from "../lib/focus.js";
@@ -1755,24 +1756,6 @@ export class GcCommitLog extends LitElement {
       }
     }
   `;
-}
-
-function statusLabel(status: string): string {
-  switch (status) {
-    case "added":
-      return "A";
-    case "deleted":
-      return "D";
-    case "renamed":
-      return "R";
-    default:
-      return "M";
-  }
-}
-
-function fileName(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i >= 0 ? path.slice(i + 1) : path;
 }
 
 // Returns either a plain string or an {age, iso} object for tooltip.

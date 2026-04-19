@@ -4,32 +4,13 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
 import type { StatusFile } from "../gen/gitchat/v1/repo_pb.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
+import { statusLabel, fileName } from "../lib/diff-types.js";
 import "./loading-indicator.js";
 
 let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
 function loadHighlight() {
   if (!highlightModule) highlightModule = import("../lib/highlight.js");
   return highlightModule;
-}
-
-function statusLabel(status: string): string {
-  switch (status) {
-    case "added":
-      return "A";
-    case "deleted":
-      return "D";
-    case "renamed":
-      return "R";
-    case "copied":
-      return "C";
-    default:
-      return "M";
-  }
-}
-
-function fileName(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i >= 0 ? path.slice(i + 1) : path;
 }
 
 @customElement("gc-changes-view")

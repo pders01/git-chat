@@ -9,12 +9,12 @@ import type {
 } from "../gen/gitchat/v1/repo_pb.js";
 import * as settings from "../lib/settings.js";
 import {
+  buildAvailabilityContext,
   formatSources,
   providerSources,
   isProviderAvailable,
   isLocalhostURL,
   hostOf,
-  type AvailabilityContext,
 } from "../lib/catalog.js";
 import "./combobox.js";
 import "./connection-wizard.js";
@@ -350,18 +350,9 @@ export class GcSettingsPanel extends LitElement {
   /** Snapshot of what the user can currently call. Used by the model
    * fallback combobox so we don't surface providers the user has no
    * route to. State is already loaded on panel open, so this is a
-   * pure read over component fields. */
-  private availabilityContext(): AvailabilityContext {
-    const readConfig = (key: string) =>
-      this.configEntries.find((e) => e.key === key)?.value ?? "";
-    return {
-      localUrls: this.localEndpoints.map((ep) => ep.url).filter(Boolean),
-      profileBaseUrls: this.profiles.map((p) => p.baseUrl).filter(Boolean),
-      profileBackends: this.profiles.map((p) => p.backend).filter(Boolean),
-      configBaseUrl: readConfig("LLM_BASE_URL"),
-      configBackend: readConfig("LLM_BACKEND") || "openai",
-      configHasKey: !!readConfig("LLM_API_KEY"),
-    };
+   * pure read over component fields fed into the shared helper. */
+  private availabilityContext() {
+    return buildAvailabilityContext(this.localEndpoints, this.profiles, this.configEntries);
   }
 
   /** Build combobox suggestions for a config key from catalog + local discovery. */

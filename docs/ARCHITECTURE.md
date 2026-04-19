@@ -598,7 +598,7 @@ the browser `switch (chunk.kind.case)` exhausts all variants at compile time.
 
 ### RPC summary
 
-**RepoService (13 RPCs):**
+**RepoService (21 RPCs):**
 - `ListRepos` -- all configured repositories
 - `ListBranches` -- branches + tags for a repo
 - `ListTree` -- directory listing at a ref
@@ -610,8 +610,16 @@ the browser `switch (chunk.kind.case)` exhausts all variants at compile time.
 - `GetStatus` -- working tree status (staged/unstaged/untracked)
 - `GetWorkingTreeDiff` -- per-file diff for working tree changes
 - `GetFileChurnMap` -- per-file commit counts, additions, deletions, size over time window (powers code city)
-- `GetConfig` -- all 18 config keys with resolved values (3-tier)
+- `GetConfig` -- all registered config keys with resolved values (3-tier)
 - `UpdateConfig` -- write SQLite override, takes effect immediately
+- `GetProviderCatalog` -- merged provider/model catalog (Catwalk + OpenRouter + models.dev) from SQLite cache
+- `RefreshProviderCatalog` -- force a live refresh across all sources with dedup + source tagging
+- `DiscoverLocalEndpoints` -- probe LM Studio / Ollama / other local openai-compatible runners
+- `DiscoverModels` -- hit a given base URL's `/v1/models` with optional Bearer auth
+- `ListProfiles` -- saved LLM profiles + which one is active
+- `SaveProfile` -- create or update a profile (encrypted API key via config registry)
+- `DeleteProfile` -- remove a profile; clears `LLM_ACTIVE_PROFILE` if it was active
+- `ActivateProfile` -- set `LLM_ACTIVE_PROFILE` to the given id (empty id deactivates)
 
 **ChatService (11 RPCs):**
 - `ListSessions` -- paginated, pinned sort to top
@@ -626,7 +634,7 @@ the browser `switch (chunk.kind.case)` exhausts all variants at compile time.
 - `DeleteCard` -- remove KB card
 - `SummarizeActivity` -- LLM-generated summary of recent commits + KB activity
 
-**AuthService (5 RPCs):** StartPairing, WatchPairing, Claim, Whoami, Logout.
+**AuthService (6 RPCs):** StartPairing, WatchPairing, Claim, LocalClaim, Whoami, Logout.
 
 ---
 
@@ -638,7 +646,7 @@ the browser `switch (chunk.kind.case)` exhausts all variants at compile time.
 2. **Environment variable** -- `os.Getenv`
 3. **Compiled default** -- registered in `defaults.go`
 
-All 20 `GITCHAT_*` keys and 8 `LLM_*` keys registered at init with
+All 26 `GITCHAT_*` keys and 8 `LLM_*` keys registered at init with
 description and group. The settings UI fetches all entries via `GetConfig`
 and writes overrides via `UpdateConfig`. Changes take effect immediately
 -- no restart required. One deliberate exception: `prewarmChurn` in
@@ -686,15 +694,21 @@ git-chat/
 │   ├── config/                  # runtime config registry
 │   │   ├── config.go            # Registry: 3-tier resolution (DB > env > default)
 │   │   ├── config_test.go
-│   │   └── defaults.go          # RegisterDefaults: 20 GITCHAT_* + 8 LLM_* keys
+│   │   └── defaults.go          # RegisterDefaults: 26 GITCHAT_* + 8 LLM_* keys
 │   ├── mcp/                     # MCP server (10 tools via mcp-go)
 │   ├── repo/                    # RepoService: git operations
 │   │   ├── registry.go          # Registry: repo collection, Add, ScanDirectory
 │   │   ├── reader.go            # go-git read path + git(1) fallbacks
 │   │   └── service.go           # Connect handler impls
 │   ├── rpc/                     # cross-service Connect wiring
-│   │   ├── server.go
-│   │   └── interceptors.go      # auth, logging, panic recovery
+│   │   ├── server.go            # mount services, security headers
+│   │   └── timing.go            # per-request timing interceptor
+│   ├── auth/                    # session store + interceptor
+│   │   ├── interceptor.go       # auth check for incoming RPC calls
+│   │   ├── sessions.go          # in-memory session store with TTL cache
+│   │   ├── pairing.go           # SSH pairing flow
+│   │   ├── local.go             # claim-URL auth for `git chat local`
+│   │   └── allowed_signers.go   # parse ~/.ssh/allowed_signers
 │   ├── storage/                 # sqlite
 │   │   ├── db.go
 │   │   ├── migrations/
@@ -825,7 +839,7 @@ git chat
   overrides in `[data-theme="light"]`. `settings.ts` sets the attribute on
   `<html>` and listens to `prefers-color-scheme` for "system" mode.
 - **Config: DB > env > default.** `internal/config/Registry` resolves through
-  three tiers. All 28 keys (20 GITCHAT_* + 8 LLM_*) registered in
+  three tiers. All 34 keys (26 GITCHAT_* + 8 LLM_*) registered in
   `defaults.go`. UI reads/writes via RPCs. Changes immediate, no restart.
 - **Webhook retries transient failures.** Async goroutine, exponential
   backoff (3 attempts, ±50% jitter, 5s cap) on 5xx/429/network errors;
