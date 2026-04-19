@@ -546,6 +546,7 @@ export class GcRepoBrowser extends LitElement {
                     .path=${this.selectedFile}
                     .branch=${this.branch}
                     .initialBlame=${this.initialBlame}
+                    ?zen=${this.focusMode === "zen"}
                   ></gc-file-view>`}
         </section>
       </div>

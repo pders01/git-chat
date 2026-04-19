@@ -38,6 +38,9 @@ export class GcFileView extends LitElement {
   @property({ type: String }) path = "";
   @property({ type: String }) branch = "";
   @property({ type: Boolean }) initialBlame = false;
+  // Reflected so the style rules below can target :host([zen]) without
+  // the parent having to pass a class into the shadow root.
+  @property({ type: Boolean, reflect: true }) zen = false;
   @state() private showBlame = false;
   @state() private blameLines: BlameLine[] = [];
   @state() private blameLoading = false;
@@ -519,6 +522,13 @@ export class GcFileView extends LitElement {
       font-style: italic;
       opacity: 0.4;
       padding-top: 0;
+    }
+    /* Zen: the app shell already hides the top bar — also drop the
+       file-view's own toolbar so only the content remains. Path,
+       blame, history, and "ask in chat" are all reachable via the
+       palette / slash-commands, so users aren't locked out. */
+    :host([zen]) .hd {
+      display: none;
     }
     .hd {
       display: flex;

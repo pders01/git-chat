@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { classMap } from "lit/directives/class-map.js";
 import { authClient, repoClient, chatClient } from "./lib/transport.js";
 import { AuthMode } from "./gen/gitchat/v1/auth_pb.js";
 import type { Repo } from "./gen/gitchat/v1/repo_pb.js";
@@ -12,7 +13,7 @@ import "./components/kb-view.js";
 import "./components/loading-indicator.js";
 import "./components/settings-panel.js";
 import * as settings from "./lib/settings.js";
-import { readFocus, writeFocus, cycleFocus } from "./lib/focus.js";
+import { readFocus, writeFocus, cycleFocus, type FocusMode } from "./lib/focus.js";
 import {
   type Tab,
   type ParsedRoute,
@@ -65,6 +66,12 @@ export class GcApp extends LitElement {
   @state() private pendingFileMention: { path: string; nonce: number } | null = null;
   @state() private newChatNonce = 0;
   @state() private focusNonce = 0;
+  // Mirror the shared focus state for the app shell (header hide +
+  // floating exit-zen button). Child components each own their own
+  // copy — this one is specifically for shell-level chrome. Updated
+  // whenever focusNonce bumps so the UI converges in the same tick
+  // as the children.
+  @state() private focusMode: FocusMode = readFocus();
   private prefillNonce = 0;
   private fileMentionNonce = 0;
 
@@ -363,7 +370,9 @@ export class GcApp extends LitElement {
   // localStorage and also written by an in-chat button). The nonce
   // signals focus-aware children to re-read on the next render.
   private toggleFocus() {
-    writeFocus(cycleFocus(readFocus()));
+    const next = cycleFocus(readFocus());
+    writeFocus(next);
+    this.focusMode = next;
     this.focusNonce++;
   }
 
@@ -371,9 +380,10 @@ export class GcApp extends LitElement {
   // so zen is one keystroke away without cycling through focus first).
   // focusNonce re-runs the per-component readFocus() so chat-view,
   // repo-browser, and commit-log all pick up the change in-tick.
-  private setFocus(mode: "off" | "focus" | "zen") {
+  private setFocus(mode: FocusMode) {
     if (readFocus() === mode) return;
     writeFocus(mode);
+    this.focusMode = mode;
     this.focusNonce++;
   }
 
@@ -632,9 +642,21 @@ export class GcApp extends LitElement {
     const { principal, mode, tab, selectedRepo, repos } = this.state;
     const modeLabel = mode === AuthMode.LOCAL ? "local" : "paired";
     const multiRepo = repos.length > 1;
+    const zen = this.focusMode === "zen";
+    const modKey = navigator.platform.includes("Mac") ? "⌘" : "Ctrl+";
     return html`
       <a class="skip-link" href="#main-content">Skip to content</a>
-      <div class="shell">
+      ${zen
+        ? html`<button
+            class="exit-zen"
+            @click=${() => this.setFocus("off")}
+            aria-label="Exit zen mode"
+            title="Exit zen mode (${modKey}\\)"
+          >
+            ✕
+          </button>`
+        : nothing}
+      <div class=${classMap({ shell: true, zen })}>
         <header class="shell-hd" role="banner">
           <div class="brand">
             <span class="logo">git-chat</span>
@@ -1330,6 +1352,40 @@ export class GcApp extends LitElement {
       border-bottom: 1px solid var(--surface-4);
       background: var(--surface-1);
       flex-shrink: 0;
+    }
+    /* Zen: strip every shell-level affordance. Children each hide
+       their own chrome (see gc-chat-view, gc-repo-browser,
+       gc-commit-log); this rule only covers the app shell itself.
+       Exit via the floating button, the palette, or Cmd+\ cycling. */
+    .shell.zen .shell-hd {
+      display: none;
+    }
+    .exit-zen {
+      position: fixed;
+      top: var(--space-3);
+      right: var(--space-3);
+      z-index: 60;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: 0.85rem;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0.3;
+      transition: opacity 0.12s ease;
+    }
+    .exit-zen:hover,
+    .exit-zen:focus-visible {
+      opacity: 1;
+      outline: none;
     }
     .brand {
       display: flex;

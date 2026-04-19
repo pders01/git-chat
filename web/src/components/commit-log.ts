@@ -675,6 +675,7 @@ export class GcCommitLog extends LitElement {
             "calendar-mode": this.viewMode === "calendar",
             "drawer-open": this.drawerOpen,
             focused: this.focusMode !== "off",
+            zen: this.focusMode === "zen",
           })}
           @keydown=${(e: KeyboardEvent) => {
             if (e.key === "Escape" && this.drawerOpen) {
@@ -1160,6 +1161,14 @@ export class GcCommitLog extends LitElement {
     }
     .layout.focused .commit-list,
     .layout.focused .info-pane {
+      display: none;
+    }
+    /* Zen extends focus by dropping the diff-header toolbar too —
+       the bar shows shortSha, file path, and split/3-pane toggles,
+       all of which are also visible in the URL or reachable via
+       keyboard/palette. Leaving only the diff body matches how
+       zen works in chat-view and file-view. */
+    .layout.zen .diff-header {
       display: none;
     }
 
