@@ -317,6 +317,11 @@ func (r *Registry) Count() int {
 // HeadCommit returns the short SHA at the default branch's tip. Zero value
 // if anything goes wrong (callers don't want this to fail their whole call).
 func (e *Entry) HeadCommit() string {
+	// go-git is not thread-safe; every other e.repo.* caller in this
+	// package serializes through e.mu. HeadCommit skipping the lock was
+	// a data-race site on concurrent ListRepos + activity summarization.
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	ref, err := e.repo.Reference(plumbing.NewBranchReferenceName(e.DefaultBranch), true)
 	if err != nil {
 		return ""

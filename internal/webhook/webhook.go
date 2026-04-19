@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -42,7 +42,7 @@ func New(url string) *Sender {
 		return nil
 	}
 	if err := validateWebhookURL(url); err != nil {
-		log.Printf("webhook: invalid URL %q: %v (disabled)", url, err)
+		slog.Warn("webhook disabled — invalid URL", "url", url, "err", err)
 		return nil
 	}
 	return &Sender{
@@ -87,7 +87,7 @@ func (s *Sender) Send(ctx context.Context, ev Event) {
 	}
 	body, err := json.Marshal(ev)
 	if err != nil {
-		log.Printf("webhook: marshal error: %v", err)
+		slog.Warn("webhook marshal failed", "type", ev.Type, "err", err)
 		return
 	}
 	go s.deliver(ctx, body)
@@ -101,7 +101,7 @@ func (s *Sender) deliver(ctx context.Context, body []byte) {
 			delay := backoffDuration(attempt - 1)
 			select {
 			case <-ctx.Done():
-				log.Printf("webhook: canceled before attempt %d: %v", attempt, ctx.Err())
+				slog.Info("webhook canceled before retry", "attempt", attempt, "err", ctx.Err())
 				return
 			case <-time.After(delay):
 			}
@@ -112,11 +112,11 @@ func (s *Sender) deliver(ctx context.Context, body []byte) {
 		}
 		lastErr = err
 		if !retryable {
-			log.Printf("webhook: permanent failure on attempt %d: %v", attempt, err)
+			slog.Warn("webhook permanent failure", "attempt", attempt, "err", err)
 			return
 		}
 	}
-	log.Printf("webhook: giving up after %d attempts: %v", maxAttempts, lastErr)
+	slog.Warn("webhook exhausted retries", "attempts", maxAttempts, "err", lastErr)
 }
 
 // postOnce performs a single POST. Returns (retryable, err).

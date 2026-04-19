@@ -506,7 +506,7 @@ export class GcCommitLog extends LitElement {
       }
 
       // Assign first parent to this lane (continues the line)
-      const parentShas = ((c as any).parentShas as string[]) ?? [];
+      const parentShas = c.parentShas ?? [];
       if (parentShas.length > 0) {
         lanes[lane] = parentShas[0];
       } else {
