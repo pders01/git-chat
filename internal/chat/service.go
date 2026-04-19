@@ -330,7 +330,9 @@ func (s *Service) Search(
 		})
 	}
 
-	// Search file paths in repo.
+	// Search file paths + commits in repo. Both gated on the same
+	// Repos.Get lookup so we share the nil-check and the query
+	// normalisation below.
 	if r := s.Repos.Get(req.Msg.RepoId); r != nil {
 		paths, err := r.AllFilePaths()
 		if err != nil {
@@ -350,6 +352,23 @@ func (s *Service) Search(
 				})
 				count++
 			}
+		}
+
+		commits, err := r.SearchCommits(ctx, req.Msg.Query, limit)
+		if err != nil {
+			slog.Warn("search: commits query failed", "err", err)
+		}
+		for _, c := range commits {
+			body := c.AuthorName
+			if c.Body != "" {
+				body = c.AuthorName + " · " + c.Body
+			}
+			hits = append(hits, &gitchatv1.SearchHit{
+				Source: "commit",
+				Id:     c.Sha,
+				Title:  c.ShortSha + " " + c.Message,
+				Body:   body,
+			})
 		}
 	}
 

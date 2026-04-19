@@ -412,6 +412,72 @@ func commitTouchedPath(c *object.Commit, path string) bool {
 	return cFile.Hash != pFile.Hash
 }
 
+// SearchCommits returns commits whose subject/body contains query OR
+// whose author name contains query (case-insensitive, literal-match).
+// Runs two `git log` subprocesses in parallel (one --grep, one
+// --author) because git's --all-match semantics make a single call
+// narrower than the OR we want. Results merged by SHA, capped at
+// limit, preserving newest-first order from the --grep pass.
+//
+// Locking: e.mu is only held long enough to snapshot e.Path. The
+// subprocesses don't touch the go-git in-memory index, so holding
+// the write lock across their lifetime would needlessly serialise
+// every other Entry RPC behind a multi-hundred-ms search.
+func (e *Entry) SearchCommits(ctx context.Context, query string, limit int) ([]*gitchatv1.CommitEntry, error) {
+	q := strings.TrimSpace(query)
+	if q == "" || limit <= 0 {
+		return nil, nil
+	}
+	e.mu.Lock()
+	repoDir := e.Path
+	e.mu.Unlock()
+
+	type result struct {
+		commits []*gitchatv1.CommitEntry
+		err     error
+	}
+	msgCh := make(chan result, 1)
+	authCh := make(chan result, 1)
+	go func() {
+		c, err := gitLogGrepCommits(ctx, repoDir, "grep", q, limit)
+		msgCh <- result{c, err}
+	}()
+	go func() {
+		c, err := gitLogGrepCommits(ctx, repoDir, "author", q, limit)
+		authCh <- result{c, err}
+	}()
+	msgRes := <-msgCh
+	authRes := <-authCh
+	// Surface one error if both passes failed; if only one failed the
+	// partial is still useful, but log it so a systematic breakage
+	// (bad PATH, etc.) isn't silently swallowed.
+	if msgRes.err != nil && authRes.err != nil {
+		return nil, msgRes.err
+	}
+	if msgRes.err != nil {
+		slog.Warn("search_commits: --grep pass failed", "err", msgRes.err)
+	}
+	if authRes.err != nil {
+		slog.Warn("search_commits: --author pass failed", "err", authRes.err)
+	}
+
+	seen := make(map[string]bool, limit*2)
+	out := make([]*gitchatv1.CommitEntry, 0, limit)
+	for _, src := range [][]*gitchatv1.CommitEntry{msgRes.commits, authRes.commits} {
+		for _, c := range src {
+			if seen[c.Sha] {
+				continue
+			}
+			seen[c.Sha] = true
+			out = append(out, c)
+			if len(out) >= limit {
+				return out, nil
+			}
+		}
+	}
+	return out, nil
+}
+
 type diffStats struct {
 	files, additions, deletions int
 }

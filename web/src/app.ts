@@ -877,6 +877,9 @@ export class GcApp extends LitElement {
         this.switchTab("chat");
         this.prefillChat(r.title);
         break;
+      case "commit":
+        this.navigateTo({ tab: "log", commitSha: r.id });
+        break;
     }
   }
 
@@ -1070,6 +1073,7 @@ export class GcApp extends LitElement {
       card: "knowledge base",
       message: "chat history",
       file: "files",
+      commit: "commits",
     };
     return html`
       <div class="search-backdrop" @click=${() => this.openOverlay(null)}></div>
@@ -1083,7 +1087,7 @@ export class GcApp extends LitElement {
         <input
           class="search-input"
           type="search"
-          placeholder="Search files, chats, knowledge cards…"
+          placeholder="Search files, commits, chats, knowledge cards…"
           .value=${this.searchQuery}
           @input=${(e: Event) => this.onSearchInput(e)}
           @keydown=${(e: KeyboardEvent) => this.onSearchKeydown(e)}

@@ -77,6 +77,44 @@ func gitLogCommits(ctx context.Context, repoDir, ref string, limit, offset int, 
 	return commits, hasMore, nil
 }
 
+// gitLogGrepCommits runs `git log` with a single filter flag (--grep
+// or --author) and returns matching commits. Uses the same SOH/STX
+// format + numstat parser as gitLogCommits so hits are structurally
+// identical to a normal log page. Query is treated literally via
+// --fixed-strings; -i makes the match case-insensitive. Caller passes
+// the flag name ("grep" or "author") — keeping the two search
+// dimensions in one function lets SearchCommits run them in parallel
+// without duplicating the subprocess plumbing.
+func gitLogGrepCommits(ctx context.Context, repoDir, flag, query string, limit int) ([]*gitchatv1.CommitEntry, error) {
+	args := []string{
+		"log",
+		"-n", strconv.Itoa(limit),
+		"--format=" + logFormat,
+		"--numstat",
+		"-i",
+		"--fixed-strings",
+		"--" + flag + "=" + query,
+	}
+
+	stdout, done, err := gitCmd{
+		repoDir: repoDir,
+		config:  []string{"core.quotePath=off", "diff.renames=false"},
+		args:    args,
+	}.pipe(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	commits, parseErr := parseGitLog(stdout, limit)
+	if waitErr := done(); waitErr != nil {
+		return nil, waitErr
+	}
+	if parseErr != nil {
+		return nil, fmt.Errorf("git log parse: %w", parseErr)
+	}
+	return commits, nil
+}
+
 // parseGitLog scans the stream, looking for SOH...STX metadata blocks
 // and interleaved numstat lines. Returns up to maxCommits entries.
 func parseGitLog(r io.Reader, maxCommits int) ([]*gitchatv1.CommitEntry, error) {
