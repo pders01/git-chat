@@ -19,6 +19,7 @@ import {
   type SlashCommand,
   type ActionArgContext,
 } from "../../lib/slash.js";
+import { formatSources } from "../../lib/catalog.js";
 
 // Rendered form of an action-arg suggestion. Shape mirrors ComboboxOption
 // but is local to the composer so slash.ts stays pure — lib/ has no DOM
@@ -188,7 +189,12 @@ export class GcComposer extends LitElement {
           for (const m of prov.models ?? []) {
             if (seen.has(m.id)) continue;
             seen.add(m.id);
-            out.push({ value: m.id, label: m.name || m.id, description: prov.name });
+            const sourceTag = formatSources(m.sources);
+            out.push({
+              value: m.id,
+              label: m.name || m.id,
+              description: sourceTag ? `${prov.name} · ${sourceTag}` : prov.name,
+            });
           }
         }
         this.modelSuggestionCache = out;

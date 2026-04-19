@@ -8,6 +8,7 @@ import type {
   LocalEndpoint,
 } from "../gen/gitchat/v1/repo_pb.js";
 import * as settings from "../lib/settings.js";
+import { formatSources } from "../lib/catalog.js";
 import "./combobox.js";
 import "./connection-wizard.js";
 import "./loading-indicator.js";
@@ -328,6 +329,7 @@ export class GcSettingsPanel extends LitElement {
           description: [
             byUrl.name,
             m.contextWindow ? `${Math.round(Number(m.contextWindow) / 1000)}K` : "",
+            formatSources(m.sources),
           ]
             .filter(Boolean)
             .join(" · "),
@@ -360,6 +362,7 @@ export class GcSettingsPanel extends LitElement {
             description: [
               c.name,
               m.contextWindow ? `${Math.round(Number(m.contextWindow) / 1000)}K` : "",
+              formatSources(m.sources),
             ]
               .filter(Boolean)
               .join(" · "),
@@ -626,7 +629,7 @@ export class GcSettingsPanel extends LitElement {
               class="action-btn"
               ?disabled=${this.catalogLoading}
               @click=${() => this.refreshCatalog()}
-              title="Fetch latest provider/model catalog from catwalk.charm.sh"
+              title="Fetch latest provider/model catalog. Sources: catwalk.charm.sh (curated), openrouter.ai (aggregator), models.dev (long-tail providers). Models show their source after the context window size."
             >
               ${this.catalogLoading
                 ? "fetching…"

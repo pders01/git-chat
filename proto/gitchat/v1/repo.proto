@@ -376,11 +376,27 @@ message CatalogModel {
   string id = 1;
   string name = 2;
   int64  context_window = 3;
+  // Headline pricing. Populated from the authoritative source for this
+  // (provider_id, model_id) pair. See PricingQuote for per-source claims.
   double cost_per_1m_in = 4;
   double cost_per_1m_out = 5;
   bool   can_reason = 6;
   bool   supports_images = 7;
   int64  default_max_tokens = 8;
+  // IDs of every catalog source that contributed this model entry.
+  // One element for single-source models, multiple when merged across
+  // sources (e.g. ["catwalk", "openrouter"]).
+  repeated string sources = 9;
+  // Per-source pricing claims. Populated only when sources disagree on
+  // price — callers that just want a single number read cost_per_1m_in/out
+  // above. Empty for single-source models or when every source agreed.
+  repeated PricingQuote quotes = 10;
+}
+
+message PricingQuote {
+  string source = 1;
+  double cost_per_1m_in = 2;
+  double cost_per_1m_out = 3;
 }
 
 message CatalogProvider {

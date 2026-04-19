@@ -2,47 +2,56 @@ package repo
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
-	catwalk "charm.land/catwalk/pkg/catwalk"
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 	"github.com/pders01/git-chat/internal/storage"
 )
 
-// Known base URLs per provider type. Catwalk's Provider uses env var
-// references for endpoints; we map to the public defaults so the UI
-// can pre-fill base URL when a provider is selected.
-var providerBaseURLs = map[catwalk.Type]string{
-	"openai":    "https://api.openai.com/v1",
-	"anthropic": "https://api.anthropic.com",
-	"gemini":    "https://generativelanguage.googleapis.com/v1beta",
-	"groq":      "https://api.groq.com/openai/v1",
-}
-
 // catalogStaleTTL is how long a cached catalog is considered fresh.
 // Beyond this, Get still serves the cache (so the UI keeps working
-// offline) but logs a warning so operators notice that a refresh is
-// overdue.
+// offline) but logs a warning so operators notice a refresh is overdue.
 const catalogStaleTTL = 24 * time.Hour
 
-// Catalog provides the provider/model catalog for the settings UI.
-// The catalog is fetched on-demand (user clicks "refresh") and cached
-// in SQLite so it works offline and doesn't phone home silently.
+// perSourceFetchTimeout bounds each individual source's Fetch call so a
+// slow or stuck source can't delay the whole refresh. The orchestrator
+// additionally runs sources concurrently, so total refresh time is
+// roughly max(per-source latency) rather than the sum.
+const perSourceFetchTimeout = 15 * time.Second
+
+// Catalog provides the provider/model catalog for the settings UI. The
+// catalog is fetched on-demand (user clicks "refresh") and cached in
+// SQLite so it works offline and doesn't phone home silently.
+//
+// Catalog fans out across multiple CatalogSource implementations; each
+// source contributes its own view of the provider/model landscape and
+// the results are merged via mergeSources (catalog_merge.go). Partial
+// source failures are warned and skipped — one broken source doesn't
+// break the whole catalog.
 type Catalog struct {
 	mu       sync.Mutex
-	client   *catwalk.Client
+	sources  []CatalogSource
 	db       *storage.DB
 	cached   []*gitchatv1.CatalogProvider
 	cachedAt time.Time
 }
 
-// NewCatalog creates a catalog backed by SQLite for persistence.
+// NewCatalog builds the default multi-source catalog. The source order
+// matters for "first-contributor wins" tiebreaking in mergeSources —
+// Catwalk is registered first since it's the broadest default. More
+// specialized sources (OpenRouter etc.) go after; they override Catwalk
+// via Authoritative(providerID) for the providers they own.
 func NewCatalog(db *storage.DB) *Catalog {
 	return &Catalog{
-		client: catwalk.NewWithURL("https://catwalk.charm.sh"),
-		db:     db,
+		db: db,
+		sources: []CatalogSource{
+			NewCatwalkSource(),
+			NewOpenRouterSource(),
+			NewModelsDevSource(),
+		},
 	}
 }
 
@@ -75,77 +84,62 @@ func (c *Catalog) Get(ctx context.Context) []*gitchatv1.CatalogProvider {
 	return c.cached
 }
 
-// Refresh fetches the latest catalog from catwalk.charm.sh and caches
-// it in both memory and SQLite. Only called when the user explicitly
-// requests it.
+// Refresh fans out across every registered source concurrently, merges
+// the results with deterministic tiebreaking, and caches in memory and
+// SQLite. A source that errors or times out is warned about and skipped
+// — a partial catalog is strictly better than no catalog.
+//
+// Returns an error only when *every* source failed; otherwise the
+// merged result (possibly from fewer sources than registered) comes
+// back and is treated as authoritative.
 func (c *Catalog) Refresh(ctx context.Context) ([]*gitchatv1.CatalogProvider, error) {
-	fetchCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
-	providers, err := c.client.GetProviders(fetchCtx, "")
-	if err != nil {
-		return nil, err
+	type sourceResult struct {
+		source    CatalogSource
+		providers []*gitchatv1.CatalogProvider
+		err       error
 	}
 
-	out := convertProviders(providers)
+	results := make([]sourceResult, len(c.sources))
+	var wg sync.WaitGroup
+	for i, src := range c.sources {
+		wg.Add(1)
+		go func(i int, src CatalogSource) {
+			defer wg.Done()
+			srcCtx, cancel := context.WithTimeout(ctx, perSourceFetchTimeout)
+			defer cancel()
+			providers, err := src.Fetch(srcCtx)
+			results[i] = sourceResult{source: src, providers: providers, err: err}
+		}(i, src)
+	}
+	wg.Wait()
+
+	sources := make([]CatalogSource, 0, len(c.sources))
+	contributions := make([][]*gitchatv1.CatalogProvider, 0, len(c.sources))
+	failed := 0
+	for _, r := range results {
+		if r.err != nil {
+			slog.Warn("catalog source failed; skipping", "source", r.source.ID(), "err", r.err)
+			failed++
+			continue
+		}
+		sources = append(sources, r.source)
+		contributions = append(contributions, r.providers)
+	}
+
+	if len(sources) == 0 {
+		return nil, fmt.Errorf("all %d catalog sources failed", failed)
+	}
+
+	merged := mergeSources(sources, contributions)
 
 	c.mu.Lock()
-	c.cached = out
+	c.cached = merged
 	c.cachedAt = time.Now()
 	c.mu.Unlock()
 
-	// Persist to SQLite for offline use.
-	if err := c.db.SetCatalogCache(ctx, out); err != nil {
+	if err := c.db.SetCatalogCache(ctx, merged); err != nil {
 		slog.Warn("failed to cache catalog to SQLite", "err", err)
 	}
 
-	return out, nil
-}
-
-func convertProviders(providers []catwalk.Provider) []*gitchatv1.CatalogProvider {
-	out := make([]*gitchatv1.CatalogProvider, 0, len(providers))
-	for _, p := range providers {
-		pType := string(p.Type)
-		// Map to the two backend types git-chat supports.
-		// Providers with non-openai-compatible APIs are skipped.
-		switch p.Type {
-		case "openai", "anthropic":
-			// keep as-is
-		case "openrouter":
-			pType = "openai" // openrouter is openai-compatible
-		case "gemini", "vertexai", "bedrock", "azure":
-			continue // skip — requires dedicated backend support
-		default:
-			pType = "openai" // assume openai-compatible
-		}
-
-		baseURL, ok := providerBaseURLs[p.Type]
-		if !ok {
-			baseURL = ""
-		}
-
-		models := make([]*gitchatv1.CatalogModel, 0, len(p.Models))
-		for _, m := range p.Models {
-			models = append(models, &gitchatv1.CatalogModel{
-				Id:               m.ID,
-				Name:             m.Name,
-				ContextWindow:    m.ContextWindow,
-				CostPer_1MIn:     m.CostPer1MIn,
-				CostPer_1MOut:    m.CostPer1MOut,
-				CanReason:        m.CanReason,
-				SupportsImages:   m.SupportsImages,
-				DefaultMaxTokens: m.DefaultMaxTokens,
-			})
-		}
-
-		out = append(out, &gitchatv1.CatalogProvider{
-			Id:             string(p.ID),
-			Name:           p.Name,
-			Type:           pType,
-			DefaultBaseUrl: baseURL,
-			DefaultModelId: p.DefaultLargeModelID,
-			Models:         models,
-		})
-	}
-	return out
+	return merged, nil
 }
