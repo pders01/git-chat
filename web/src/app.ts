@@ -367,6 +367,16 @@ export class GcApp extends LitElement {
     this.focusNonce++;
   }
 
+  // Jump directly to a specific focus mode (used by palette entries
+  // so zen is one keystroke away without cycling through focus first).
+  // focusNonce re-runs the per-component readFocus() so chat-view,
+  // repo-browser, and commit-log all pick up the change in-tick.
+  private setFocus(mode: "off" | "focus" | "zen") {
+    if (readFocus() === mode) return;
+    writeFocus(mode);
+    this.focusNonce++;
+  }
+
   // Create a new chat session.
   private newChat() {
     this.switchTab("chat");
@@ -800,7 +810,7 @@ export class GcApp extends LitElement {
       [mod + "1", "Chat tab"],
       [mod + "2", "Browse tab"],
       [mod + "3", "Log tab"],
-      [mod + "\\", "Toggle focus"],
+      [mod + "\\", "Cycle focus (off · focus · zen)"],
       [mod + "F", "Global search"],
       ["/", "Focus composer"],
       ["Esc", "Blur / close modal"],
@@ -963,12 +973,31 @@ export class GcApp extends LitElement {
       },
     ];
 
+    const focusMode = readFocus();
     base.push(
       {
-        id: "toggle-focus",
-        label: "Toggle Focus Mode",
+        id: "focus-cycle",
+        label: `Cycle Focus Mode (current: ${focusMode})`,
         hint: `${mod}\\`,
         action: () => this.toggleFocus(),
+      },
+      {
+        id: "focus-off",
+        label: `Focus: off${focusMode === "off" ? " (current)" : ""}`,
+        hint: "",
+        action: () => this.setFocus("off"),
+      },
+      {
+        id: "focus-focus",
+        label: `Focus: focus — hide sidebar${focusMode === "focus" ? " (current)" : ""}`,
+        hint: "",
+        action: () => this.setFocus("focus"),
+      },
+      {
+        id: "focus-zen",
+        label: `Focus: zen — hide chrome, tighten width${focusMode === "zen" ? " (current)" : ""}`,
+        hint: "",
+        action: () => this.setFocus("zen"),
       },
       {
         id: "open-search",
