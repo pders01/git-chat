@@ -117,12 +117,12 @@ export class GcApp extends LitElement {
     window.addEventListener("hashchange", this.onHashChange);
     window.addEventListener("popstate", this.onHashChange);
     window.addEventListener("keydown", this.onGlobalKeydown);
-    this.addEventListener("gc:nav", this.onNavEvent as EventListener);
-    this.addEventListener("gc:ask-about", this.onAskAbout as EventListener);
-    this.addEventListener("gc:view-commit", this.onViewCommit as EventListener);
-    this.addEventListener("gc:open-file", this.onOpenFile as EventListener);
-    this.addEventListener("gc:view-file-history", this.onViewFileHistory as EventListener);
-    this.addEventListener("gc:explain-in-chat", this.onExplainInChat as EventListener);
+    this.addEventListener("gc:nav", this.onNavEvent);
+    this.addEventListener("gc:ask-about", this.onAskAbout);
+    this.addEventListener("gc:view-commit", this.onViewCommit);
+    this.addEventListener("gc:open-file", this.onOpenFile);
+    this.addEventListener("gc:view-file-history", this.onViewFileHistory);
+    this.addEventListener("gc:explain-in-chat", this.onExplainInChat);
     await this.boot();
   }
 
@@ -131,12 +131,12 @@ export class GcApp extends LitElement {
     window.removeEventListener("hashchange", this.onHashChange);
     window.removeEventListener("popstate", this.onHashChange);
     window.removeEventListener("keydown", this.onGlobalKeydown);
-    this.removeEventListener("gc:nav", this.onNavEvent as EventListener);
-    this.removeEventListener("gc:ask-about", this.onAskAbout as EventListener);
-    this.removeEventListener("gc:view-commit", this.onViewCommit as EventListener);
-    this.removeEventListener("gc:open-file", this.onOpenFile as EventListener);
-    this.removeEventListener("gc:view-file-history", this.onViewFileHistory as EventListener);
-    this.removeEventListener("gc:explain-in-chat", this.onExplainInChat as EventListener);
+    this.removeEventListener("gc:nav", this.onNavEvent);
+    this.removeEventListener("gc:ask-about", this.onAskAbout);
+    this.removeEventListener("gc:view-commit", this.onViewCommit);
+    this.removeEventListener("gc:open-file", this.onOpenFile);
+    this.removeEventListener("gc:view-file-history", this.onViewFileHistory);
+    this.removeEventListener("gc:explain-in-chat", this.onExplainInChat);
     if (this.searchTimer) clearTimeout(this.searchTimer);
     // Cancel any pending RAF to prevent memory leaks
     if (this._paletteScrollRafId !== null) {
@@ -567,9 +567,9 @@ export class GcApp extends LitElement {
     this._routing = false;
   };
 
-  private onNavEvent = (e: Event) => {
+  private onNavEvent = (e: CustomEvent<NavState>) => {
     if (this._routing || this.state.phase !== "authenticated") return;
-    const detail = (e as CustomEvent<NavState>).detail;
+    const detail = e.detail;
     if (detail.tab && detail.tab !== this.state.tab) {
       this.state = { ...this.state, tab: detail.tab };
     }

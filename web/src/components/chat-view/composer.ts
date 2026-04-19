@@ -1290,8 +1290,6 @@ declare global {
   interface HTMLElementTagNameMap {
     "gc-composer": GcComposer;
   }
-  interface HTMLElementEventMap {
-    "gc:slash-action": CustomEvent<{ command: string; args: string[] }>;
-    "gc:input-changed": CustomEvent<{ textLength: number; attachmentBytes: number }>;
-  }
+  // Event payloads are declared centrally in web/src/lib/events.ts so
+  // every consumer sees the same contract.
 }

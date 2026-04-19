@@ -2,7 +2,6 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
-import type { ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
 import type { SideFilesState } from "../lib/diff-types.js";
 import "./loading-indicator.js";
@@ -619,11 +618,5 @@ declare global {
   interface HTMLElementTagNameMap {
     "gc-diff-pane": GcDiffPane;
   }
-  interface HTMLElementEventMap {
-    "gc:diff-files-loaded": CustomEvent<{
-      files: ChangedFile[];
-      parentSha: string;
-      toCommit: string;
-    }>;
-  }
+  // Event payloads are declared centrally in web/src/lib/events.ts.
 }
