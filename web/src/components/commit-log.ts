@@ -375,6 +375,16 @@ export class GcCommitLog extends LitElement {
         const sha = this.pendingSha;
         this.pendingSha = "";
         void this.selectCommit(sha);
+      } else if (offset === 0 && !this.selectedSha && commits.length > 0) {
+        // Auto-select the most recent commit so landing on /log
+        // (or /log?filter=path) shows the top commit's diff instead
+        // of an empty detail pane. Deliberately does NOT dispatch
+        // nav — keeping the default /log URL clean, so share-links
+        // to plain /log still land users on the default view
+        // (newest commit diff of whatever filter applies) rather
+        // than a specific SHA.
+        this.selectedSha = commits[0].sha;
+        this._lastRestoredSha = this.selectedSha;
       }
     } catch (e) {
       this.state = {
