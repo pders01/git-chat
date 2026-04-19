@@ -1,31 +1,98 @@
 // Shared focus-mode state for chat-view and repo-browser.
 //
-// Both views render a "focus" toggle that collapses the left sidebar
-// and lifts the max-width cap on their main pane, turning the whole
-// main area into content. The preference is persisted per browser via
-// localStorage and *shared* across both views — toggling it in chat
-// carries over to browse and vice-versa. That was the user's expected
-// behavior; keeping two independent keys felt broken.
+// Three stages, cycled by the focus toggle button (or Cmd+.):
 //
-// Consumers read the current value on mount via `readFocus()` and
-// persist updates via `writeFocus(v)`. There is no pub/sub here: each
-// view instance re-reads localStorage when Lit mounts it, so the
-// tab-switch flow naturally picks up the latest value.
+//   - "off"   — normal layout, sidebar visible.
+//   - "focus" — sidebar collapsed; main pane gets more width. Chrome
+//               (headers, buttons, toggles) stays visible.
+//   - "zen"   — focus PLUS the pane header is hidden, content is
+//               centered tighter, and anything non-essential fades
+//               away. For deep reading / writing sessions.
+//
+// The preference is persisted per browser via localStorage and is
+// *shared* across chat-view and repo-browser — toggling in one carries
+// over to the other, matching user expectation.
+//
+// There is no pub/sub here: consumers re-read localStorage when Lit
+// mounts them. The tab-switch flow naturally picks up the latest
+// value, and the focusNonce property bumps a reload when the global
+// keybinding cycles the state.
 
 const FOCUS_KEY = "gc.focus";
 
-export function readFocus(): boolean {
+export type FocusMode = "off" | "focus" | "zen";
+
+export function readFocus(): FocusMode {
   try {
-    return localStorage.getItem(FOCUS_KEY) === "1";
+    const raw = localStorage.getItem(FOCUS_KEY);
+    // Legacy values: "0" = off, "1" = focus (pre-zen). New values:
+    // the string literal. Anything else falls back to off.
+    if (raw === "1") return "focus";
+    if (raw === "focus") return "focus";
+    if (raw === "zen") return "zen";
+    return "off";
   } catch {
-    return false;
+    return "off";
   }
 }
 
-export function writeFocus(v: boolean) {
+export function writeFocus(v: FocusMode) {
   try {
-    localStorage.setItem(FOCUS_KEY, v ? "1" : "0");
+    localStorage.setItem(FOCUS_KEY, v);
   } catch {
     /* storage disabled (private mode / embedded browsers) — ignore */
+  }
+}
+
+/** Advance the focus state one step in the off → focus → zen → off
+ * cycle. Pure helper so components don't re-encode the ring. */
+export function cycleFocus(current: FocusMode): FocusMode {
+  switch (current) {
+    case "off":
+      return "focus";
+    case "focus":
+      return "zen";
+    case "zen":
+      return "off";
+  }
+}
+
+/** Short inline label for the toggle button — describes the CURRENT
+ * state, not what the next click does. */
+export function focusButtonLabel(mode: FocusMode): string {
+  switch (mode) {
+    case "off":
+      return "focus";
+    case "focus":
+      return "zen";
+    case "zen":
+      return "exit zen";
+  }
+}
+
+/** Unicode glyph for the toggle button — progress indicator across
+ * the three stages. */
+export function focusGlyph(mode: FocusMode): string {
+  switch (mode) {
+    case "off":
+      return "▶";
+    case "focus":
+      return "◀";
+    case "zen":
+      return "●";
+  }
+}
+
+/** aria-label + tooltip: describes what the NEXT click does so the
+ * assistive text matches the user's mental model (action-oriented,
+ * not state-oriented). */
+export function focusNextLabel(mode: FocusMode): string {
+  switch (mode) {
+    case "off":
+      return "Enter focus mode (hide sidebar)";
+    case "focus":
+      return "Enter zen mode (hide chrome)";
+    case "zen":
+      return "Exit zen mode";
   }
 }

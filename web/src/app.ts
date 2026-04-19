@@ -12,7 +12,7 @@ import "./components/kb-view.js";
 import "./components/loading-indicator.js";
 import "./components/settings-panel.js";
 import * as settings from "./lib/settings.js";
-import { readFocus, writeFocus } from "./lib/focus.js";
+import { readFocus, writeFocus, cycleFocus } from "./lib/focus.js";
 import {
   type Tab,
   type ParsedRoute,
@@ -368,12 +368,12 @@ export class GcApp extends LitElement {
     );
   }
 
-  // Toggle focus mode across all views that support it.
+  // Cycle focus mode across all views that support it.
   // lib/focus.ts is the source of truth (shared across tabs via
   // localStorage and also written by an in-chat button). The nonce
   // signals focus-aware children to re-read on the next render.
   private toggleFocus() {
-    writeFocus(!readFocus());
+    writeFocus(cycleFocus(readFocus()));
     this.focusNonce++;
   }
 

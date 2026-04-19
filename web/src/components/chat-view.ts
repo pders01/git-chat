@@ -2,7 +2,15 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { chatClient, repoClient } from "../lib/transport.js";
-import { readFocus, writeFocus } from "../lib/focus.js";
+import {
+  readFocus,
+  writeFocus,
+  cycleFocus,
+  focusButtonLabel,
+  focusGlyph,
+  focusNextLabel,
+  type FocusMode,
+} from "../lib/focus.js";
 import {
   isProviderAvailable,
   isLocalhostURL,
@@ -76,7 +84,7 @@ export class GcChatView extends LitElement {
   @state() private sending = false;
   @state() private error = "";
   private abortController: AbortController | null = null;
-  @state() private focused = readFocus();
+  @state() private focusMode: FocusMode = readFocus();
   @state() private drawerOpen = false;
   @state() private sessionTokensIn = 0;
   @state() private sessionTokensOut = 0;
@@ -124,8 +132,8 @@ export class GcChatView extends LitElement {
   private _lastFocusNonce = 0;
 
   private toggleFocus = () => {
-    this.focused = !this.focused;
-    writeFocus(this.focused);
+    this.focusMode = cycleFocus(this.focusMode);
+    writeFocus(this.focusMode);
   };
 
   override updated(changed: Map<string, unknown>) {
@@ -179,7 +187,7 @@ export class GcChatView extends LitElement {
       this.focusNonce !== this._lastFocusNonce
     ) {
       this._lastFocusNonce = this.focusNonce;
-      this.focused = readFocus();
+      this.focusMode = readFocus();
     }
   }
 
@@ -1083,7 +1091,12 @@ export class GcChatView extends LitElement {
     const s = this.state;
     return html`
       <div
-        class=${classMap({ layout: true, focused: this.focused, "drawer-open": this.drawerOpen })}
+        class=${classMap({
+          layout: true,
+          focused: this.focusMode !== "off",
+          zen: this.focusMode === "zen",
+          "drawer-open": this.drawerOpen,
+        })}
         role="main"
         @keydown=${(e: KeyboardEvent) => {
           if (e.key === "Escape" && this.drawerOpen) {
@@ -1136,11 +1149,12 @@ export class GcChatView extends LitElement {
             <button
               class="focus-btn"
               @click=${this.toggleFocus}
-              aria-label=${this.focused ? "Show sidebar" : "Hide sidebar"}
-              aria-pressed=${this.focused ? "true" : "false"}
+              aria-label=${focusNextLabel(this.focusMode)}
+              aria-pressed=${this.focusMode !== "off" ? "true" : "false"}
+              title=${focusNextLabel(this.focusMode)}
             >
-              ${this.focused ? "◀" : "▶"}
-              <span class="focus-label"> ${this.focused ? "exit focus" : "focus"} </span>
+              ${focusGlyph(this.focusMode)}
+              <span class="focus-label">${focusButtonLabel(this.focusMode)}</span>
             </button>
           </div>
 
@@ -1154,7 +1168,7 @@ export class GcChatView extends LitElement {
             : html`<gc-message-list
                 .turns=${this.turns}
                 .sending=${this.sending}
-                ?unfocused=${this.focused}
+                ?unfocused=${this.focusMode !== "off"}
                 @gc:retry=${this.onMessageRetry}
                 @gc:regenerate=${this.onMessageRegenerate}
                 @gc:edit-turn=${this.onMessageEdit}
@@ -1176,7 +1190,7 @@ export class GcChatView extends LitElement {
             .repoId=${this.repoId}
             .sending=${this.sending}
             .errorMsg=${this.error}
-            ?unfocused=${this.focused}
+            ?unfocused=${this.focusMode !== "off"}
             @gc:send=${this.onComposerSend}
             @gc:stop=${this.onComposerStop}
             @gc:error=${this.onComposerError}
@@ -1223,6 +1237,21 @@ export class GcChatView extends LitElement {
     .layout.focused .sidebar {
       overflow: hidden;
       border-right-width: 0;
+    }
+    /* Zen: fade the pane header so session tokens / export button
+       step back; focus button stays reachable. Hover anywhere in the
+       header zone brings it back to full opacity. */
+    .layout.zen .pane-hd {
+      opacity: 0.15;
+      transition: opacity 0.2s ease;
+    }
+    .layout.zen .pane-hd:hover,
+    .layout.zen .pane-hd:focus-within {
+      opacity: 1;
+    }
+    /* Tighter content max-width so reading is easier in zen. */
+    .layout.zen {
+      --content-max-width: 68ch;
     }
     .sidebar {
       display: flex;

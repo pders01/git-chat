@@ -2,7 +2,15 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { repoClient } from "../lib/transport.js";
-import { readFocus, writeFocus } from "../lib/focus.js";
+import {
+  readFocus,
+  writeFocus,
+  cycleFocus,
+  focusButtonLabel,
+  focusGlyph,
+  focusNextLabel,
+  type FocusMode,
+} from "../lib/focus.js";
 import { EntryType, type Repo } from "../gen/gitchat/v1/repo_pb.js";
 import type { BrowseView } from "../lib/routing.js";
 import "./loading-indicator.js";
@@ -85,7 +93,7 @@ export class GcRepoBrowser extends LitElement {
   // Focus mode collapses the tree sidebar so the file view takes the
   // full main area — useful for reading large files or using git-chat
   // as a source browser.
-  @state() private focused = readFocus();
+  @state() private focusMode: FocusMode = readFocus();
   @state() private drawerOpen = false;
   @state() private comparing = false;
   @state() private showChanges = false;
@@ -96,8 +104,8 @@ export class GcRepoBrowser extends LitElement {
   private pendingFile = "";
 
   private onToggleFocus = () => {
-    this.focused = !this.focused;
-    writeFocus(this.focused);
+    this.focusMode = cycleFocus(this.focusMode);
+    writeFocus(this.focusMode);
   };
 
   private toggleDrawer() {
@@ -255,7 +263,7 @@ export class GcRepoBrowser extends LitElement {
       this.focusNonce !== this._lastFocusNonce
     ) {
       this._lastFocusNonce = this.focusNonce;
-      this.focused = readFocus();
+      this.focusMode = readFocus();
     }
     // Sync view mode from URL (enables back/forward navigation).
     if (changed.has("initialBrowseView")) {
@@ -418,7 +426,8 @@ export class GcRepoBrowser extends LitElement {
       <div
         class=${classMap({
           layout: true,
-          focused: this.focused,
+          focused: this.focusMode !== "off",
+          zen: this.focusMode === "zen",
           "drawer-open": this.drawerOpen,
           comparing: this.comparing || this.showChanges || this.showCity,
         })}
@@ -507,10 +516,12 @@ export class GcRepoBrowser extends LitElement {
               : html` <button
                   class="focus-btn"
                   @click=${this.onToggleFocus}
-                  aria-label=${this.focused ? "Show file tree" : "Hide file tree"}
-                  aria-pressed=${this.focused ? "true" : "false"}
+                  aria-label=${focusNextLabel(this.focusMode)}
+                  aria-pressed=${this.focusMode !== "off" ? "true" : "false"}
+                  title=${focusNextLabel(this.focusMode)}
                 >
-                  ${this.focused ? "◀" : "▶"}
+                  ${focusGlyph(this.focusMode)}
+                  <span class="focus-label">${focusButtonLabel(this.focusMode)}</span>
                 </button>`}
           </div>
 
@@ -658,6 +669,10 @@ export class GcRepoBrowser extends LitElement {
       overflow: hidden;
       border-right-width: 0;
     }
+    /* Zen in repo-browser matches focus visually today — the
+       sub-views (file-view, compare-view, etc.) own their own chrome.
+       Keeping the class so future work can target it per sub-view
+       without re-threading the state. */
     .layout.comparing {
       grid-template-columns: 1fr;
       grid-template-rows: auto 1fr;
