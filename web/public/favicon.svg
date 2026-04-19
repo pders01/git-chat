@@ -1,9 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- Commit-graph mark. Main branch vertical + a side branch to a
-       blue-accent dot, echoing the --accent-assistant green and
-       --accent-user blue used throughout the UI. Transparent
-       background so the mark adapts to OS chrome (browser tab,
-       dock, bookmark bar). -->
   <line x1="11" y1="8" x2="11" y2="24" stroke="#7bd88f" stroke-width="3" stroke-linecap="round"/>
   <path d="M11 14 Q 17 14, 21 20" stroke="#7bd88f" stroke-width="3" fill="none" stroke-linecap="round"/>
   <circle cx="11" cy="8" r="4" fill="#7bd88f"/>
