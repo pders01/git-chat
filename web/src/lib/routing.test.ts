@@ -79,6 +79,17 @@ describe("parseRoute", () => {
     const r = parse("#/repo/log");
     expect(r.commitSha).toBeUndefined();
   });
+
+  test("branch param is cross-tab", () => {
+    expect(parse("#/r/browse/f.ts?branch=dev").branch).toBe("dev");
+    expect(parse("#/r/log?branch=dev").branch).toBe("dev");
+    expect(parse("#/r/chat?branch=dev").branch).toBe("dev");
+  });
+
+  test("blank branch param is dropped", () => {
+    expect(parse("#/r/log?branch=").branch).toBeUndefined();
+    expect(parse("#/r/log?branch=%20%20").branch).toBeUndefined();
+  });
 });
 
 describe("buildRoute", () => {
@@ -119,6 +130,11 @@ describe("buildRoute", () => {
     const url = buildRoute({ repoId: "r", tab: "log", commitSha: "abc" });
     expect(url).toBe("#/r/log/abc");
     expect(url).not.toContain("?");
+  });
+
+  test("branch carries on any tab", () => {
+    expect(buildRoute({ repoId: "r", tab: "browse", branch: "dev" })).toBe("#/r/browse?branch=dev");
+    expect(buildRoute({ repoId: "r", tab: "log", branch: "dev" })).toBe("#/r/log?branch=dev");
   });
 });
 

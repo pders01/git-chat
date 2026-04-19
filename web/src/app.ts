@@ -433,6 +433,9 @@ export class GcApp extends LitElement {
         window.history.pushState(null, "", url);
       }
       this.currentRoute = parsed;
+      // Seed branch from URL before loadBranches resolves so the RPC
+      // callback preserves the deep-linked selection (see loadBranches).
+      if (parsed.branch) this.currentBranch = parsed.branch;
       // Load branches for the selected repo.
       void this.loadBranches(validRepo);
     } catch (e) {
@@ -479,13 +482,28 @@ export class GcApp extends LitElement {
     }
   };
 
+  // Central entry for branch changes (header dropdown + palette).
+  // Updates the @state field AND the URL so the selection is
+  // share-linkable + survives reloads. Default-branch selections
+  // clear the ?branch= param to keep the common-case URL clean.
+  private setBranch(name: string) {
+    if (!name || name === this.currentBranch) return;
+    this.currentBranch = name;
+    const state = this.state;
+    if (state.phase !== "authenticated") return;
+    const repo = state.repos.find((r) => r.id === state.selectedRepo);
+    const isDefault = repo?.defaultBranch === name;
+    this.navigateTo({ branch: isDefault ? undefined : name });
+  }
+
   private switchRepo(repoId: string) {
     if (this.state.phase !== "authenticated") return;
     this.state = { ...this.state, selectedRepo: repoId };
-    // Clear browse view state — city/compare refs belong to the old repo.
+    // Clear browse view state + branch — all three belong to the old repo.
     this.navigateTo({
       repoId,
       tab: this.state.tab,
+      branch: undefined,
       browseView: undefined,
       compareBase: undefined,
       compareHead: undefined,
@@ -502,11 +520,19 @@ export class GcApp extends LitElement {
     try {
       const resp = await repoClient.listBranches({ repoId });
       this.branches = resp.branches;
-      // Find the repo's default branch and select it.
       if (this.state.phase === "authenticated") {
-        const repo = this.state.repos.find((r) => r.id === repoId);
-        const defaultBranch = repo?.defaultBranch || this.branches[0]?.name || "";
-        this.currentBranch = defaultBranch;
+        // A URL-loaded branch (?branch=X) was set before this call
+        // resolved — keep it if it exists in the fresh branch list.
+        // Otherwise fall back to the repo's default. Without this
+        // check, deep-linking to a non-default branch would flash
+        // the right branch for a tick and then bounce to default
+        // when the RPC returned.
+        const current = this.currentBranch;
+        const keep = current && this.branches.some((b) => b.name === current);
+        if (!keep) {
+          const repo = this.state.repos.find((r) => r.id === repoId);
+          this.currentBranch = repo?.defaultBranch || this.branches[0]?.name || "";
+        }
       }
     } catch {
       this.branches = [];
@@ -554,6 +580,16 @@ export class GcApp extends LitElement {
       selectedRepo: parsed.repoId,
       tab: parsed.tab,
     };
+    // URL is source of truth for branch: sync the state field so the
+    // header dropdown + property bindings reflect the new selection.
+    // Fall back to default when the URL omits it (back button from
+    // /log?branch=x → /log).
+    if (parsed.branch) {
+      this.currentBranch = parsed.branch;
+    } else if (this.currentBranch) {
+      const repo = this.state.repos.find((r) => r.id === parsed.repoId);
+      this.currentBranch = repo?.defaultBranch || this.branches[0]?.name || "";
+    }
     this._routing = false;
   };
 
@@ -616,7 +652,7 @@ export class GcApp extends LitElement {
                     .value=${this.currentBranch}
                     aria-label="Select branch"
                     @change=${(e: Event) => {
-                      this.currentBranch = (e.target as HTMLSelectElement).value;
+                      this.setBranch((e.target as HTMLSelectElement).value);
                     }}
                   >
                     ${this.branches.map(
@@ -983,8 +1019,8 @@ export class GcApp extends LitElement {
     }
 
     // Add branch switch actions if the current repo has more than one
-    // branch. Mirrors the header dropdown's onchange (direct state
-    // mutation); no RPC — consumers react via Lit property bindings.
+    // branch. setBranch persists the choice into the URL so the new
+    // selection survives reloads and is share-linkable.
     if (this.state.phase === "authenticated" && this.branches.length > 1) {
       for (const branch of this.branches) {
         const isCurrent = branch.name === this.currentBranch;
@@ -992,9 +1028,7 @@ export class GcApp extends LitElement {
           id: `switch-branch-${branch.name}`,
           label: `Switch branch: ${branch.name}${isCurrent ? " (current)" : ""}`,
           hint: "",
-          action: () => {
-            this.currentBranch = branch.name;
-          },
+          action: () => this.setBranch(branch.name),
         });
       }
     }

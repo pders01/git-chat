@@ -8,7 +8,8 @@
 //   log:    /{commitSha}
 //   kb:     /{cardId}
 //
-// Query params (tab-specific view state):
+// Query params:
+//   ?branch=name      (any tab) non-default branch selection
 //   ?view=city|changes browse: view mode (absent = default file view)
 //   ?blame=1          browse: blame toggle
 //   ?compare=base..head  browse: compare mode
@@ -27,6 +28,11 @@ export type LogView = "commits" | "calendar";
 export interface ParsedRoute {
   repoId: string;
   tab: Tab;
+  // Non-default branch selection. Carried across tab switches so a
+  // user on a non-default branch keeps seeing history/files from that
+  // branch as they navigate. Omitted from the URL when absent so the
+  // default-branch case (most links) stays clean.
+  branch?: string;
   // chat
   sessionId?: string;
   // browse
@@ -62,6 +68,12 @@ export function parseRoute(url: URL): ParsedRoute {
     repoId: repoId || "",
     tab: validTab,
   };
+
+  // Cross-tab query params first — they're valid regardless of tab.
+  if (params.has("branch")) {
+    const b = params.get("branch")!.trim();
+    if (b) route.branch = b;
+  }
 
   switch (validTab) {
     case "chat":
@@ -115,6 +127,7 @@ export function buildRoute(route: ParsedRoute): string {
   }
 
   const params = new URLSearchParams();
+  if (route.branch) params.set("branch", route.branch);
   if (route.tab === "browse") {
     if (route.blame) params.set("blame", "1");
     if (route.compareBase && route.compareHead) {
@@ -159,7 +172,10 @@ export function normalizeBrowseState(route: ParsedRoute): ParsedRoute {
 
 // Clear sub-state fields that belong to tabs other than the target tab.
 export function clearStaleState(route: ParsedRoute): ParsedRoute {
-  const clean: ParsedRoute = { repoId: route.repoId, tab: route.tab };
+  // Branch is cross-tab — keep it when switching tabs so the user's
+  // non-default selection persists. It only clears on repo switch,
+  // which goes through switchRepo rather than this helper.
+  const clean: ParsedRoute = { repoId: route.repoId, tab: route.tab, branch: route.branch };
   switch (route.tab) {
     case "chat":
       clean.sessionId = route.sessionId;
