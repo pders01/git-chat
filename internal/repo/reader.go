@@ -1134,8 +1134,10 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path string, detect
 		// Placeholder-on-either-side diffs can't be rendered as a
 		// useful unified patch (we'd be diffing two sentinel strings),
 		// so emit a minimal placeholder patch the frontend formats
-		// into a clean "file too large / binary" banner.
-		if from.kind != "" || to.kind != "" {
+		// into a clean "file too large / binary" banner. "missing"
+		// doesn't qualify — added/deleted paths render cleanly via
+		// /dev/null markers in renderUnifiedDiff.
+		if needsPlaceholder(from.kind) || needsPlaceholder(to.kind) {
 			return renderPlaceholderPatch(path, from, to), fromResolved, toResolved, false, nil, nil
 		}
 		patch := renderUnifiedDiff(path, fromResolved, toResolved, from.content, to.content, contextLines)
@@ -1169,7 +1171,16 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path string, detect
 	var sb bytes.Buffer
 	truncated := 0
 	for i, p := range changed {
-		from, _ := fileContentDetail(fromCommit, p, maxDiffBytes)
+		// For a detected rename, the from-side lives at the old path.
+		// Reading fromCommit under `p` (the new path) would always
+		// return kind="missing", which used to route into the
+		// placeholder banner and mask the actual content diff. Fall
+		// back to `p` for non-renames.
+		fromPath := p
+		if i < len(files) && files[i].FromPath != "" {
+			fromPath = files[i].FromPath
+		}
+		from, _ := fileContentDetail(fromCommit, fromPath, maxDiffBytes)
 		to, _ := fileContentDetail(toCommit, p, maxDiffBytes)
 		// True no-change: same kind + same blob SHA on both sides.
 		// Placeholder text alone isn't authoritative because two
@@ -1182,7 +1193,7 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path string, detect
 			files[i].Additions, files[i].Deletions = fileDiffStats(from, to)
 		}
 		var filePatch string
-		if from.kind != "" || to.kind != "" {
+		if needsPlaceholder(from.kind) || needsPlaceholder(to.kind) {
 			filePatch = renderPlaceholderPatch(p, from, to)
 		} else {
 			filePatch = renderUnifiedDiff(p, fromResolved, toResolved, from.content, to.content, contextLines)
@@ -1644,6 +1655,16 @@ func describeKind(s fileSide) string {
 		return "content"
 	}
 	return s.kind
+}
+
+// needsPlaceholder reports whether a file side must be rendered via
+// renderPlaceholderPatch rather than a real unified diff. Only binary
+// and oversized blobs qualify — we can't Myers-diff those sentinels
+// into anything useful. A "missing" side (added / deleted / renamed
+// path absent on one end) renders cleanly via /dev/null markers and
+// must NOT trigger the placeholder.
+func needsPlaceholder(kind string) bool {
+	return kind == "binary" || kind == "too-large"
 }
 
 // ShortSHALen is the display-width for abbreviated commit hashes shared
