@@ -71,7 +71,6 @@ export class GcApp extends LitElement {
   // Deep-link routing state
   private currentRoute: ParsedRoute = { repoId: "", tab: "chat" };
   private _routing = false;
-  private _paletteScrollRafId: number | null = null;
 
   // Rapid-press fallthrough: pressing an intercepted shortcut twice in
   // quick succession closes our overlay and lets the second press reach
@@ -103,10 +102,6 @@ export class GcApp extends LitElement {
     this.showShortcuts = name === "shortcuts";
     this.showSearch = name === "search";
     if (name !== "palette") {
-      if (this._paletteScrollRafId !== null) {
-        cancelAnimationFrame(this._paletteScrollRafId);
-        this._paletteScrollRafId = null;
-      }
       this.paletteQuery = "";
     }
     this.showPalette = name === "palette";
@@ -138,11 +133,6 @@ export class GcApp extends LitElement {
     this.removeEventListener("gc:view-file-history", this.onViewFileHistory);
     this.removeEventListener("gc:explain-in-chat", this.onExplainInChat);
     if (this.searchTimer) clearTimeout(this.searchTimer);
-    // Cancel any pending RAF to prevent memory leaks
-    if (this._paletteScrollRafId !== null) {
-      cancelAnimationFrame(this._paletteScrollRafId);
-      this._paletteScrollRafId = null;
-    }
   }
 
   // Bridge: any view can dispatch gc:ask-about to switch to chat
@@ -1015,18 +1005,23 @@ export class GcApp extends LitElement {
     }
   }
 
-  private scrollPaletteSelectionIntoView() {
-    // Cancel any pending RAF to prevent memory leaks
-    if (this._paletteScrollRafId !== null) {
-      cancelAnimationFrame(this._paletteScrollRafId);
+  private async scrollPaletteSelectionIntoView() {
+    // RAF was racing Lit's render — the `.selected` class gets rewritten
+    // on the template update, which resolves on updateComplete (micro-
+    // task), not the next animation frame. Await the render directly,
+    // then manually compute the scroll so a rapid key-repeat doesn't
+    // fight a smooth-scroll animation.
+    await this.updateComplete;
+    const list = this.renderRoot.querySelector<HTMLElement>(".palette-list");
+    const selected = list?.querySelector<HTMLElement>(".palette-item.selected");
+    if (!list || !selected) return;
+    const top = selected.offsetTop;
+    const bottom = top + selected.offsetHeight;
+    if (top < list.scrollTop) {
+      list.scrollTop = top;
+    } else if (bottom > list.scrollTop + list.clientHeight) {
+      list.scrollTop = bottom - list.clientHeight;
     }
-    // Wait for render update then scroll selected item into view
-    this._paletteScrollRafId = requestAnimationFrame(() => {
-      this._paletteScrollRafId = null;
-      const palette = this.renderRoot.querySelector(".palette");
-      const selected = palette?.querySelector(".palette-item.selected");
-      selected?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    });
   }
 
   private renderCommandPalette() {
