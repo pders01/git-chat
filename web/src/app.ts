@@ -972,6 +972,23 @@ export class GcApp extends LitElement {
       }
     }
 
+    // Add branch switch actions if the current repo has more than one
+    // branch. Mirrors the header dropdown's onchange (direct state
+    // mutation); no RPC — consumers react via Lit property bindings.
+    if (this.state.phase === "authenticated" && this.branches.length > 1) {
+      for (const branch of this.branches) {
+        const isCurrent = branch.name === this.currentBranch;
+        base.push({
+          id: `switch-branch-${branch.name}`,
+          label: `Switch branch: ${branch.name}${isCurrent ? " (current)" : ""}`,
+          hint: "",
+          action: () => {
+            this.currentBranch = branch.name;
+          },
+        });
+      }
+    }
+
     return base;
   }
 
