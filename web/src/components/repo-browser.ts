@@ -13,6 +13,11 @@ import {
 } from "../lib/focus.js";
 import { EntryType, type Repo } from "../gen/gitchat/v1/repo_pb.js";
 import type { BrowseView } from "../lib/routing.js";
+
+// Internal sub-view discriminator. BrowseView from routing is narrower
+// (file / city / changes) — "compare" is component-local because the
+// URL carries it via compareBase + compareHead rather than a view slot.
+type BrowseMode = "file" | "city" | "changes" | "compare";
 import "./loading-indicator.js";
 import "./file-view.js";
 import "./compare-view.js";
@@ -95,9 +100,12 @@ export class GcRepoBrowser extends LitElement {
   // as a source browser.
   @state() private focusMode: FocusMode = readFocus();
   @state() private drawerOpen = false;
-  @state() private comparing = false;
-  @state() private showChanges = false;
-  @state() private showCity = false;
+  // Single discriminator for the mutually-exclusive sub-views. Was
+  // three booleans (showCity / showChanges / comparing) whose flip
+  // rules had to be repeated in every toggle and URL sync. "compare"
+  // is internal-only — the URL still carries it via compareBase /
+  // compareHead rather than a view=compare param.
+  @state() private mode: BrowseMode = "file";
   @state() private branches: Array<{ name: string }> = [];
   @state() private baseRef = "";
   @state() private headRef = "";
@@ -129,47 +137,37 @@ export class GcRepoBrowser extends LitElement {
 
   private compareFetching = false;
 
-  private async toggleCompare() {
-    if (this.compareFetching) return;
-    const next = !this.comparing;
-    if (!next) {
-      // Turning off — clear compare from URL.
-      this.comparing = false;
-      this.emitNav({ compareBase: undefined, compareHead: undefined, browseView: "file" });
+  // Central entry for sub-view changes. Clicking the active sub-view's
+  // button toggles back to "file" (the implicit default). All three
+  // flips (city, changes, compare) go through here so the URL shape
+  // (browseView vs compareBase/compareHead) stays in one place.
+  private async setMode(target: BrowseMode) {
+    if (this.compareFetching && target !== "compare") return;
+    const next: BrowseMode = this.mode === target ? "file" : target;
+    if (next === "compare") {
+      this.mode = "compare";
+      if (this.branches.length === 0) {
+        await this.fetchBranches();
+        if (this.mode !== "compare") return; // toggled off while fetching
+        if (this.state.phase === "ready") {
+          this.baseRef = this.state.repo.defaultBranch || this.branches[0]?.name || "";
+          const other = this.branches.find((b) => b.name !== this.baseRef);
+          this.headRef = other ? other.name : this.baseRef;
+        }
+      }
+      this.emitNav({
+        compareBase: this.baseRef,
+        compareHead: this.headRef,
+        browseView: undefined,
+      });
       return;
     }
-    // Turning on — need branch list first.
-    this.comparing = true;
-    this.showChanges = false;
-    this.showCity = false;
-    if (this.branches.length === 0) {
-      await this.fetchBranches();
-      if (!this.comparing) return; // toggled off while fetching
-      if (this.state.phase === "ready") {
-        this.baseRef = this.state.repo.defaultBranch || this.branches[0]?.name || "";
-        const other = this.branches.find((b) => b.name !== this.baseRef);
-        this.headRef = other ? other.name : this.baseRef;
-      }
-    }
-    this.emitNav({ compareBase: this.baseRef, compareHead: this.headRef, browseView: undefined });
-  }
-
-  private toggleChanges() {
-    const next = !this.showChanges;
-    // Set local state immediately so the toggleCompare async guard fires.
-    this.comparing = false;
+    // File / city / changes all clear compare params and set browseView.
+    // "file" is the default and gets omitted from the URL by buildRoute,
+    // so we pass "file" here rather than undefined to make the intent
+    // explicit at the call site.
     this.emitNav({
-      browseView: next ? "changes" : "file",
-      compareBase: undefined,
-      compareHead: undefined,
-    });
-  }
-
-  private toggleCity() {
-    const next = !this.showCity;
-    this.comparing = false;
-    this.emitNav({
-      browseView: next ? "city" : "file",
+      browseView: next,
       compareBase: undefined,
       compareHead: undefined,
     });
@@ -285,29 +283,23 @@ export class GcRepoBrowser extends LitElement {
       this._lastFocusNonce = this.focusNonce;
       this.focusMode = readFocus();
     }
-    // Sync view mode from URL (enables back/forward navigation).
-    if (changed.has("initialBrowseView")) {
-      const v = this.initialBrowseView;
-      this.showCity = v === "city";
-      this.showChanges = v === "changes";
-      // Compare is controlled by its own URL param, not browseView.
-      if (v === "city" || v === "changes") this.comparing = false;
-    }
-    // Sync compare state from URL.
-    if (changed.has("initialCompareBase") || changed.has("initialCompareHead")) {
+    // Sync sub-view mode from URL. Compare is derived from the
+    // presence of compareBase + compareHead and wins over browseView
+    // when both are set (matches normalizeBrowseState in routing).
+    if (
+      changed.has("initialBrowseView") ||
+      changed.has("initialCompareBase") ||
+      changed.has("initialCompareHead")
+    ) {
       if (this.initialCompareBase && this.initialCompareHead) {
-        this.comparing = true;
-        this.showCity = false;
-        this.showChanges = false;
+        this.mode = "compare";
         this.baseRef = this.initialCompareBase;
         this.headRef = this.initialCompareHead;
-        // Lazy-fetch branch list for the dropdowns if not loaded yet.
         if (this.branches.length === 0 && !this.compareFetching) {
           void this.fetchBranches();
         }
-      } else if (!this.initialCompareBase && !this.initialCompareHead && this.comparing) {
-        // Compare params cleared (e.g. back from compare to file view).
-        this.comparing = false;
+      } else {
+        this.mode = this.initialBrowseView;
       }
     }
   }
@@ -449,7 +441,7 @@ export class GcRepoBrowser extends LitElement {
           focused: this.focusMode !== "off",
           zen: this.focusMode === "zen",
           "drawer-open": this.drawerOpen,
-          comparing: this.comparing || this.showChanges || this.showCity,
+          comparing: this.mode !== "file",
         })}
         @keydown=${(e: KeyboardEvent) => {
           if (e.key === "Escape" && this.drawerOpen) {
@@ -470,7 +462,7 @@ export class GcRepoBrowser extends LitElement {
           : nothing}
         <aside aria-label="File tree" tabindex="-1">
           <div class="repo-hd">
-            ${this.comparing
+            ${this.mode === "compare"
               ? html` <select
                     class="ref-select"
                     .value=${this.baseRef}
@@ -505,44 +497,51 @@ export class GcRepoBrowser extends LitElement {
                   >${this.branch || s.repo.defaultBranch}@${s.repo.headCommit}</span
                 >`}
             <button
-              class="hd-btn"
-              @click=${() => this.toggleCity()}
+              class="hd-btn ${this.mode === "file" ? "active" : ""}"
+              @click=${() => this.setMode("file")}
+              aria-label="File browser"
+              aria-pressed=${this.mode === "file" ? "true" : "false"}
+              title="Browse files"
+            >
+              ⧉
+            </button>
+            <button
+              class="hd-btn ${this.mode === "city" ? "active" : ""}"
+              @click=${() => this.setMode("city")}
               aria-label="Code city"
-              aria-pressed=${this.showCity ? "true" : "false"}
+              aria-pressed=${this.mode === "city" ? "true" : "false"}
               title="Activity visualization"
             >
               &#x25C9;
             </button>
             <button
-              class="hd-btn"
-              @click=${() => this.toggleChanges()}
+              class="hd-btn ${this.mode === "changes" ? "active" : ""}"
+              @click=${() => this.setMode("changes")}
               aria-label="Working tree changes"
-              aria-pressed=${this.showChanges ? "true" : "false"}
+              aria-pressed=${this.mode === "changes" ? "true" : "false"}
               title="Working tree changes"
             >
               Δ
             </button>
             <button
-              class="hd-btn"
-              @click=${() => this.toggleCompare()}
+              class="hd-btn ${this.mode === "compare" ? "active" : ""}"
+              @click=${() => this.setMode("compare")}
               aria-label="Compare branches"
-              aria-pressed=${this.comparing ? "true" : "false"}
+              aria-pressed=${this.mode === "compare" ? "true" : "false"}
               title="Compare branches"
             >
               ⇄
             </button>
-            ${this.comparing || this.showChanges
-              ? nothing
-              : html` <button
-                  class="focus-btn"
-                  @click=${this.onToggleFocus}
-                  aria-label=${focusNextLabel(this.focusMode)}
-                  aria-pressed=${this.focusMode !== "off" ? "true" : "false"}
-                  title=${focusNextLabel(this.focusMode)}
-                >
-                  ${focusGlyph(this.focusMode)}
-                  <span class="focus-label">${focusButtonLabel(this.focusMode)}</span>
-                </button>`}
+            <button
+              class="focus-btn"
+              @click=${this.onToggleFocus}
+              aria-label=${focusNextLabel(this.focusMode)}
+              aria-pressed=${this.focusMode !== "off" ? "true" : "false"}
+              title=${focusNextLabel(this.focusMode)}
+            >
+              ${focusGlyph(this.focusMode)}
+              <span class="focus-label">${focusButtonLabel(this.focusMode)}</span>
+            </button>
           </div>
 
           <ul class="entries" @keydown=${this.onTreeKeydown}>
@@ -556,19 +555,10 @@ export class GcRepoBrowser extends LitElement {
   }
 
   // Dispatch the main pane by discriminated mode instead of nesting
-  // ternaries. The boolean triad (showCity / showChanges / comparing)
-  // is mutually exclusive, so one "mode" string collapses it clean
-  // and makes adding a zen-aware branch tractable.
+  // ternaries.
   private renderMainPane(repoId: string) {
     const zen = this.focusMode === "zen";
-    const mode: "city" | "changes" | "compare" | "file" = this.showCity
-      ? "city"
-      : this.showChanges
-        ? "changes"
-        : this.comparing
-          ? "compare"
-          : "file";
-    switch (mode) {
+    switch (this.mode) {
       case "city":
         return html`<gc-code-city
           .repoId=${repoId}
