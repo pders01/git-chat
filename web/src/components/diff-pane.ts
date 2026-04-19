@@ -4,6 +4,7 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
 import { onChange as onSettingsChange } from "../lib/settings.js";
 import type { SideFilesState } from "../lib/diff-types.js";
+import { splitDiffHtml, highlightWordDiffs } from "../lib/diff-html.js";
 import "./loading-indicator.js";
 import "./three-pane-view.js";
 
@@ -462,157 +463,10 @@ export class GcDiffPane extends LitElement {
   `;
 }
 
-// ── Shared diff-rendering helpers ─────────────────────────────────────
-// Kept as free functions because they don't touch component state;
-// pure DOM transforms that can be unit-tested in isolation once the
-// harness exists.
-
-export function splitDiffHtml(unifiedHtml: string): Array<{ left: string; right: string }> {
-  const tmp = document.createElement("div");
-  tmp.innerHTML = unifiedHtml;
-  const code = tmp.querySelector("code");
-  if (!code) return [{ left: unifiedHtml, right: "" }];
-  const lineEls = code.querySelectorAll(".line");
-  const lines =
-    lineEls.length > 0 ? Array.from(lineEls).map((el) => el.innerHTML) : code.innerHTML.split("\n");
-  const pairs: Array<{ left: string; right: string }> = [];
-  const delBuf: string[] = [];
-  const addBuf: string[] = [];
-  const flushBuffers = () => {
-    const max = Math.max(delBuf.length, addBuf.length);
-    for (let i = 0; i < max; i++) {
-      pairs.push({ left: delBuf[i] ?? "", right: addBuf[i] ?? "" });
-    }
-    delBuf.length = 0;
-    addBuf.length = 0;
-  };
-  for (const lineHtml of lines) {
-    const tempEl = document.createElement("span");
-    tempEl.innerHTML = lineHtml;
-    const text = tempEl.textContent ?? "";
-    if (text.startsWith("-")) delBuf.push(lineHtml);
-    else if (text.startsWith("+")) addBuf.push(lineHtml);
-    else {
-      flushBuffers();
-      pairs.push({ left: lineHtml, right: lineHtml });
-    }
-  }
-  flushBuffers();
-  return pairs;
-}
-
-// Post-process Shiki diff HTML to add <mark> around changed words
-// within adjacent -/+ line pairs.
-export function highlightWordDiffs(htmlStr: string): string {
-  const tmp = document.createElement("div");
-  tmp.innerHTML = htmlStr;
-  const code = tmp.querySelector("code");
-  if (!code) return htmlStr;
-  const lineEls = Array.from(code.querySelectorAll(".line"));
-  if (lineEls.length === 0) return htmlStr;
-  let i = 0;
-  while (i < lineEls.length) {
-    const text = lineEls[i].textContent ?? "";
-    if (text.startsWith("-")) {
-      const delStart = i;
-      while (i < lineEls.length && (lineEls[i].textContent ?? "").startsWith("-")) i++;
-      const addStart = i;
-      while (i < lineEls.length && (lineEls[i].textContent ?? "").startsWith("+")) i++;
-      const delEnd = addStart;
-      const addEnd = i;
-      const pairCount = Math.min(delEnd - delStart, addEnd - addStart);
-      for (let p = 0; p < pairCount; p++) {
-        markWordDiffs(lineEls[delStart + p], lineEls[addStart + p]);
-      }
-    } else {
-      i++;
-    }
-  }
-  return tmp.innerHTML;
-}
-
-// Compare two line elements word-by-word and wrap differing words in
-// <mark> elements. Skips highlighting when >80% of both sides changed
-// (treating the lines as unrelated rather than edits of each other).
-function markWordDiffs(delEl: Element, addEl: Element) {
-  const delText = (delEl.textContent ?? "").slice(1);
-  const addText = (addEl.textContent ?? "").slice(1);
-  if (delText === addText) return;
-  const delWords = delText.split(/(\s+)/);
-  const addWords = addText.split(/(\s+)/);
-  const lcsSet = (a: string[], b: string[]): { inA: Set<number>; inB: Set<number> } => {
-    const m = a.length;
-    const n = b.length;
-    const dp: number[][] = Array.from({ length: m + 1 }, () =>
-      Array.from({ length: n + 1 }, () => 0),
-    );
-    for (let i = 1; i <= m; i++) {
-      for (let j = 1; j <= n; j++) {
-        dp[i][j] =
-          a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
-    }
-    const inA = new Set<number>();
-    const inB = new Set<number>();
-    let i = m;
-    let j = n;
-    while (i > 0 && j > 0) {
-      if (a[i - 1] === b[j - 1]) {
-        inA.add(i - 1);
-        inB.add(j - 1);
-        i--;
-        j--;
-      } else if (dp[i - 1][j] >= dp[i][j - 1]) i--;
-      else j--;
-    }
-    return { inA, inB };
-  };
-  const { inA: commonDel, inB: commonAdd } = lcsSet(delWords, addWords);
-  const delChanged = new Set<number>();
-  const addChanged = new Set<number>();
-  for (let i = 0; i < delWords.length; i++) if (!commonDel.has(i)) delChanged.add(i);
-  for (let i = 0; i < addWords.length; i++) if (!commonAdd.has(i)) addChanged.add(i);
-  if (delChanged.size > delWords.length * 0.8 && addChanged.size > addWords.length * 0.8) return;
-  const findChangedRanges = (words: string[], changed: Set<number>): Array<[number, number]> => {
-    const ranges: Array<[number, number]> = [];
-    let pos = 0;
-    for (let i = 0; i < words.length; i++) {
-      if (changed.has(i) && words[i].trim()) ranges.push([pos, pos + words[i].length]);
-      pos += words[i].length;
-    }
-    return ranges;
-  };
-  const wrapTextNodes = (el: Element, ranges: Array<[number, number]>, cssClass: string) => {
-    if (ranges.length === 0) return;
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    const nodes: Array<{ node: Text; start: number; end: number }> = [];
-    let offset = 0;
-    while (walker.nextNode()) {
-      const t = walker.currentNode as Text;
-      nodes.push({ node: t, start: offset, end: offset + t.length });
-      offset += t.length;
-    }
-    // Skip the leading '-' or '+' character.
-    const shifted = ranges.map(([s, e]) => [s + 1, e + 1] as [number, number]);
-    for (const [rs, re] of shifted.reverse()) {
-      for (let ni = nodes.length - 1; ni >= 0; ni--) {
-        const n = nodes[ni];
-        if (rs >= n.end || re <= n.start) continue;
-        const localStart = Math.max(0, rs - n.start);
-        const localEnd = Math.min(n.node.length, re - n.start);
-        if (localStart >= localEnd) continue;
-        const before = n.node.splitText(localStart);
-        before.splitText(localEnd - localStart);
-        const mark = document.createElement("mark");
-        mark.className = cssClass;
-        before.parentNode!.insertBefore(mark, before);
-        mark.appendChild(before);
-      }
-    }
-  };
-  wrapTextNodes(delEl, findChangedRanges(delWords, delChanged), "word-del");
-  wrapTextNodes(addEl, findChangedRanges(addWords, addChanged), "word-add");
-}
+// Pure diff-HTML helpers live in lib/diff-html.ts so the tests can
+// reach them without pulling in Lit + the component render pipeline.
+// Re-exported here for any existing external consumers.
+export { splitDiffHtml, highlightWordDiffs } from "../lib/diff-html.js";
 
 declare global {
   interface HTMLElementTagNameMap {

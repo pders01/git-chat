@@ -195,13 +195,64 @@ test.describe("features", () => {
 
     // Click first commit.
     await clickShadowElement(page, "gc-app gc-commit-log", ".commit-row");
-    
+
     // Wait for detail header to appear.
     await waitForShadowElement(page, "gc-app gc-commit-log", ".diff-header");
 
     // Back to chat.
     await clickShadowElement(page, "gc-app", '#tab-chat');
     await expect(page).toHaveURL(/#\/.*\/chat$/);
+  });
+
+  test("diff pane: split toggle renders two columns", async () => {
+    // Re-enter log + pick a commit so the diff pane has something to
+    // render. Sequential test sharing state with the one above would
+    // be fragile, so we set the stage fresh.
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const logTab = app?.shadowRoot?.querySelector("#tab-log") as HTMLElement;
+      logTab?.click();
+    });
+    await expect(async () => {
+      const rows = await page.evaluate(() => {
+        const app = document.querySelector("gc-app");
+        const log = app?.shadowRoot?.querySelector("gc-commit-log");
+        return log?.shadowRoot?.querySelectorAll(".commit-row")?.length ?? 0;
+      });
+      expect(rows).toBeGreaterThan(0);
+    }).toPass({ timeout: 15_000 });
+    await clickShadowElement(page, "gc-app gc-commit-log", ".commit-row");
+    await waitForShadowElement(page, "gc-app gc-commit-log", ".diff-header");
+    // Wait for the diff pane to finish loading so the toggle button
+    // actually reacts (it's disabled / no-op on an empty pane).
+    await waitForShadowElement(page, "gc-app gc-commit-log gc-diff-pane", ".diff-content");
+
+    // Click the split toggle in commit-log's shadow root.
+    await clickShadowElement(page, "gc-app gc-commit-log", ".split-toggle");
+
+    // Verify the pane now renders the split layout (.split-diff is
+    // only present in the split branch of diff-pane's render).
+    await expect(async () => {
+      const hasSplit = await page.evaluate(() => {
+        const app = document.querySelector("gc-app");
+        const log = app?.shadowRoot?.querySelector("gc-commit-log");
+        const pane = log?.shadowRoot?.querySelector("gc-diff-pane");
+        return !!pane?.shadowRoot?.querySelector(".split-diff");
+      });
+      expect(hasSplit).toBe(true);
+    }).toPass({ timeout: 5_000 });
+
+    // Toggle back to unified. `.split-diff` should disappear.
+    await clickShadowElement(page, "gc-app gc-commit-log", ".split-toggle");
+    await expect(async () => {
+      const hasSplit = await page.evaluate(() => {
+        const app = document.querySelector("gc-app");
+        const log = app?.shadowRoot?.querySelector("gc-commit-log");
+        const pane = log?.shadowRoot?.querySelector("gc-diff-pane");
+        return !!pane?.shadowRoot?.querySelector(".split-diff");
+      });
+      expect(hasSplit).toBe(false);
+    }).toPass({ timeout: 5_000 });
   });
 
   // ── Search navigation ───────────────────────────────────────
