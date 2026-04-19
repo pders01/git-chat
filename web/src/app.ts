@@ -839,16 +839,36 @@ export class GcApp extends LitElement {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       this.searchSelectedIdx = Math.min(this.searchSelectedIdx + 1, this.searchResults.length - 1);
+      void this.scrollSearchSelectionIntoView();
       return;
     }
     if (e.key === "ArrowUp") {
       e.preventDefault();
       this.searchSelectedIdx = Math.max(this.searchSelectedIdx - 1, 0);
+      void this.scrollSearchSelectionIntoView();
       return;
     }
     if (e.key === "Enter" && this.searchSelectedIdx >= 0) {
       e.preventDefault();
       this.activateSearchResult(this.searchResults[this.searchSelectedIdx]!);
+    }
+  }
+
+  // Same pattern as scrollPaletteSelectionIntoView: wait for Lit to
+  // commit the new .selected class, then nudge the container so the
+  // highlighted row stays visible. Manual offset math avoids the
+  // smooth-scroll race under rapid arrow-key repeat.
+  private async scrollSearchSelectionIntoView() {
+    await this.updateComplete;
+    const list = this.renderRoot.querySelector<HTMLElement>(".search-results");
+    const selected = list?.querySelector<HTMLElement>(".search-hit.selected");
+    if (!list || !selected) return;
+    const top = selected.offsetTop;
+    const bottom = top + selected.offsetHeight;
+    if (top < list.scrollTop) {
+      list.scrollTop = top;
+    } else if (bottom > list.scrollTop + list.clientHeight) {
+      list.scrollTop = bottom - list.clientHeight;
     }
   }
 
