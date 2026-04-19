@@ -1171,6 +1171,16 @@ export class GcCommitLog extends LitElement {
     .layout.zen .diff-header {
       display: none;
     }
+    /* Center the diff column on wide monitors and cap its reading
+       width. 140ch is wider than file-view's 120ch because split /
+       3-pane diffs need the extra horizontal room. */
+    .layout.zen .diff-pane {
+      max-width: 140ch;
+      width: 100%;
+      margin: 0 auto;
+      padding: var(--space-6) var(--space-4);
+      box-sizing: border-box;
+    }
 
     /* ── Left: commit list ───────────────────────────────────── */
     .commit-list {

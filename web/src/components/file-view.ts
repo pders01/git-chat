@@ -526,7 +526,15 @@ export class GcFileView extends LitElement {
     /* Zen: the app shell already hides the top bar — also drop the
        file-view's own toolbar so only the content remains. Path,
        blame, history, and "ask in chat" are all reachable via the
-       palette / slash-commands, so users aren't locked out. */
+       palette / slash-commands, so users aren't locked out.
+       Content gets horizontally centered with a reading-width cap
+       so wide monitors don't leave the code hugging the left edge. */
+    :host([zen]) {
+      max-width: 120ch;
+      margin: 0 auto;
+      padding: var(--space-6) var(--space-4);
+      box-sizing: border-box;
+    }
     :host([zen]) .hd {
       display: none;
     }
