@@ -228,13 +228,17 @@ test.describe("routing", () => {
 
   test("log: click commit → click file → browse tab opens that file", async () => {
     await navigateHash("#/git-chat/log");
-    // Wait for rows, click the first one.
     await waitForShadowElement(page, "gc-app gc-commit-log", ".commit-row");
+    // Auto-select (21bbee1) picks the first row but deliberately does
+    // NOT update the URL; clicking the SECOND row exercises the
+    // click-to-select flow that DOES update the URL, which is what
+    // this assertion cares about. Clicking the first row would
+    // toggle selection off and leave the URL at plain /log.
     await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const log = app?.shadowRoot?.querySelector("gc-commit-log");
-      const row = log?.shadowRoot?.querySelector(".commit-row") as HTMLElement | null;
-      row?.click();
+      const rows = log?.shadowRoot?.querySelectorAll<HTMLElement>(".commit-row");
+      rows?.[1]?.click();
     });
     // Wait for the diff header to appear (commit selected).
     await waitForShadowElement(page, "gc-app gc-commit-log", ".diff-header");

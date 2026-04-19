@@ -119,41 +119,28 @@ test.describe("features", () => {
   // ── Focus mode ─────────────────────────────────────────────
 
   test("focus toggle hides sidebar", async () => {
-    // Get initial sidebar width
-    const initialWidth = await page.evaluate(() => {
-      const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const sidebar = chat?.shadowRoot?.querySelector(".sidebar");
-      return sidebar?.getBoundingClientRect().width ?? -1;
-    });
-    
-    // Click focus button.
-    await clickShadowElement(page, "gc-app gc-chat-view", ".focus-btn");
-    
-    // Wait for sidebar to collapse (animation + state change)
-    await expect.poll(async () => {
-      const width = await page.evaluate(() => {
+    // Focus is now a tri-state cycle: off → focus → zen → off. The
+    // sidebar stays collapsed in both focus AND zen, so returning to
+    // "sidebar visible" takes two more clicks after the first.
+    const sidebarWidth = () =>
+      page.evaluate(() => {
         const app = document.querySelector("gc-app");
         const chat = app?.shadowRoot?.querySelector("gc-chat-view");
         const sidebar = chat?.shadowRoot?.querySelector(".sidebar");
         return sidebar?.getBoundingClientRect().width ?? -1;
       });
-      return width;
-    }, { timeout: 5000 }).toBeLessThanOrEqual(1);
 
-    // Toggle back.
+    // off → focus: sidebar collapses.
     await clickShadowElement(page, "gc-app gc-chat-view", ".focus-btn");
-    
-    // Wait for sidebar to expand back
-    await expect.poll(async () => {
-      const width = await page.evaluate(() => {
-        const app = document.querySelector("gc-app");
-        const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-        const sidebar = chat?.shadowRoot?.querySelector(".sidebar");
-        return sidebar?.getBoundingClientRect().width ?? -1;
-      });
-      return width;
-    }, { timeout: 5000 }).toBeGreaterThan(1);
+    await expect.poll(sidebarWidth, { timeout: 5000 }).toBeLessThanOrEqual(1);
+
+    // focus → zen: sidebar still collapsed (zen extends focus).
+    await clickShadowElement(page, "gc-app gc-chat-view", ".focus-btn");
+    await expect.poll(sidebarWidth, { timeout: 5000 }).toBeLessThanOrEqual(1);
+
+    // zen → off: sidebar expands.
+    await clickShadowElement(page, "gc-app gc-chat-view", ".focus-btn");
+    await expect.poll(sidebarWidth, { timeout: 5000 }).toBeGreaterThan(1);
   });
 
   // ── Export button ──────────────────────────────────────────
@@ -193,14 +180,22 @@ test.describe("features", () => {
       expect(info.rows).toBeGreaterThan(0);
     }).toPass({ timeout: 20_000 });
 
-    // Click first commit.
-    await clickShadowElement(page, "gc-app gc-commit-log", ".commit-row");
-
-    // Wait for detail header to appear.
+    // Log auto-selects the most recent commit on landing (21bbee1), so
+    // the diff-header is already up before any click. Verify that, then
+    // click the SECOND row to exercise the click-to-select path (the
+    // first row is already selected; clicking it would toggle off).
+    await waitForShadowElement(page, "gc-app gc-commit-log", ".diff-header");
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const log = app?.shadowRoot?.querySelector("gc-commit-log");
+      const rows = log?.shadowRoot?.querySelectorAll<HTMLElement>(".commit-row");
+      rows?.[1]?.click();
+    });
+    // Header persists across the selection change.
     await waitForShadowElement(page, "gc-app gc-commit-log", ".diff-header");
 
     // Back to chat.
-    await clickShadowElement(page, "gc-app", '#tab-chat');
+    await clickShadowElement(page, "gc-app", "#tab-chat");
     await expect(page).toHaveURL(/#\/.*\/chat$/);
   });
 
@@ -221,10 +216,18 @@ test.describe("features", () => {
       });
       expect(rows).toBeGreaterThan(0);
     }).toPass({ timeout: 15_000 });
-    await clickShadowElement(page, "gc-app gc-commit-log", ".commit-row");
+    // The prior test's navigate-to-chat cleared selectedSha via the
+    // URL-sync branch in commit-log, and auto-select only runs on
+    // load(0). Click the SECOND row to force a fresh selection —
+    // first row would no-op via the toggle-off path the instant
+    // auto-select catches up on a future fresh load.
+    await page.evaluate(() => {
+      const app = document.querySelector("gc-app");
+      const log = app?.shadowRoot?.querySelector("gc-commit-log");
+      const rows = log?.shadowRoot?.querySelectorAll<HTMLElement>(".commit-row");
+      rows?.[1]?.click();
+    });
     await waitForShadowElement(page, "gc-app gc-commit-log", ".diff-header");
-    // Wait for the diff pane to finish loading so the toggle button
-    // actually reacts (it's disabled / no-op on an empty pane).
     await waitForShadowElement(page, "gc-app gc-commit-log gc-diff-pane", ".diff-content");
 
     // Click the split toggle in commit-log's shadow root.
@@ -313,24 +316,32 @@ test.describe("features", () => {
     await typeInShadowInput(page, "gc-app", ".search-input", "Makefile");
     await waitForShadowElement(page, "gc-app", ".search-hit");
 
-    // Ensure focus and select first result
+    // runSearch sets searchSelectedIdx = 0 when results arrive, so the
+    // first hit (a "file" source hit for Makefile) is already selected.
+    // Earlier revision of this test pressed ArrowDown first, which
+    // moved past the file hit — with commit-search now emitting
+    // additional hits, position 1 can be a commit that routes to /log
+    // on activation. Click the first file hit directly so we don't
+    // depend on keyboard-focus staying on the shadow input across the
+    // intervening polls.
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const app = document.querySelector("gc-app");
+          return !!app?.shadowRoot?.querySelector(".search-hit.selected");
+        });
+      }, { timeout: 3000 })
+      .toBe(true);
     await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const input = app?.shadowRoot?.querySelector(".search-input") as HTMLInputElement;
-      input?.focus();
+      const hits = app?.shadowRoot?.querySelectorAll<HTMLElement>(".search-hit");
+      for (const h of hits ?? []) {
+        if (h.querySelector(".hit-source")?.textContent?.includes("files")) {
+          h.click();
+          return;
+        }
+      }
     });
-    await page.keyboard.press("ArrowDown");
-    
-    // Wait for selection
-    await expect.poll(async () => {
-      const selected = await page.evaluate(() => {
-        const app = document.querySelector("gc-app");
-        return !!app?.shadowRoot?.querySelector(".search-hit.selected");
-      });
-      return selected;
-    }, { timeout: 3000 }).toBe(true);
-    
-    await page.keyboard.press("Enter");
 
     // Should be on browse tab.
     await expect(page).toHaveURL(/#\/.*\/browse/);
