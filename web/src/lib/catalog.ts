@@ -81,10 +81,7 @@ export interface AvailabilityContext {
  *     protocol hardcodes the URL, so they unlock when any configured
  *     route uses the anthropic backend + has a key.
  */
-export function isProviderAvailable(
-  provider: CatalogProvider,
-  ctx: AvailabilityContext,
-): boolean {
+export function isProviderAvailable(provider: CatalogProvider, ctx: AvailabilityContext): boolean {
   if (provider.type === "anthropic") {
     if (ctx.profileBackends.includes("anthropic")) return true;
     if (ctx.configBackend === "anthropic" && ctx.configHasKey) return true;
@@ -120,9 +117,7 @@ function normalizeURL(u: string): string {
  * need no API key, so they're exempt from key-leak warnings. */
 export function isLocalhostURL(u: string): boolean {
   return (
-    u.startsWith("http://localhost") ||
-    u.startsWith("http://127.") ||
-    u.startsWith("http://[::1]")
+    u.startsWith("http://localhost") || u.startsWith("http://127.") || u.startsWith("http://[::1]")
   );
 }
 
@@ -135,8 +130,7 @@ export function buildAvailabilityContext(
   profiles: ReadonlyArray<{ baseUrl?: string; backend?: string }>,
   configEntries: ReadonlyArray<{ key: string; value: string }>,
 ): AvailabilityContext {
-  const readConfig = (key: string) =>
-    configEntries.find((e) => e.key === key)?.value ?? "";
+  const readConfig = (key: string) => configEntries.find((e) => e.key === key)?.value ?? "";
   return {
     localUrls: localEndpoints.map((ep) => ep.url ?? "").filter(Boolean),
     profileBaseUrls: profiles.map((p) => p.baseUrl ?? "").filter(Boolean),

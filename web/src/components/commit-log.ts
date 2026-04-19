@@ -223,10 +223,7 @@ export class GcCommitLog extends LitElement {
       void this.loadAllCommits();
     }
     if (changed.has("initialCommitSha")) {
-      if (
-        this.initialCommitSha &&
-        this.initialCommitSha !== this._lastRestoredSha
-      ) {
+      if (this.initialCommitSha && this.initialCommitSha !== this._lastRestoredSha) {
         this._lastRestoredSha = this.initialCommitSha;
         if (this.state.phase === "ready") {
           void this.selectCommit(this.initialCommitSha);
@@ -254,10 +251,7 @@ export class GcCommitLog extends LitElement {
     // Only sync the commit-filter input from the URL when the value
     // differs — avoids stomping the user's in-progress edits that
     // haven't yet fired their 300ms nav debounce.
-    if (
-      changed.has("initialCommitFilter") &&
-      this.initialCommitFilter !== this.commitFilter
-    ) {
+    if (changed.has("initialCommitFilter") && this.initialCommitFilter !== this.commitFilter) {
       this.commitFilter = this.initialCommitFilter;
     }
     // URL drives viewMode: when the route changes (deep link, back
@@ -386,9 +380,7 @@ export class GcCommitLog extends LitElement {
       if (
         offset === 0 &&
         this.selectedSha &&
-        !commits.some(
-          (c) => c.sha === this.selectedSha || c.sha.startsWith(this.selectedSha),
-        )
+        !commits.some((c) => c.sha === this.selectedSha || c.sha.startsWith(this.selectedSha))
       ) {
         this.selectedSha = "";
         this.selectedFile = "";

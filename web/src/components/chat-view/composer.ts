@@ -19,11 +19,7 @@ import {
   type SlashCommand,
   type ActionArgContext,
 } from "../../lib/slash.js";
-import {
-  buildAvailabilityContext,
-  formatSources,
-  isProviderAvailable,
-} from "../../lib/catalog.js";
+import { buildAvailabilityContext, formatSources, isProviderAvailable } from "../../lib/catalog.js";
 
 // Rendered form of an action-arg suggestion. Shape mirrors ComboboxOption
 // but is local to the composer so slash.ts stays pure — lib/ has no DOM
@@ -1259,7 +1255,6 @@ function helpToastMessage(): string {
   const lines = SLASH_COMMANDS.map((c) => `${c.label} — ${c.hint}`);
   return "Slash commands:\n" + lines.join("\n");
 }
-
 
 declare global {
   interface HTMLElementTagNameMap {

@@ -85,10 +85,7 @@ describe("layoutGraph", () => {
   test("same parent referenced twice doesn't double-allocate lanes", () => {
     // Rare but possible (octopus merge variant / data oddity).
     // Second reference should find the existing lane and not grow the graph.
-    const { maxLane } = layoutGraph([
-      { sha: "a", parentShas: ["b", "b"] },
-      { sha: "b" },
-    ]);
+    const { maxLane } = layoutGraph([{ sha: "a", parentShas: ["b", "b"] }, { sha: "b" }]);
     expect(maxLane).toBe(0);
   });
 });

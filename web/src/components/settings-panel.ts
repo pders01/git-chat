@@ -345,8 +345,7 @@ export class GcSettingsPanel extends LitElement {
    * in so we don't leak presence + API key on every settings open. */
   private renderEntryAction(entry: ConfigEntry) {
     if (entry.key !== "LLM_MODEL") return nothing;
-    const baseUrl =
-      this.configEntries.find((e) => e.key === "LLM_BASE_URL")?.value?.trim() ?? "";
+    const baseUrl = this.configEntries.find((e) => e.key === "LLM_BASE_URL")?.value?.trim() ?? "";
     if (!baseUrl || isLocalhostURL(baseUrl)) return nothing;
     const inCatalog = this.catalog.some(
       (c) => c.defaultBaseUrl && baseUrl.startsWith(c.defaultBaseUrl),

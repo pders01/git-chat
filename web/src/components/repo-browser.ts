@@ -13,16 +13,16 @@ import {
 } from "../lib/focus.js";
 import { EntryType, type Repo } from "../gen/gitchat/v1/repo_pb.js";
 import type { BrowseView } from "../lib/routing.js";
-
-// Internal sub-view discriminator. BrowseView from routing is narrower
-// (file / city / changes) — "compare" is component-local because the
-// URL carries it via compareBase + compareHead rather than a view slot.
-type BrowseMode = "file" | "city" | "changes" | "compare";
 import "./loading-indicator.js";
 import "./file-view.js";
 import "./compare-view.js";
 import "./changes-view.js";
 import "./code-city.js";
+
+// Internal sub-view discriminator. BrowseView from routing is narrower
+// (file / city / changes) — "compare" is component-local because the
+// URL carries it via compareBase + compareHead rather than a view slot.
+type BrowseMode = "file" | "city" | "changes" | "compare";
 
 /** A node in the expandable file tree. Treated as immutable: every
  * mutation produces a new tree via updateNodeByPath so Lit's change
@@ -254,10 +254,7 @@ export class GcRepoBrowser extends LitElement {
       void this.boot();
     }
     if (changed.has("initialFilePath")) {
-      if (
-        this.initialFilePath &&
-        this.initialFilePath !== this._lastRestoredFile
-      ) {
+      if (this.initialFilePath && this.initialFilePath !== this._lastRestoredFile) {
         this._lastRestoredFile = this.initialFilePath;
         if (this.state.phase === "ready") {
           void this.revealAndSelect(this.initialFilePath);
@@ -286,6 +283,10 @@ export class GcRepoBrowser extends LitElement {
     // Sync sub-view mode from URL. Compare is derived from the
     // presence of compareBase + compareHead and wins over browseView
     // when both are set (matches normalizeBrowseState in routing).
+    // Deliberately NOT gated on §5.7's prev-value check: first-mount
+    // is when deep-link sync MUST run (there's no connectedCallback
+    // alternative doing the same work), and "file" is the safe
+    // default anyway if no initialBrowseView was ever bound.
     if (
       changed.has("initialBrowseView") ||
       changed.has("initialCompareBase") ||
@@ -560,15 +561,9 @@ export class GcRepoBrowser extends LitElement {
     const zen = this.focusMode === "zen";
     switch (this.mode) {
       case "city":
-        return html`<gc-code-city
-          .repoId=${repoId}
-          .branch=${this.branch}
-        ></gc-code-city>`;
+        return html`<gc-code-city .repoId=${repoId} .branch=${this.branch}></gc-code-city>`;
       case "changes":
-        return html`<gc-changes-view
-          .repoId=${repoId}
-          ?zen=${zen}
-        ></gc-changes-view>`;
+        return html`<gc-changes-view .repoId=${repoId} ?zen=${zen}></gc-changes-view>`;
       case "compare":
         return html`<gc-compare-view
           .repoId=${repoId}

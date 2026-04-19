@@ -167,15 +167,11 @@ export class GcConnectionWizard extends LitElement {
     if (this.catalogModels.length > 0) {
       return this.catalogModels.map((m) => {
         const sourceTag = formatSources(m.sources);
-        const ctx = m.contextWindow
-          ? `${Math.round(Number(m.contextWindow) / 1000)}K`
-          : "";
+        const ctx = m.contextWindow ? `${Math.round(Number(m.contextWindow) / 1000)}K` : "";
         return {
           value: m.id,
           label: m.name || m.id,
-          description: [this.providerName, ctx, sourceTag]
-            .filter(Boolean)
-            .join(" · "),
+          description: [this.providerName, ctx, sourceTag].filter(Boolean).join(" · "),
         };
       });
     }

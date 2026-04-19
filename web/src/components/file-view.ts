@@ -198,8 +198,7 @@ export class GcFileView extends LitElement {
   private renderPlainWithLineNumbers(text: string) {
     const lines = text.split("\n");
     return html`<pre class="plain"><code>${lines.map(
-      (line, i) =>
-        html`<span class="line">${line}${i < lines.length - 1 ? "\n" : ""}</span>`,
+      (line, i) => html`<span class="line">${line}${i < lines.length - 1 ? "\n" : ""}</span>`,
     )}</code></pre>`;
   }
 

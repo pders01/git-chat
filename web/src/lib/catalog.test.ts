@@ -65,11 +65,7 @@ describe("providerSources", () => {
 });
 
 // Test helpers for availability scenarios.
-function mkProvider(
-  type: string,
-  defaultBaseUrl: string,
-  id = "test-id",
-): CatalogProvider {
+function mkProvider(type: string, defaultBaseUrl: string, id = "test-id"): CatalogProvider {
   return { id, name: id, type, defaultBaseUrl, models: [] } as unknown as CatalogProvider;
 }
 
@@ -150,9 +146,9 @@ describe("isProviderAvailable", () => {
     expect(isProviderAvailable(claude, ctxEmpty())).toBe(false);
 
     // Profile with anthropic backend unlocks it
-    expect(
-      isProviderAvailable(claude, { ...ctxEmpty(), profileBackends: ["anthropic"] }),
-    ).toBe(true);
+    expect(isProviderAvailable(claude, { ...ctxEmpty(), profileBackends: ["anthropic"] })).toBe(
+      true,
+    );
 
     // Or config with anthropic backend + key
     expect(
@@ -164,9 +160,7 @@ describe("isProviderAvailable", () => {
     ).toBe(true);
 
     // anthropic backend without key → not available
-    expect(
-      isProviderAvailable(claude, { ...ctxEmpty(), configBackend: "anthropic" }),
-    ).toBe(false);
+    expect(isProviderAvailable(claude, { ...ctxEmpty(), configBackend: "anthropic" })).toBe(false);
   });
 
   test("openai-type provider is NOT unlocked just because anthropic is available", () => {

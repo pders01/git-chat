@@ -230,9 +230,7 @@ export class GcChatView extends LitElement {
       // live-cost estimate without further RPCs per keystroke.
       const route = await this.resolveRoute();
       this.activeRouteIsLocal = route.isLocal;
-      this.activeModelPricing = this.activeModel
-        ? await this.priceFor(this.activeModel)
-        : null;
+      this.activeModelPricing = this.activeModel ? await this.priceFor(this.activeModel) : null;
 
       // Session cost cap — pre-send check compares projected spend
       // against this value. Stored as a float; falls back to the
@@ -679,8 +677,7 @@ export class GcChatView extends LitElement {
         repoClient.getConfig({}),
         repoClient.listProfiles({}),
       ]);
-      const readConfig = (key: string) =>
-        cfg.entries?.find((e) => e.key === key)?.value ?? "";
+      const readConfig = (key: string) => cfg.entries?.find((e) => e.key === key)?.value ?? "";
 
       const activeId = profs.activeProfileId ?? "";
       const active = profs.profiles?.find((p) => p.id === activeId);
@@ -814,34 +811,26 @@ export class GcChatView extends LitElement {
           <dd>${costStr}</dd>
           ${this.sessionCostUsd > 0 || p.overCap
             ? html`<dt>session so far</dt>
-                <dd>$${this.sessionCostUsd.toFixed(3)} of $${this.sessionMaxCostUsd.toFixed(2)} cap</dd>
+                <dd>
+                  $${this.sessionCostUsd.toFixed(3)} of $${this.sessionMaxCostUsd.toFixed(2)} cap
+                </dd>
                 <dt>projected total</dt>
-                <dd
-                  class=${p.overCap ? "over-cap-value" : ""}
-                >
-                  $${projectedTotal.toFixed(3)}
-                </dd>`
+                <dd class=${p.overCap ? "over-cap-value" : ""}>$${projectedTotal.toFixed(3)}</dd>`
             : nothing}
         </dl>
         <p class="presend-note">
           ${p.overCap
             ? html`This turn would push session spend past the
-                <code>GITCHAT_SESSION_MAX_COST_USD</code> cap. Confirming
-                proceeds with this turn; the next over-cap turn will prompt
-                again. Raise the cap in settings if you want to turn the
-                prompts off.`
+                <code>GITCHAT_SESSION_MAX_COST_USD</code> cap. Confirming proceeds with this turn;
+                the next over-cap turn will prompt again. Raise the cap in settings if you want to
+                turn the prompts off.`
             : html`Your API key + this prompt will be sent to
-                <code>${p.route.destinationHost}</code>. Confirming remembers
-                the route for this session — subsequent turns on the same
-                route don't re-prompt until the model, base URL, or profile
-                changes.`}
+                <code>${p.route.destinationHost}</code>. Confirming remembers the route for this
+                session — subsequent turns on the same route don't re-prompt until the model, base
+                URL, or profile changes.`}
         </p>
         <div class="presend-actions">
-          <button
-            type="button"
-            class="presend-btn cancel"
-            @click=${() => this.cancelPendingSend()}
-          >
+          <button type="button" class="presend-btn cancel" @click=${() => this.cancelPendingSend()}>
             cancel
           </button>
           <button
@@ -1007,15 +996,9 @@ export class GcChatView extends LitElement {
       const readConfig = (key: string) =>
         (configResp?.entries ?? []).find((e) => e.key === key)?.value ?? "";
       const ctx = {
-        localUrls: (localResp?.endpoints ?? [])
-          .map((ep) => ep.url ?? "")
-          .filter(Boolean),
-        profileBaseUrls: (profilesResp?.profiles ?? [])
-          .map((p) => p.baseUrl ?? "")
-          .filter(Boolean),
-        profileBackends: (profilesResp?.profiles ?? [])
-          .map((p) => p.backend ?? "")
-          .filter(Boolean),
+        localUrls: (localResp?.endpoints ?? []).map((ep) => ep.url ?? "").filter(Boolean),
+        profileBaseUrls: (profilesResp?.profiles ?? []).map((p) => p.baseUrl ?? "").filter(Boolean),
+        profileBackends: (profilesResp?.profiles ?? []).map((p) => p.backend ?? "").filter(Boolean),
         configBaseUrl: readConfig("LLM_BASE_URL"),
         configBackend: readConfig("LLM_BACKEND") || "openai",
         configHasKey: !!readConfig("LLM_API_KEY"),
