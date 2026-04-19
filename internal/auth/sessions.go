@@ -41,7 +41,19 @@ type SessionStore struct {
 	byToken  map[string]*Session
 	cfg      *config.Registry // optional; nil falls back to env + default
 	secureCk bool             // set Secure flag on cookies (true only behind TLS)
+	// TTL cache — the Config Registry resolves SESSION_TTL via a DB
+	// round-trip with a 5s timeout; ttlDur is called on every session
+	// op (Create/Get/Rotate/ShouldRotate/TTL/SetCookie) so without a
+	// cache, steady-state auth traffic hammers the DB for a value that
+	// changes on the order of days. The cache refreshes in the
+	// background every ttlCacheRefresh seconds; UI edits to the TTL
+	// take effect within that window.
+	ttlCached   time.Duration
+	ttlCachedAt time.Time
+	ttlMu       sync.Mutex
 }
+
+const ttlCacheRefresh = 30 * time.Second
 
 // NewSessionStore returns an empty store. secure controls the Secure cookie
 // flag — leave false for plain HTTP (local mode, loopback self-hosted).
@@ -61,12 +73,36 @@ func (s *SessionStore) SetConfig(cfg *config.Registry) {
 }
 
 // ttlDur resolves the current session TTL. Values ≤ 0 are rejected so
-// a UI typo of "0" can't mint immediately-expired sessions.
+// a UI typo of "0" can't mint immediately-expired sessions. Cached
+// for ttlCacheRefresh to avoid hammering the config DB on every auth
+// op; a UI change takes effect within the refresh window.
 func (s *SessionStore) ttlDur() time.Duration {
+	s.ttlMu.Lock()
+	if s.ttlCached > 0 && time.Since(s.ttlCachedAt) < ttlCacheRefresh {
+		d := s.ttlCached
+		s.ttlMu.Unlock()
+		return d
+	}
+	s.ttlMu.Unlock()
+
+	d := s.resolveTTL()
+	s.ttlMu.Lock()
+	s.ttlCached = d
+	s.ttlCachedAt = time.Now()
+	s.ttlMu.Unlock()
+	return d
+}
+
+func (s *SessionStore) resolveTTL() time.Duration {
 	s.mu.RLock()
 	cfg := s.cfg
 	s.mu.RUnlock()
 	if cfg != nil {
+		// Registry enforces an internal 5s DB timeout on the lookup.
+		// Using Background() here is deliberate: ttlDur is called from
+		// non-request paths (cookie setup, TTL() accessor) that don't
+		// have a natural request ctx, and short-circuiting via cache
+		// above means this DB read happens at most once per 30s.
 		if d := cfg.GetDurCtx(context.Background(), "GITCHAT_SESSION_TTL", defaultSessionTTL); d > 0 {
 			return d
 		}

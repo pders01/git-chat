@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -26,6 +25,13 @@ type OpenAI struct {
 	apiKey   string
 	http     *http.Client
 	capCache sync.Map // model -> Capabilities
+	// visionAllowlist is a lowercase substring list; any model whose
+	// id contains one of these entries is force-treated as image-capable.
+	// Populated via SetVisionAllowlist from the Config registry; the env
+	// var GITCHAT_VISION_MODELS is still honoured via the registry chain
+	// but no longer read directly from os.Getenv here.
+	visionMu        sync.RWMutex
+	visionAllowlist []string
 }
 
 // NewOpenAI constructs an OpenAI-compatible adapter.
@@ -76,7 +82,7 @@ func (o *OpenAI) Capabilities(ctx context.Context, model string) Capabilities {
 }
 
 func (o *OpenAI) resolveImageSupport(ctx context.Context, model string) bool {
-	if matchesEnvAllowlist(model) {
+	if o.matchesVisionAllowlist(model) {
 		return true
 	}
 	base := strings.TrimRight(strings.TrimSuffix(o.baseURL, "/v1"), "/")
@@ -91,17 +97,34 @@ func (o *OpenAI) resolveImageSupport(ctx context.Context, model string) bool {
 	return nameLooksVisionCapable(model)
 }
 
-// matchesEnvAllowlist returns true when GITCHAT_VISION_MODELS contains a
-// comma-separated substring that matches model (case-insensitive).
-func matchesEnvAllowlist(model string) bool {
-	allow := os.Getenv("GITCHAT_VISION_MODELS")
-	if allow == "" {
+// SetVisionAllowlist updates the "force image-capable" substring list.
+// Takes the raw config value (comma-separated, case-insensitive) and
+// replaces the previous allowlist atomically. Safe to call from any
+// goroutine; subsequent Capabilities calls see the new list.
+func (o *OpenAI) SetVisionAllowlist(raw string) {
+	entries := make([]string, 0)
+	for _, e := range strings.Split(raw, ",") {
+		if t := strings.TrimSpace(strings.ToLower(e)); t != "" {
+			entries = append(entries, t)
+		}
+	}
+	o.visionMu.Lock()
+	o.visionAllowlist = entries
+	o.visionMu.Unlock()
+}
+
+// matchesVisionAllowlist returns true if model's id contains any entry
+// in the adapter's allowlist (case-insensitive).
+func (o *OpenAI) matchesVisionAllowlist(model string) bool {
+	o.visionMu.RLock()
+	list := o.visionAllowlist
+	o.visionMu.RUnlock()
+	if len(list) == 0 {
 		return false
 	}
 	lm := strings.ToLower(model)
-	for _, entry := range strings.Split(allow, ",") {
-		e := strings.TrimSpace(strings.ToLower(entry))
-		if e != "" && strings.Contains(lm, e) {
+	for _, e := range list {
+		if strings.Contains(lm, e) {
 			return true
 		}
 	}

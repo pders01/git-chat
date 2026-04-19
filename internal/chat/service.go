@@ -101,6 +101,13 @@ func (s *Service) resolveLLM(ctx context.Context) (llm.LLM, error) {
 		}
 		return nil, err
 	}
+	// Plumb vision allowlist through the registry so UI edits to
+	// GITCHAT_VISION_MODELS take effect without restart. Only the
+	// openai adapter honours the list; anthropic adapter has its
+	// own model-capability rules.
+	if openaiAdapter, ok := adapter.(*llm.OpenAI); ok {
+		openaiAdapter.SetVisionAllowlist(s.Config.GetCtx(ctx, "GITCHAT_VISION_MODELS"))
+	}
 	s.LLM = adapter
 	s.llmSnap = snap
 	if model != "" {

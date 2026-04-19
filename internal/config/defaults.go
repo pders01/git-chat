@@ -8,6 +8,8 @@ func RegisterDefaults(r *Registry) {
 	r.Register("GITCHAT_DEFAULT_COMMIT_LIMIT", "50", "Default number of commits per page", "repo")
 	r.Register("GITCHAT_DIFF_CONTEXT_LINES", "3", "Context lines in unified diffs", "repo")
 	r.Register("GITCHAT_DEFAULT_FILE_BYTES", "524288", "Max bytes for file content responses", "repo")
+	r.Register("GITCHAT_CHURN_WINDOW_DAYS", "90", "Default days of commit history included in churn maps", "repo")
+	r.Register("GITCHAT_MAX_CHURN_COMMITS", "5000", "Max commits walked by churn builders before truncating", "repo")
 
 	// ── chat / prompt ─────────────────────────────────────────────
 	r.Register("GITCHAT_MAX_FILE_BYTES", "4096", "Per @-file injection cap (bytes)", "chat")
@@ -37,6 +39,7 @@ func RegisterDefaults(r *Registry) {
 	r.Register("GITCHAT_DEFAULT_SESSION_LIMIT", "100", "Default number of sessions returned by list", "session")
 
 	// ── llm ──────────────────────────────────────────────────────
+	r.Register("GITCHAT_VISION_MODELS", "", "Comma-separated model substrings to force-enable image input (e.g. 'gpt-4o,llava')", "llm")
 	r.Register("LLM_BACKEND", "openai", "LLM backend: 'openai' or 'anthropic'", "llm")
 	r.RegisterRestricted("LLM_BASE_URL", "http://localhost:1234/v1", "OpenAI-compatible base URL (ignored for anthropic)", "llm")
 	r.Register("LLM_MODEL", "", "Model name (empty = backend default)", "llm")

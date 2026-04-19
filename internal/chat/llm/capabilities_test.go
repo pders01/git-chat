@@ -47,13 +47,14 @@ func TestOpenAINameHeuristic(t *testing.T) {
 	}
 }
 
-func TestOpenAIEnvOverride(t *testing.T) {
-	t.Setenv("GITCHAT_VISION_MODELS", "my-cool-model,another-one")
-	if !matchesEnvAllowlist("local/my-cool-model-v2") {
-		t.Error("expected env allowlist substring match")
+func TestOpenAIVisionAllowlist(t *testing.T) {
+	o := &OpenAI{}
+	o.SetVisionAllowlist("my-cool-model,another-one")
+	if !o.matchesVisionAllowlist("local/my-cool-model-v2") {
+		t.Error("expected allowlist substring match")
 	}
-	if matchesEnvAllowlist("unrelated") {
-		t.Error("unexpected env match for unrelated model")
+	if o.matchesVisionAllowlist("unrelated") {
+		t.Error("unexpected allowlist match for unrelated model")
 	}
 }
 

@@ -42,41 +42,46 @@ func TestNameLooksVisionCapable(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// matchesEnvAllowlist
+// SetVisionAllowlist / matchesVisionAllowlist
 // ---------------------------------------------------------------------------
 
-func TestMatchesEnvAllowlist(t *testing.T) {
-	t.Run("unset env returns false", func(t *testing.T) {
-		t.Setenv("GITCHAT_VISION_MODELS", "")
-		if matchesEnvAllowlist("anything") {
-			t.Error("expected false when env is empty")
+func TestVisionAllowlist(t *testing.T) {
+	t.Run("empty allowlist returns false", func(t *testing.T) {
+		o := &OpenAI{}
+		o.SetVisionAllowlist("")
+		if o.matchesVisionAllowlist("anything") {
+			t.Error("expected false on empty allowlist")
 		}
 	})
 
 	t.Run("substring match", func(t *testing.T) {
-		t.Setenv("GITCHAT_VISION_MODELS", "llava,custom-vision")
-		if !matchesEnvAllowlist("custom-vision-7b") {
+		o := &OpenAI{}
+		o.SetVisionAllowlist("llava,custom-vision")
+		if !o.matchesVisionAllowlist("custom-vision-7b") {
 			t.Error("expected true for substring match custom-vision in custom-vision-7b")
 		}
 	})
 
 	t.Run("no match", func(t *testing.T) {
-		t.Setenv("GITCHAT_VISION_MODELS", "llava")
-		if matchesEnvAllowlist("mistral") {
+		o := &OpenAI{}
+		o.SetVisionAllowlist("llava")
+		if o.matchesVisionAllowlist("mistral") {
 			t.Error("expected false for non-matching model")
 		}
 	})
 
-	t.Run("case insensitive", func(t *testing.T) {
-		t.Setenv("GITCHAT_VISION_MODELS", "LLAVA")
-		if !matchesEnvAllowlist("llava-7b") {
+	t.Run("case insensitive allowlist", func(t *testing.T) {
+		o := &OpenAI{}
+		o.SetVisionAllowlist("LLAVA")
+		if !o.matchesVisionAllowlist("llava-7b") {
 			t.Error("expected case-insensitive match")
 		}
 	})
 
 	t.Run("case insensitive model", func(t *testing.T) {
-		t.Setenv("GITCHAT_VISION_MODELS", "llava")
-		if !matchesEnvAllowlist("LLAVA-13B") {
+		o := &OpenAI{}
+		o.SetVisionAllowlist("llava")
+		if !o.matchesVisionAllowlist("LLAVA-13B") {
 			t.Error("expected case-insensitive match on model side")
 		}
 	})

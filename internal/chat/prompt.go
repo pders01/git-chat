@@ -104,11 +104,11 @@ func (s *Service) buildPrompt(
 	// servers hash-match a stable prefix automatically.
 	var stable strings.Builder
 	stable.WriteString(s.baseSystemPromptStable(repoEntry))
-	if tree := s.baselineTree(repoEntry); tree != "" {
+	if tree := s.baselineTree(ctx, repoEntry); tree != "" {
 		stable.WriteString("\n\n## Repository layout (2 levels)\n\n")
 		stable.WriteString(tree)
 	}
-	if overview, label := s.overviewDoc(repoEntry); overview != "" {
+	if overview, label := s.overviewDoc(ctx, repoEntry); overview != "" {
 		fmt.Fprintf(&stable, "\n\n## Project overview (from `%s`)\n\n```\n%s\n```", label, overview)
 	}
 	// Append per-profile custom system prompt if configured.
@@ -355,10 +355,7 @@ Here is the most recent commit:
 //	docs/ (files: ARCHITECTURE.md)
 //	internal/ (dirs: auth/, chat/, repo/, rpc/, storage/; files: assets/)
 //	web/ (dirs: src/; files: index.html, package.json, tsconfig.json, vite.config.ts)
-func (s *Service) baselineTree(r *repo.Entry) string {
-	// No ctx in callers (baseSystemPromptStable); the Registry's DB
-	// lookup is timeout-guarded so Background is safe.
-	ctx := context.Background()
+func (s *Service) baselineTree(ctx context.Context, r *repo.Entry) string {
 	maxLines := s.cfgInt(ctx, "GITCHAT_MAX_TREE_LINES", defaultMaxTreeLines)
 	maxBytes := s.cfgInt(ctx, "GITCHAT_MAX_TREE_BYTES", defaultMaxTreeBytes)
 	rootEntries, _, err := r.ListTree("", "")
@@ -429,8 +426,8 @@ func formatTreeLine(label string, entries []*gitchatv1.TreeEntry) string {
 // overviewDoc looks for the first file on overviewFiles that exists and
 // returns its (possibly truncated) content plus the path we found it at.
 // Returns empty strings if nothing matches.
-func (s *Service) overviewDoc(r *repo.Entry) (content, label string) {
-	maxBytes := s.cfgInt64(context.Background(), "GITCHAT_MAX_BASELINE_BYTES", defaultMaxBaselineContextBytes)
+func (s *Service) overviewDoc(ctx context.Context, r *repo.Entry) (content, label string) {
+	maxBytes := s.cfgInt64(ctx, "GITCHAT_MAX_BASELINE_BYTES", defaultMaxBaselineContextBytes)
 	for _, candidate := range overviewFiles {
 		resp, err := r.GetFile("", candidate, maxBytes)
 		if err != nil || resp.IsBinary || len(resp.Content) == 0 {
