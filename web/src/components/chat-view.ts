@@ -1168,7 +1168,7 @@ export class GcChatView extends LitElement {
             : html`<gc-message-list
                 .turns=${this.turns}
                 .sending=${this.sending}
-                ?unfocused=${this.focusMode !== "off"}
+                ?unfocused=${this.focusMode === "focus"}
                 @gc:retry=${this.onMessageRetry}
                 @gc:regenerate=${this.onMessageRegenerate}
                 @gc:edit-turn=${this.onMessageEdit}
@@ -1190,7 +1190,7 @@ export class GcChatView extends LitElement {
             .repoId=${this.repoId}
             .sending=${this.sending}
             .errorMsg=${this.error}
-            ?unfocused=${this.focusMode !== "off"}
+            ?unfocused=${this.focusMode === "focus"}
             @gc:send=${this.onComposerSend}
             @gc:stop=${this.onComposerStop}
             @gc:error=${this.onComposerError}
