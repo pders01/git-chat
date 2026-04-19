@@ -1,17 +1,10 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { repoClient } from "../lib/transport.js";
 import type { StatusFile } from "../gen/gitchat/v1/repo_pb.js";
-import { onChange as onSettingsChange } from "../lib/settings.js";
 import { statusLabel, fileName } from "../lib/diff-types.js";
 import "./loading-indicator.js";
-
-let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
-function loadHighlight() {
-  if (!highlightModule) highlightModule = import("../lib/highlight.js");
-  return highlightModule;
-}
+import "./diff-pane.js";
 
 @customElement("gc-changes-view")
 export class GcChangesView extends LitElement {
@@ -21,34 +14,20 @@ export class GcChangesView extends LitElement {
   @state() private unstaged: StatusFile[] = [];
   @state() private untracked: StatusFile[] = [];
   @state() private selectedFile = "";
-  @state() private diffHtml = "";
+  // rawDiff is @state so toggling files reactively reflows the pane.
+  // The actual unified-diff text comes from GetWorkingTreeDiff and is
+  // handed to <gc-diff-pane> which owns highlighting + split rendering.
+  @state() private rawDiff = "";
   @state() private diffLoading = false;
   @state() private diffError = "";
   @state() private statusLoading = true;
   @state() private statusError = "";
+  @state() private splitView = false;
   private loadGeneration = 0;
-  private rawDiff = "";
-  private unsubSettings: (() => void) | null = null;
 
   override connectedCallback() {
     super.connectedCallback();
-    this.unsubSettings = onSettingsChange(() => void this.rehighlight());
     if (this.repoId) void this.loadStatus();
-  }
-
-  override disconnectedCallback() {
-    super.disconnectedCallback();
-    this.unsubSettings?.();
-    this.unsubSettings = null;
-  }
-
-  private async rehighlight() {
-    const raw = this.rawDiff;
-    if (!raw) return;
-    const { highlight } = await loadHighlight();
-    const highlighted = await highlight(raw, "diff");
-    if (this.rawDiff !== raw) return; // navigated away during highlight
-    this.diffHtml = highlighted;
   }
 
   override updated(changed: Map<string, unknown>) {
@@ -65,7 +44,7 @@ export class GcChangesView extends LitElement {
     this.unstaged = [];
     this.untracked = [];
     this.selectedFile = "";
-    this.diffHtml = "";
+    this.rawDiff = "";
     this.diffError = "";
 
     try {
@@ -86,7 +65,7 @@ export class GcChangesView extends LitElement {
     if (this.selectedFile === path) return;
     this.selectedFile = path;
     this.diffError = "";
-    this.diffHtml = "";
+    this.rawDiff = "";
     this.diffLoading = true;
 
     const gen = this.loadGeneration;
@@ -97,16 +76,7 @@ export class GcChangesView extends LitElement {
         path,
       });
       if (gen !== this.loadGeneration || this.selectedFile !== path) return;
-      if (resp.empty) {
-        this.diffHtml = "";
-        this.rawDiff = "";
-      } else {
-        const { highlight } = await loadHighlight();
-        const highlighted = await highlight(resp.unifiedDiff, "diff");
-        if (gen !== this.loadGeneration || this.selectedFile !== path) return;
-        this.diffHtml = highlighted;
-        this.rawDiff = resp.unifiedDiff;
-      }
+      this.rawDiff = resp.empty ? "" : resp.unifiedDiff;
     } catch (e) {
       if (gen !== this.loadGeneration || this.selectedFile !== path) return;
       this.diffError = e instanceof Error ? e.message : String(e);
@@ -186,23 +156,37 @@ export class GcChangesView extends LitElement {
           </ul>
         </aside>
 
-        <section class="diff-pane">
+        <section class="diff-shell">
           <div class="diff-header">
             ${this.selectedFile
               ? html`<span class="diff-filepath">${this.selectedFile}</span>`
               : html`<span class="diff-label">diff</span>`}
             <span class="diff-spacer"></span>
+            ${this.selectedFile && this.rawDiff
+              ? html`<button
+                  class="split-toggle ${this.splitView ? "active" : ""}"
+                  @click=${() => (this.splitView = !this.splitView)}
+                  title="Toggle side-by-side view"
+                  aria-pressed=${this.splitView ? "true" : "false"}
+                >
+                  ${this.splitView ? "unified" : "split"}
+                </button>`
+              : nothing}
             <button class="refresh-btn" @click=${() => this.loadStatus()} title="Refresh status">
               ↻
             </button>
           </div>
           <div class="diff-body">
             ${this.diffLoading
-              ? html` <gc-loading-banner heading="loading diff…"></gc-loading-banner> `
+              ? html`<gc-loading-banner heading="loading diff…"></gc-loading-banner>`
               : this.diffError
                 ? html`<p class="diff-err">${this.diffError}</p>`
-                : this.diffHtml
-                  ? html`<div class="diff-content">${unsafeHTML(this.diffHtml)}</div>`
+                : this.selectedFile && this.rawDiff
+                  ? html`<gc-diff-pane
+                      .rawDiff=${this.rawDiff}
+                      .path=${this.selectedFile}
+                      ?splitView=${this.splitView}
+                    ></gc-diff-pane>`
                   : html`<div class="diff-empty">
                       ${this.selectedFile ? "no changes" : "select a file to view its diff"}
                     </div>`}
@@ -348,7 +332,7 @@ export class GcChangesView extends LitElement {
       white-space: nowrap;
     }
 
-    .diff-pane {
+    .diff-shell {
       display: flex;
       flex-direction: column;
       min-height: 0;
@@ -381,6 +365,24 @@ export class GcChangesView extends LitElement {
     }
     .diff-spacer {
       flex: 1;
+    }
+    .split-toggle {
+      padding: var(--space-1) var(--space-2);
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      opacity: 0.7;
+      line-height: 1;
+    }
+    .split-toggle:hover {
+      opacity: 1;
+    }
+    .split-toggle.active {
+      background: var(--surface-3);
+      opacity: 1;
     }
     .refresh-btn {
       padding: var(--space-1);
@@ -423,17 +425,10 @@ export class GcChangesView extends LitElement {
       font-size: var(--text-sm);
       font-style: italic;
     }
-    .diff-content {
-      font-size: var(--text-xs);
-      line-height: 1.55;
-      overflow-x: auto;
-    }
-    .diff-content pre {
-      margin: 0;
-      padding: var(--space-3) var(--space-5);
-    }
-    .diff-content .shiki {
-      background: transparent !important;
+    gc-diff-pane {
+      display: flex;
+      flex: 1;
+      min-height: 0;
     }
 
     @media (prefers-reduced-motion: reduce) {

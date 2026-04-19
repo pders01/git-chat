@@ -53,6 +53,16 @@ export class GcDiffPane extends LitElement {
   // When true, the pane's second getDiff (after initial fast list)
   // enables rename detection and re-fires gc:diff-files-loaded.
   @property({ type: Boolean }) detectRenames = false;
+  // Pre-fetched unified diff to render directly. When non-empty the
+  // pane skips its own GetDiff RPC and goes straight to highlight +
+  // word-diff + render. Exists so consumers whose diffs come from a
+  // different RPC (changes-view → GetWorkingTreeDiff) or from no RPC
+  // at all (paste-a-patch, KB previews) can reuse the rendering path
+  // without the pane having to know about every diff source. While
+  // rawDiff is active, repoId / fromRef / toRef are ignored and 3-pane
+  // mode is unavailable (it would need before/after file contents the
+  // pane isn't fetching).
+  @property({ type: String }) rawDiff = "";
 
   @state() private diff: DiffPaneState = { phase: "empty" };
   @state() private sideFiles: SideFilesState = { phase: "idle" };
@@ -70,7 +80,11 @@ export class GcDiffPane extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
     this.unsubSettings = onSettingsChange(() => void this.rehighlight());
-    this.maybeReload();
+    if (this.rawDiff) {
+      void this.loadFromRaw();
+    } else {
+      this.maybeReload();
+    }
   }
 
   override disconnectedCallback() {
@@ -82,6 +96,14 @@ export class GcDiffPane extends LitElement {
   }
 
   override updated(changed: Map<string, unknown>) {
+    // rawDiff takes precedence — when a consumer supplies a
+    // pre-fetched diff, the pane becomes a pure renderer and stops
+    // consulting refs / path entirely.
+    if (changed.has("rawDiff")) {
+      void this.loadFromRaw();
+      return;
+    }
+    if (this.rawDiff) return; // stay in raw-diff mode as long as prop holds
     if (changed.has("repoId") || changed.has("fromRef") || changed.has("toRef")) {
       this.maybeReload();
     } else if (changed.has("path")) {
@@ -92,6 +114,36 @@ export class GcDiffPane extends LitElement {
     }
     if (changed.has("detectRenames") && this.detectRenames) {
       void this.detectRenamesBackground();
+    }
+  }
+
+  /** Render a consumer-supplied unified diff. No RPC, no whole-commit
+   * fallback: we highlight and render what we got. Empty input
+   * resolves to the empty state so the caller can clear the pane by
+   * setting rawDiff back to "". */
+  private async loadFromRaw() {
+    const gen = ++this.generation;
+    this.fullDiff = null;
+    this.sideFiles = { phase: "idle" };
+    if (!this.rawDiff) {
+      this.diff = { phase: "empty" };
+      return;
+    }
+    this.diff = { phase: "loading" };
+    try {
+      const { highlight } = await loadHighlight();
+      let highlighted = await highlight(this.rawDiff, "diff");
+      if (gen !== this.generation) return;
+      highlighted = highlightWordDiffs(highlighted);
+      this.diff = {
+        phase: "ready",
+        rawDiff: this.rawDiff,
+        diffHtml: highlighted,
+        parentSha: "",
+      };
+    } catch (e) {
+      if (gen !== this.generation) return;
+      this.diff = { phase: "error", message: e instanceof Error ? e.message : String(e) };
     }
   }
 
