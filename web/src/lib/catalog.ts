@@ -41,3 +41,99 @@ export function providerSources(c: CatalogProvider): string[] {
   }
   return out;
 }
+
+/**
+ * Context needed to decide whether a catalog provider can actually be
+ * called with the current git-chat config. Pure data — no RPC calls —
+ * so isProviderAvailable() is testable in isolation.
+ */
+export interface AvailabilityContext {
+  /** URLs of detected local endpoints (LM Studio, Ollama, …). Callable
+   * without an API key. */
+  localUrls: readonly string[];
+  /** Base URLs from saved profiles. Each profile carries its own key
+   * by construction, so matching a profile's URL = callable. */
+  profileBaseUrls: readonly string[];
+  /** Backends used by saved profiles (e.g. "openai", "anthropic").
+   * Anthropic-type providers unlock when any anthropic profile exists
+   * since the protocol URL is hardcoded in the backend. */
+  profileBackends: readonly string[];
+  /** Current LLM_BASE_URL config value. Empty string if unset. */
+  configBaseUrl: string;
+  /** Current LLM_BACKEND config value. Usually "openai" or "anthropic". */
+  configBackend: string;
+  /** Whether LLM_API_KEY is set (non-empty, even if masked as ••••••••). */
+  configHasKey: boolean;
+}
+
+/**
+ * Decide if a catalog provider is callable right now. The answer is
+ * binary — no "maybe, if you configure a key" fuzziness. Pickers use
+ * this to hide providers the user can't reach, so picking never puts
+ * the config into a state that 404s or (worse) sends the wrong key.
+ *
+ * Rules:
+ *   - Local URLs are always callable — no auth.
+ *   - A saved profile's base URL is callable — profile has its own key.
+ *   - LLM_BASE_URL is callable iff LLM_API_KEY is set, OR the URL is
+ *     localhost (local dev endpoints need no key).
+ *   - Anthropic-type providers match differently: the Anthropic
+ *     protocol hardcodes the URL, so they unlock when any configured
+ *     route uses the anthropic backend + has a key.
+ */
+export function isProviderAvailable(
+  provider: CatalogProvider,
+  ctx: AvailabilityContext,
+): boolean {
+  if (provider.type === "anthropic") {
+    if (ctx.profileBackends.includes("anthropic")) return true;
+    if (ctx.configBackend === "anthropic" && ctx.configHasKey) return true;
+    return false;
+  }
+
+  // OpenAI-compatible: need a route whose base URL lines up with this
+  // provider's defaultBaseUrl.
+  const providerURL = provider.defaultBaseUrl;
+  if (!providerURL) return false;
+
+  if (ctx.localUrls.some((u) => urlsMatch(u, providerURL))) return true;
+  if (ctx.profileBaseUrls.some((u) => urlsMatch(u, providerURL))) return true;
+
+  if (ctx.configBaseUrl && urlsMatch(ctx.configBaseUrl, providerURL)) {
+    const isLocal = isLocalhostURL(ctx.configBaseUrl);
+    return isLocal || ctx.configHasKey;
+  }
+  return false;
+}
+
+function urlsMatch(a: string, b: string): boolean {
+  const A = normalizeURL(a);
+  const B = normalizeURL(b);
+  return A === B || A.startsWith(B) || B.startsWith(A);
+}
+
+function normalizeURL(u: string): string {
+  return u.replace(/\/+$/, "").toLowerCase();
+}
+
+/** True if the URL points at the loopback interface. Local endpoints
+ * need no API key, so they're exempt from key-leak warnings. */
+export function isLocalhostURL(u: string): boolean {
+  return (
+    u.startsWith("http://localhost") ||
+    u.startsWith("http://127.") ||
+    u.startsWith("http://[::1]")
+  );
+}
+
+/** Extract hostname (without port) from a URL. Returns "" for blank
+ * input or malformed strings — callers should treat empty as "unknown"
+ * rather than "same as other empty". */
+export function hostOf(u: string): string {
+  if (!u) return "";
+  try {
+    return new URL(u).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}

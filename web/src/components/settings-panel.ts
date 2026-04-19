@@ -8,7 +8,14 @@ import type {
   LocalEndpoint,
 } from "../gen/gitchat/v1/repo_pb.js";
 import * as settings from "../lib/settings.js";
-import { formatSources, providerSources } from "../lib/catalog.js";
+import {
+  formatSources,
+  providerSources,
+  isProviderAvailable,
+  isLocalhostURL,
+  hostOf,
+  type AvailabilityContext,
+} from "../lib/catalog.js";
 import "./combobox.js";
 import "./connection-wizard.js";
 import "./loading-indicator.js";
@@ -172,6 +179,10 @@ export class GcSettingsPanel extends LitElement {
   }
 
   private updateConfigEntry(key: string, value: string) {
+    // Capture prior value BEFORE the optimistic mutation below so we
+    // can detect provider-identity changes and warn about stale keys.
+    const priorValue = this.configEntries.find((e) => e.key === key)?.value ?? "";
+
     this.configEntries = this.configEntries.map((e) => (e.key === key ? { ...e, value } : e));
     const existing = this.configDebounceTimers.get(key);
     if (existing) clearTimeout(existing);
@@ -193,6 +204,41 @@ export class GcSettingsPanel extends LitElement {
     if (key === "LLM_BASE_URL" || key === "LLM_API_KEY") {
       this.scheduleModelDiscovery();
     }
+    // Key-leak guard: if the user pivoted LLM_BASE_URL to a different
+    // provider while LLM_API_KEY is still set, the old provider's key
+    // will fly to the new endpoint on the next turn. Warn loudly —
+    // "unexpected money leaks" is the specific failure mode we're
+    // trying to eliminate in this section.
+    this.maybeWarnKeyReuse(key, priorValue, value);
+  }
+
+  private maybeWarnKeyReuse(key: string, priorValue: string, newValue: string) {
+    if (key !== "LLM_BASE_URL") return;
+    if (priorValue === newValue) return;
+    // Only fire on a *real* provider identity change. If the user is
+    // still typing (short prefix) or simply fixing a typo, don't nag.
+    const priorHost = hostOf(priorValue);
+    const newHost = hostOf(newValue);
+    if (priorHost && priorHost === newHost) return;
+
+    const apiKey = this.configEntries.find((e) => e.key === "LLM_API_KEY")?.value ?? "";
+    if (!apiKey) return;
+
+    // Local endpoints don't use the key — no leak risk, skip the warn.
+    if (isLocalhostURL(newValue)) return;
+
+    this.dispatchEvent(
+      new CustomEvent("gc:toast", {
+        bubbles: true,
+        composed: true,
+        detail: {
+          kind: "warn",
+          message:
+            "LLM_BASE_URL changed but LLM_API_KEY is still set. " +
+            "If the new provider differs, update or clear the key before sending.",
+        },
+      }),
+    );
   }
 
   private scheduleModelDiscovery() {
@@ -280,6 +326,23 @@ export class GcSettingsPanel extends LitElement {
       return "no models found at this base URL — type a model ID manually";
     }
     return "type a model ID or fetch the catalog";
+  }
+
+  /** Snapshot of what the user can currently call. Used by the model
+   * fallback combobox so we don't surface providers the user has no
+   * route to. State is already loaded on panel open, so this is a
+   * pure read over component fields. */
+  private availabilityContext(): AvailabilityContext {
+    const readConfig = (key: string) =>
+      this.configEntries.find((e) => e.key === key)?.value ?? "";
+    return {
+      localUrls: this.localEndpoints.map((ep) => ep.url).filter(Boolean),
+      profileBaseUrls: this.profiles.map((p) => p.baseUrl).filter(Boolean),
+      profileBackends: this.profiles.map((p) => p.backend).filter(Boolean),
+      configBaseUrl: readConfig("LLM_BASE_URL"),
+      configBackend: readConfig("LLM_BACKEND") || "openai",
+      configHasKey: !!readConfig("LLM_API_KEY"),
+    };
   }
 
   /** Build combobox suggestions for a config key from catalog + local discovery. */
@@ -374,8 +437,13 @@ export class GcSettingsPanel extends LitElement {
         // show misleading models from other providers.
         return [];
       }
+      // Fallback: no base URL configured. Show models from catalog
+      // providers that are *callable* (have a key configured or are
+      // local). This avoids listing, say, Claude models when the user
+      // has no Anthropic key — picking one would just break.
+      const availCtx = this.availabilityContext();
       return this.catalog
-        .filter((c) => c.type === backend)
+        .filter((c) => c.type === backend && isProviderAvailable(c, availCtx))
         .flatMap((c) =>
           (c.models ?? []).map((m) => ({
             value: m.id,

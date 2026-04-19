@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { chatClient, repoClient } from "../lib/transport.js";
 import { readFocus, writeFocus } from "../lib/focus.js";
+import { isProviderAvailable } from "../lib/catalog.js";
 import {
   type Turn,
   type ClientAttachment,
@@ -579,6 +580,17 @@ export class GcChatView extends LitElement {
           this.toast("warn", "usage: /model <model-id>");
           return;
         }
+        // Validate before committing. Setting LLM_MODEL to an ID that
+        // isn't callable on the current backend leaves the config in
+        // a broken state where every subsequent turn 404s — or worse,
+        // accidentally sends a request under a misconfigured route.
+        // `/profile` already validates (line below) via listProfiles;
+        // `/model` needs to check catalog + local + routing context.
+        const availability = await this.checkModelAvailability(modelId);
+        if (!availability.ok) {
+          this.toast("warn", availability.reason);
+          return;
+        }
         await repoClient.updateConfig({ key: "LLM_MODEL", value: modelId });
         this.toast("success", `model set to ${modelId}`);
       } else if (command === "profile") {
@@ -610,6 +622,76 @@ export class GcChatView extends LitElement {
     this.dispatchEvent(
       new CustomEvent("gc:toast", { bubbles: true, composed: true, detail: { kind, message } }),
     );
+  }
+
+  /** Verify that a model ID is callable under the current config.
+   * Returns {ok:true} if the ID matches either a local endpoint's
+   * advertised model list or a model on a catalog provider whose
+   * route (base URL or anthropic backend) is actually configured.
+   * The message on failure is actionable — tells the user what's
+   * wrong and how to fix it, not just "invalid". */
+  private async checkModelAvailability(
+    modelId: string,
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    try {
+      const [catResp, localResp, profilesResp, configResp] = await Promise.all([
+        repoClient.getProviderCatalog({}).catch(() => null),
+        repoClient.discoverLocalEndpoints({}).catch(() => null),
+        repoClient.listProfiles({}).catch(() => null),
+        repoClient.getConfig({}).catch(() => null),
+      ]);
+
+      // Any local endpoint advertising this model id → always ok
+      // (local providers need no auth).
+      for (const ep of localResp?.endpoints ?? []) {
+        if ((ep.models ?? []).includes(modelId)) return { ok: true };
+      }
+
+      const readConfig = (key: string) =>
+        (configResp?.entries ?? []).find((e) => e.key === key)?.value ?? "";
+      const ctx = {
+        localUrls: (localResp?.endpoints ?? [])
+          .map((ep) => ep.url ?? "")
+          .filter(Boolean),
+        profileBaseUrls: (profilesResp?.profiles ?? [])
+          .map((p) => p.baseUrl ?? "")
+          .filter(Boolean),
+        profileBackends: (profilesResp?.profiles ?? [])
+          .map((p) => p.backend ?? "")
+          .filter(Boolean),
+        configBaseUrl: readConfig("LLM_BASE_URL"),
+        configBackend: readConfig("LLM_BACKEND") || "openai",
+        configHasKey: !!readConfig("LLM_API_KEY"),
+      };
+
+      // Find the catalog provider(s) advertising this model id.
+      const providers = (catResp?.providers ?? []).filter((prov) =>
+        (prov.models ?? []).some((m) => m.id === modelId),
+      );
+      if (providers.length === 0) {
+        return {
+          ok: false,
+          reason: `"${modelId}" isn't in the catalog — refresh catalog in settings, or type the model ID exactly`,
+        };
+      }
+      const reachable = providers.filter((p) => isProviderAvailable(p, ctx));
+      if (reachable.length === 0) {
+        const names = providers.map((p) => p.name).join(", ");
+        return {
+          ok: false,
+          reason: `"${modelId}" needs a configured route for ${names}. Add an API key in settings or create a profile.`,
+        };
+      }
+      return { ok: true };
+    } catch (err) {
+      // On lookup failure, fail closed: better to reject and let the
+      // user retry than to commit a config the validator can't vouch
+      // for. The error message surfaces the cause.
+      return {
+        ok: false,
+        reason: `could not verify model availability: ${messageOf(err)}`,
+      };
+    }
   }
 
   private onMessageRetry = () => this.retryLast();

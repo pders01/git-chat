@@ -19,7 +19,11 @@ import {
   type SlashCommand,
   type ActionArgContext,
 } from "../../lib/slash.js";
-import { formatSources } from "../../lib/catalog.js";
+import {
+  formatSources,
+  isProviderAvailable,
+  type AvailabilityContext,
+} from "../../lib/catalog.js";
 
 // Rendered form of an action-arg suggestion. Shape mirrors ComboboxOption
 // but is local to the composer so slash.ts stays pure — lib/ has no DOM
@@ -172,10 +176,19 @@ export class GcComposer extends LitElement {
     if (trigger === "model") {
       if (this.modelSuggestionCache) return this.modelSuggestionCache;
       try {
-        const [catResp, localResp] = await Promise.all([
+        // Fetch catalog + local endpoints + profiles + current config
+        // in parallel so we can filter the catalog to *callable*
+        // providers. Without this filter, /model would surface Claude
+        // and GPT-4o even when the user has no Anthropic/OpenAI key —
+        // picking one just leaves the config in a broken state or,
+        // worse, sends a key meant for another provider.
+        const [catResp, localResp, profilesResp, configResp] = await Promise.all([
           repoClient.getProviderCatalog({}).catch(() => null),
           repoClient.discoverLocalEndpoints({}).catch(() => null),
+          repoClient.listProfiles({}).catch(() => null),
+          repoClient.getConfig({}).catch(() => null),
         ]);
+        const ctx = buildAvailabilityContext(localResp, profilesResp, configResp);
         const seen = new Set<string>();
         const out: ArgSuggestion[] = [];
         for (const ep of localResp?.endpoints ?? []) {
@@ -186,6 +199,7 @@ export class GcComposer extends LitElement {
           }
         }
         for (const prov of catResp?.providers ?? []) {
+          if (!isProviderAvailable(prov, ctx)) continue;
           for (const m of prov.models ?? []) {
             if (seen.has(m.id)) continue;
             seen.add(m.id);
@@ -1224,6 +1238,36 @@ export class GcComposer extends LitElement {
 function helpToastMessage(): string {
   const lines = SLASH_COMMANDS.map((c) => `${c.label} — ${c.hint}`);
   return "Slash commands:\n" + lines.join("\n");
+}
+
+// Derive an AvailabilityContext from the three RPC responses the
+// composer fetches. Pulled out of the main flow so the test suite and
+// future callers (profile picker, settings UI) can reuse the same
+// folding logic without re-reading shapes.
+function buildAvailabilityContext(
+  localResp: { endpoints?: Array<{ url?: string }> } | null,
+  profilesResp: { profiles?: Array<{ baseUrl?: string; backend?: string }> } | null,
+  configResp: { entries?: Array<{ key: string; value: string }> } | null,
+): AvailabilityContext {
+  const configEntries = configResp?.entries ?? [];
+  const readConfig = (key: string) =>
+    configEntries.find((e) => e.key === key)?.value ?? "";
+  return {
+    localUrls: (localResp?.endpoints ?? [])
+      .map((ep) => ep.url ?? "")
+      .filter(Boolean),
+    profileBaseUrls: (profilesResp?.profiles ?? [])
+      .map((p) => p.baseUrl ?? "")
+      .filter(Boolean),
+    profileBackends: (profilesResp?.profiles ?? [])
+      .map((p) => p.backend ?? "")
+      .filter(Boolean),
+    configBaseUrl: readConfig("LLM_BASE_URL"),
+    configBackend: readConfig("LLM_BACKEND") || "openai",
+    // API keys are returned masked ("••••••••") when set, empty when
+    // unset — checking truthiness is enough to tell them apart.
+    configHasKey: !!readConfig("LLM_API_KEY"),
+  };
 }
 
 declare global {
