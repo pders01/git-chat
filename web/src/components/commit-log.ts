@@ -11,7 +11,15 @@ import { statusLabel, fileName } from "../lib/diff-types.js";
 import { layoutGraph } from "../lib/commit-graph.js";
 import "./loading-indicator.js";
 import "./commit-log/commit-calendar.js";
-import { readFocus, type FocusMode } from "../lib/focus.js";
+import {
+  readFocus,
+  writeFocus,
+  cycleFocus,
+  focusGlyph,
+  focusButtonLabel,
+  focusNextLabel,
+  type FocusMode,
+} from "../lib/focus.js";
 
 type LogState =
   | { phase: "loading" }
@@ -132,6 +140,20 @@ export class GcCommitLog extends LitElement {
       this.commitFilterNavTimer = null;
     }
   }
+
+  private onToggleFocus = () => {
+    this.focusMode = cycleFocus(this.focusMode);
+    writeFocus(this.focusMode);
+    // Bubble up so gc-app can cascade the change to other views'
+    // next readFocus() via focusNonce.
+    this.dispatchEvent(
+      new CustomEvent("gc:focus-changed", {
+        bubbles: true,
+        composed: true,
+        detail: {},
+      }),
+    );
+  };
 
   private toggleDrawer() {
     this.drawerOpen = !this.drawerOpen;
@@ -739,6 +761,16 @@ export class GcCommitLog extends LitElement {
                 title="Toggle graph view"
               >
                 ⑂
+              </button>
+              <button
+                class="hd-btn ${this.focusMode !== "off" ? "active" : ""}"
+                @click=${this.onToggleFocus}
+                aria-label=${focusNextLabel(this.focusMode)}
+                aria-pressed=${this.focusMode !== "off" ? "true" : "false"}
+                title=${focusNextLabel(this.focusMode)}
+              >
+                ${focusGlyph(this.focusMode)}
+                <span class="focus-label">${focusButtonLabel(this.focusMode)}</span>
               </button>
             </div>
             ${this.filterPath

@@ -146,6 +146,11 @@ declare global {
     "gc:view-file-history": CustomEvent<ViewFileHistoryDetail>;
     "gc:explain-in-chat": CustomEvent<ExplainInChatDetail>;
     "gc:nav": CustomEvent<NavState>;
+    // Emitted by any component that cycles focus mode via its own
+    // button. Gc-app catches it to bump focusNonce so the change
+    // cascades to tabs not currently visible (they'll re-read focus
+    // from localStorage the next time they render).
+    "gc:focus-changed": CustomEvent<Record<string, never>>;
 
     // chat composer
     "gc:send": CustomEvent<SendDetail>;

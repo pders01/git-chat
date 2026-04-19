@@ -134,6 +134,15 @@ export class GcChatView extends LitElement {
   private toggleFocus = () => {
     this.focusMode = cycleFocus(this.focusMode);
     writeFocus(this.focusMode);
+    // See repo-browser.onToggleFocus — bubble up so gc-app bumps
+    // focusNonce and other tabs don't render with stale focusMode.
+    this.dispatchEvent(
+      new CustomEvent("gc:focus-changed", {
+        bubbles: true,
+        composed: true,
+        detail: {},
+      }),
+    );
   };
 
   override updated(changed: Map<string, unknown>) {

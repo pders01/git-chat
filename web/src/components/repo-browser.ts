@@ -106,6 +106,16 @@ export class GcRepoBrowser extends LitElement {
   private onToggleFocus = () => {
     this.focusMode = cycleFocus(this.focusMode);
     writeFocus(this.focusMode);
+    // Notify gc-app so it re-reads focus + bumps focusNonce, which
+    // propagates the change to other-tab components that would
+    // otherwise render with stale focusMode until their next mount.
+    this.dispatchEvent(
+      new CustomEvent("gc:focus-changed", {
+        bubbles: true,
+        composed: true,
+        detail: {},
+      }),
+    );
   };
 
   private toggleDrawer() {

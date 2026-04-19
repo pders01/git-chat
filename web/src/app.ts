@@ -125,6 +125,7 @@ export class GcApp extends LitElement {
     this.addEventListener("gc:open-file", this.onOpenFile);
     this.addEventListener("gc:view-file-history", this.onViewFileHistory);
     this.addEventListener("gc:explain-in-chat", this.onExplainInChat);
+    this.addEventListener("gc:focus-changed", this.onChildFocusChanged);
     await this.boot();
   }
 
@@ -139,6 +140,7 @@ export class GcApp extends LitElement {
     this.removeEventListener("gc:open-file", this.onOpenFile);
     this.removeEventListener("gc:view-file-history", this.onViewFileHistory);
     this.removeEventListener("gc:explain-in-chat", this.onExplainInChat);
+    this.removeEventListener("gc:focus-changed", this.onChildFocusChanged);
     if (this.searchTimer) clearTimeout(this.searchTimer);
   }
 
@@ -375,6 +377,16 @@ export class GcApp extends LitElement {
     this.focusMode = next;
     this.focusNonce++;
   }
+
+  // A child component (chat-view / repo-browser / commit-log) ran
+  // its own focus-cycle button. localStorage is already updated;
+  // sync this element's focusMode (for the shell's zen class +
+  // exit-zen button) and bump focusNonce so other-tab components
+  // re-read on their next update.
+  private onChildFocusChanged = () => {
+    this.focusMode = readFocus();
+    this.focusNonce++;
+  };
 
   // Jump directly to a specific focus mode (used by palette entries
   // so zen is one keystroke away without cycling through focus first).
