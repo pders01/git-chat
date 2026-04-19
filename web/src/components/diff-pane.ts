@@ -98,8 +98,14 @@ export class GcDiffPane extends LitElement {
   override updated(changed: Map<string, unknown>) {
     // rawDiff takes precedence — when a consumer supplies a
     // pre-fetched diff, the pane becomes a pure renderer and stops
-    // consulting refs / path entirely.
-    if (changed.has("rawDiff")) {
+    // consulting refs / path entirely. Guard against the first-render
+    // entry where Lit lists every declared property in `changed` (with
+    // previous value `undefined`): that would enter this branch with
+    // rawDiff still at its "" default and call loadFromRaw, which
+    // bumps `generation` and cancels the whole-commit fetch already
+    // kicked off by connectedCallback. Only act on real transitions
+    // in or out of raw-diff mode.
+    if (changed.has("rawDiff") && (changed.get("rawDiff") || this.rawDiff)) {
       void this.loadFromRaw();
       return;
     }
