@@ -8,6 +8,7 @@ import { repoClient } from "../lib/transport.js";
 import type { CommitEntry, ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
 import { copyText } from "../lib/clipboard.js";
 import { statusLabel, fileName } from "../lib/diff-types.js";
+import { layoutGraph } from "../lib/commit-graph.js";
 import "./loading-indicator.js";
 import "./commit-log/commit-calendar.js";
 import { readFocus } from "../lib/focus.js";
@@ -476,58 +477,14 @@ export class GcCommitLog extends LitElement {
   }
 
   private renderGraph(commits: CommitEntry[]) {
-    // Assign each commit to a lane. Simple algorithm:
-    // - First commit gets lane 0
-    // - If a commit's parent is in a different lane, draw a merge line
+    // Lane assignment is a pure function — see lib/commit-graph.ts for
+    // the algorithm + tests. Here we only render the SVG on top of it.
     const ROW_H = 32;
     const LANE_W = 16;
     const DOT_R = 4;
+    const { nodes, maxLane } = layoutGraph(commits);
     const shaToRow = new Map<string, number>();
-    const lanes: string[] = []; // lane[i] = SHA currently "active" in that lane
-
-    interface NodeInfo {
-      row: number;
-      lane: number;
-      parents: string[];
-    }
-    const nodes: NodeInfo[] = [];
-
-    for (let i = 0; i < commits.length; i++) {
-      const c = commits[i];
-      shaToRow.set(c.sha, i);
-
-      // Find lane: reuse lane where this commit was expected, or take a new one
-      let lane = lanes.indexOf(c.sha);
-      if (lane === -1) {
-        lane = lanes.indexOf("");
-        if (lane === -1) {
-          lane = lanes.length;
-          lanes.push("");
-        }
-      }
-
-      // Assign first parent to this lane (continues the line)
-      const parentShas = c.parentShas ?? [];
-      if (parentShas.length > 0) {
-        lanes[lane] = parentShas[0];
-      } else {
-        lanes[lane] = "";
-      }
-
-      // Additional parents get new lanes
-      for (let p = 1; p < parentShas.length; p++) {
-        const existing = lanes.indexOf(parentShas[p]);
-        if (existing === -1) {
-          const free = lanes.indexOf("");
-          if (free !== -1) lanes[free] = parentShas[p];
-          else lanes.push(parentShas[p]);
-        }
-      }
-
-      nodes.push({ row: i, lane, parents: parentShas });
-    }
-
-    const maxLane = Math.max(0, ...nodes.map((n) => n.lane));
+    for (let i = 0; i < commits.length; i++) shaToRow.set(commits[i].sha, i);
     const svgW = (maxLane + 1) * LANE_W + 8;
     const svgH = commits.length * ROW_H;
 

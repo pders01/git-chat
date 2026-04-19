@@ -11,7 +11,9 @@ import "./compare-view.js";
 import "./changes-view.js";
 import "./code-city.js";
 
-/** A node in the expandable file tree. */
+/** A node in the expandable file tree. Treated as immutable: every
+ * mutation produces a new tree via updateNodeByPath so Lit's change
+ * detection picks up the reassignment of this.state.roots. */
 interface TreeNode {
   name: string;
   fullPath: string;
@@ -19,6 +21,46 @@ interface TreeNode {
   children: TreeNode[] | null; // null = not loaded yet
   open: boolean;
   loading: boolean;
+}
+
+/** Produce a new tree with the node at `fullPath` patched. Siblings
+ * and unrelated subtrees reuse the existing references so Lit's
+ * shallow diff only re-renders what actually changed. Returns the
+ * same array reference if no match was found (caller can bail). */
+function updateNodeByPath(
+  roots: TreeNode[],
+  fullPath: string,
+  patch: Partial<TreeNode>,
+): TreeNode[] {
+  let touched = false;
+  const next = roots.map((n) => {
+    if (n.fullPath === fullPath) {
+      touched = true;
+      return { ...n, ...patch };
+    }
+    if (n.children) {
+      const newChildren = updateNodeByPath(n.children, fullPath, patch);
+      if (newChildren !== n.children) {
+        touched = true;
+        return { ...n, children: newChildren };
+      }
+    }
+    return n;
+  });
+  return touched ? next : roots;
+}
+
+/** Depth-first lookup of the node at `fullPath`. Returns undefined if
+ * the path isn't in the tree. */
+function findNode(roots: TreeNode[], fullPath: string): TreeNode | undefined {
+  for (const n of roots) {
+    if (n.fullPath === fullPath) return n;
+    if (n.children) {
+      const hit = findNode(n.children, fullPath);
+      if (hit) return hit;
+    }
+  }
+  return undefined;
 }
 
 type BrowserState =
@@ -168,7 +210,6 @@ export class GcRepoBrowser extends LitElement {
     const fromCodeCity = target?.tagName?.toLowerCase() === "gc-code-city";
     if (this.state.phase === "ready") {
       this.selectedFile = e.detail.path;
-      this.requestUpdate();
     } else {
       this.pendingFile = e.detail.path;
     }
@@ -291,30 +332,29 @@ export class GcRepoBrowser extends LitElement {
 
   private async toggleDir(node: TreeNode) {
     if (this.state.phase !== "ready") return;
+    const { repo } = this.state;
     if (node.open) {
-      node.open = false;
-      this.requestUpdate();
+      this.patchNode(node.fullPath, { open: false });
       return;
     }
     // Lazy-load children on first expand.
     if (node.children === null) {
-      node.loading = true;
-      this.requestUpdate();
+      this.patchNode(node.fullPath, { loading: true });
+      let children: TreeNode[];
       try {
-        node.children = await this.fetchChildren(this.state.repo.id, node.fullPath);
+        children = await this.fetchChildren(repo.id, node.fullPath);
       } catch {
-        node.children = [];
+        children = [];
       }
-      node.loading = false;
+      this.patchNode(node.fullPath, { children, loading: false, open: true });
+      return;
     }
-    node.open = true;
-    this.requestUpdate();
+    this.patchNode(node.fullPath, { open: true });
   }
 
   private selectFile(node: TreeNode) {
     this.selectedFile = node.fullPath;
     this._lastRestoredFile = node.fullPath;
-    this.requestUpdate();
     // Clear all view mode state — selecting a file returns to file view.
     this.emitNav({
       filePath: node.fullPath,
@@ -324,21 +364,40 @@ export class GcRepoBrowser extends LitElement {
     });
   }
 
-  /** Expand all ancestor directories for a given file path. */
+  /** Replace the node at `fullPath` with a patched copy. No-op (same
+   * state reference) if the path didn't match — updateNodeByPath
+   * returns the original array, so Lit doesn't re-render anything. */
+  private patchNode(fullPath: string, patch: Partial<TreeNode>) {
+    if (this.state.phase !== "ready") return;
+    const next = updateNodeByPath(this.state.roots, fullPath, patch);
+    if (next === this.state.roots) return;
+    this.state = { ...this.state, roots: next };
+  }
+
+  /** Expand all ancestor directories for a given file path. Fetches
+   * children synchronously if needed, then commits the whole walk as
+   * one immutable tree update so Lit diffs once. */
   private async revealPath(filePath: string) {
     if (this.state.phase !== "ready") return;
     const parts = filePath.split("/");
-    let nodes = this.state.roots;
+    const repoId = this.state.repo.id;
+    let roots = this.state.roots;
+    let nodes = roots;
     for (let i = 0; i < parts.length - 1; i++) {
       const dir = nodes.find((n) => n.name === parts[i] && n.type === EntryType.DIR);
       if (!dir) return;
-      if (dir.children === null) {
-        dir.children = await this.fetchChildren(this.state.repo.id, dir.fullPath);
+      let children = dir.children;
+      if (children === null) {
+        children = await this.fetchChildren(repoId, dir.fullPath);
       }
-      dir.open = true;
-      nodes = dir.children;
+      roots = updateNodeByPath(roots, dir.fullPath, { children, open: true });
+      // Descend through the *new* tree's children so subsequent patches
+      // stack cleanly (without this, we'd walk stale references).
+      const refreshed = findNode(roots, dir.fullPath);
+      nodes = refreshed?.children ?? children;
     }
-    this.requestUpdate();
+    if (this.state.phase !== "ready") return;
+    this.state = { ...this.state, roots };
   }
 
   override render() {
