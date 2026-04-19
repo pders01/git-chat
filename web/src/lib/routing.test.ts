@@ -58,6 +58,18 @@ describe("parseRoute", () => {
     expect(r.filterPath).toBe("internal");
   });
 
+  test("log with 3pane, graph, and commit filter", () => {
+    const r = parse("#/repo/log/abc?3pane=1&graph=1&q=refactor");
+    expect(r.threePane).toBe(true);
+    expect(r.graphMode).toBe(true);
+    expect(r.commitFilter).toBe("refactor");
+  });
+
+  test("blank commit filter is dropped", () => {
+    expect(parse("#/repo/log?q=").commitFilter).toBeUndefined();
+    expect(parse("#/repo/log?q=%20").commitFilter).toBeUndefined();
+  });
+
   test("kb with card ID", () => {
     const r = parse("#/repo/kb/card-42");
     expect(r.tab).toBe("kb");
@@ -135,6 +147,19 @@ describe("buildRoute", () => {
   test("branch carries on any tab", () => {
     expect(buildRoute({ repoId: "r", tab: "browse", branch: "dev" })).toBe("#/r/browse?branch=dev");
     expect(buildRoute({ repoId: "r", tab: "log", branch: "dev" })).toBe("#/r/log?branch=dev");
+  });
+
+  test("log 3pane/graph/commit-filter round-trip", () => {
+    const url = buildRoute({
+      repoId: "r",
+      tab: "log",
+      threePane: true,
+      graphMode: true,
+      commitFilter: "refactor",
+    });
+    expect(url).toContain("3pane=1");
+    expect(url).toContain("graph=1");
+    expect(url).toContain("q=refactor");
   });
 });
 

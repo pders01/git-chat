@@ -15,7 +15,10 @@
 //   ?compare=base..head  browse: compare mode
 //   ?file=path        log: selected file in commit diff
 //   ?split=1          log: split diff view
-//   ?filter=path      log: file history filter
+//   ?3pane=1          log: 3-pane diff view (requires split=0 and a file)
+//   ?filter=path      log: file history filter (path, not text)
+//   ?q=text           log: commit-list subject/author filter
+//   ?graph=1          log: commit graph (lane-based DAG) view
 //   ?view=calendar    log: calendar overview (absent = commits view)
 
 export type Tab = "chat" | "browse" | "log" | "kb";
@@ -45,7 +48,10 @@ export interface ParsedRoute {
   commitSha?: string;
   logFile?: string;
   splitView?: boolean;
+  threePane?: boolean;
   filterPath?: string;
+  commitFilter?: string;
+  graphMode?: boolean;
   logView?: LogView;
   // kb
   cardId?: string;
@@ -97,7 +103,13 @@ export function parseRoute(url: URL): ParsedRoute {
       if (cleanSub) route.commitSha = cleanSub;
       if (params.has("file")) route.logFile = params.get("file")!;
       if (params.get("split") === "1") route.splitView = true;
+      if (params.get("3pane") === "1") route.threePane = true;
       if (params.has("filter")) route.filterPath = params.get("filter")!;
+      if (params.has("q")) {
+        const q = params.get("q")!.trim();
+        if (q) route.commitFilter = q;
+      }
+      if (params.get("graph") === "1") route.graphMode = true;
       if (params.get("view") === "calendar") route.logView = "calendar";
       break;
     case "kb":
@@ -140,7 +152,10 @@ export function buildRoute(route: ParsedRoute): string {
   if (route.tab === "log") {
     if (route.logFile) params.set("file", route.logFile);
     if (route.splitView) params.set("split", "1");
+    if (route.threePane) params.set("3pane", "1");
     if (route.filterPath) params.set("filter", route.filterPath);
+    if (route.commitFilter) params.set("q", route.commitFilter);
+    if (route.graphMode) params.set("graph", "1");
     if (route.logView && route.logView !== "commits") params.set("view", route.logView);
   }
 
@@ -191,7 +206,10 @@ export function clearStaleState(route: ParsedRoute): ParsedRoute {
       clean.commitSha = route.commitSha;
       clean.logFile = route.logFile;
       clean.splitView = route.splitView;
+      clean.threePane = route.threePane;
       clean.filterPath = route.filterPath;
+      clean.commitFilter = route.commitFilter;
+      clean.graphMode = route.graphMode;
       clean.logView = route.logView;
       break;
     case "kb":

@@ -42,7 +42,10 @@ export class GcCommitLog extends LitElement {
   @property({ type: String }) initialCommitSha = "";
   @property({ type: String }) initialLogFile = "";
   @property({ type: Boolean }) initialSplitView = false;
+  @property({ type: Boolean }) initialThreePane = false;
   @property({ type: String }) initialLogView: "commits" | "calendar" = "commits";
+  @property({ type: Boolean }) initialGraphMode = false;
+  @property({ type: String }) initialCommitFilter = "";
   @property({ type: Number }) focusNonce = 0;
   @state() private state: LogState = { phase: "loading" };
   @state() private selectedSha = "";
@@ -97,6 +100,7 @@ export class GcCommitLog extends LitElement {
   @state() private wantRenameDetection = false;
   @property({ type: String }) filterPath = "";
   private pendingSha = "";
+  private commitFilterNavTimer: ReturnType<typeof setTimeout> | null = null;
 
   private onSelectCommit = ((e: CustomEvent<{ sha: string }>) => {
     if (this.state.phase === "ready") {
@@ -123,6 +127,10 @@ export class GcCommitLog extends LitElement {
     this.removeEventListener("gc:set-filter-path", this.onSetFilterPath);
     this.listObserver?.disconnect();
     this.listObserver = null;
+    if (this.commitFilterNavTimer !== null) {
+      clearTimeout(this.commitFilterNavTimer);
+      this.commitFilterNavTimer = null;
+    }
   }
 
   private toggleDrawer() {
@@ -214,6 +222,21 @@ export class GcCommitLog extends LitElement {
     }
     if (changed.has("initialSplitView")) {
       this.splitView = this.initialSplitView;
+    }
+    if (changed.has("initialThreePane")) {
+      this.threePane = this.initialThreePane;
+    }
+    if (changed.has("initialGraphMode")) {
+      this.graphMode = this.initialGraphMode;
+    }
+    // Only sync the commit-filter input from the URL when the value
+    // differs — avoids stomping the user's in-progress edits that
+    // haven't yet fired their 300ms nav debounce.
+    if (
+      changed.has("initialCommitFilter") &&
+      this.initialCommitFilter !== this.commitFilter
+    ) {
+      this.commitFilter = this.initialCommitFilter;
     }
     // URL drives viewMode: when the route changes (deep link, back
     // button, bridge from another view), sync the internal mode.
@@ -492,6 +515,17 @@ export class GcCommitLog extends LitElement {
     }
   };
 
+  // Commit filter updates the URL on trailing-edge debounce instead
+  // of per-keystroke — otherwise every character push_states a new
+  // history entry, polluting back-button and spamming the hash.
+  private scheduleCommitFilterNav() {
+    if (this.commitFilterNavTimer !== null) clearTimeout(this.commitFilterNavTimer);
+    this.commitFilterNavTimer = setTimeout(() => {
+      this.commitFilterNavTimer = null;
+      this.dispatchNav({ commitFilter: this.commitFilter || undefined });
+    }, 300);
+  }
+
   private dispatchNav(detail: Record<string, string | boolean | undefined>) {
     this.dispatchEvent(new CustomEvent("gc:nav", { bubbles: true, composed: true, detail }));
   }
@@ -669,6 +703,7 @@ export class GcCommitLog extends LitElement {
                 .value=${this.commitFilter}
                 @input=${(e: Event) => {
                   this.commitFilter = (e.target as HTMLInputElement).value;
+                  this.scheduleCommitFilterNav();
                 }}
                 aria-label="Filter commits by message or author"
               />
@@ -686,6 +721,7 @@ export class GcCommitLog extends LitElement {
                 class="hd-btn ${this.graphMode ? "active" : ""}"
                 @click=${() => {
                   this.graphMode = !this.graphMode;
+                  this.dispatchNav({ graphMode: this.graphMode || undefined });
                 }}
                 aria-label="Toggle graph view"
                 aria-pressed=${this.graphMode ? "true" : "false"}
@@ -910,7 +946,15 @@ export class GcCommitLog extends LitElement {
                             class="split-toggle ${this.splitView ? "active" : ""}"
                             @click=${() => {
                               this.splitView = !this.splitView;
-                              this.dispatchNav({ splitView: this.splitView });
+                              // split and 3-pane are mutually exclusive in
+                              // the diff pane's render (3-pane wins); make
+                              // the UI reflect that so the user doesn't
+                              // click split and see nothing change.
+                              if (this.splitView) this.threePane = false;
+                              this.dispatchNav({
+                                splitView: this.splitView || undefined,
+                                threePane: this.threePane || undefined,
+                              });
                             }}
                             aria-label="Toggle split diff view"
                             aria-pressed=${this.splitView ? "true" : "false"}
@@ -923,6 +967,11 @@ export class GcCommitLog extends LitElement {
                                 class="split-toggle ${this.threePane ? "active" : ""}"
                                 @click=${() => {
                                   this.threePane = !this.threePane;
+                                  if (this.threePane) this.splitView = false;
+                                  this.dispatchNav({
+                                    threePane: this.threePane || undefined,
+                                    splitView: this.splitView || undefined,
+                                  });
                                 }}
                                 aria-label="Toggle 3-pane diff view (before | diff | after)"
                                 aria-pressed=${this.threePane ? "true" : "false"}

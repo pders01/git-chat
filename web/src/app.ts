@@ -762,7 +762,10 @@ export class GcApp extends LitElement {
             .initialCommitSha=${this.currentRoute.commitSha ?? ""}
             .initialLogFile=${this.currentRoute.logFile ?? ""}
             .initialSplitView=${this.currentRoute.splitView ?? false}
+            .initialThreePane=${this.currentRoute.threePane ?? false}
             .initialLogView=${this.currentRoute.logView ?? "commits"}
+            .initialGraphMode=${this.currentRoute.graphMode ?? false}
+            .initialCommitFilter=${this.currentRoute.commitFilter ?? ""}
             .filterPath=${this.currentRoute.filterPath ?? ""}
             .focusNonce=${this.focusNonce}
             class="tab-panel"
