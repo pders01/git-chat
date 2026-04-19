@@ -11,7 +11,7 @@ import { statusLabel, fileName } from "../lib/diff-types.js";
 import { layoutGraph } from "../lib/commit-graph.js";
 import "./loading-indicator.js";
 import "./commit-log/commit-calendar.js";
-import { readFocus } from "../lib/focus.js";
+import { readFocus, type FocusMode } from "../lib/focus.js";
 
 type LogState =
   | { phase: "loading" }
@@ -47,7 +47,7 @@ export class GcCommitLog extends LitElement {
   @state() private state: LogState = { phase: "loading" };
   @state() private selectedSha = "";
   @state() private drawerOpen = false;
-  @state() private focused = readFocus();
+  @state() private focusMode: FocusMode = readFocus();
   @state() private graphMode = false;
   // "commits" shows the three-pane commit-list + info + diff layout.
   // "calendar" hands the whole pane to gc-commit-calendar for a
@@ -178,7 +178,7 @@ export class GcCommitLog extends LitElement {
       this.focusNonce !== this._lastFocusNonce
     ) {
       this._lastFocusNonce = this.focusNonce;
-      this.focused = readFocus();
+      this.focusMode = readFocus();
     }
     // Kick off the full-history fetch the first time the user
     // switches into calendar view. Cached until the invalidation
@@ -640,7 +640,7 @@ export class GcCommitLog extends LitElement {
             layout: true,
             "calendar-mode": this.viewMode === "calendar",
             "drawer-open": this.drawerOpen,
-            focused: this.focused,
+            focused: this.focusMode !== "off",
           })}
           @keydown=${(e: KeyboardEvent) => {
             if (e.key === "Escape" && this.drawerOpen) {
