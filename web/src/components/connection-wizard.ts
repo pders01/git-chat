@@ -2,7 +2,13 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { repoClient } from "../lib/transport.js";
-import type { CatalogProvider, LLMProfile, LocalEndpoint } from "../gen/gitchat/v1/repo_pb.js";
+import type {
+  CatalogModel,
+  CatalogProvider,
+  LLMProfile,
+  LocalEndpoint,
+} from "../gen/gitchat/v1/repo_pb.js";
+import { formatSources, providerSources } from "../lib/catalog.js";
 import "./combobox.js";
 import type { ComboboxOption } from "./combobox.js";
 
@@ -47,6 +53,11 @@ export class GcConnectionWizard extends LitElement {
   @state() private discoveredModels: string[] = [];
   @state() private discoverError = "";
   @state() private providerName = "";
+  // Richer model metadata from the catalog, used in preference to the
+  // bare discoveredModels when the user picks a catalog-known provider.
+  // Carries pricing/context/source data so the model step can render
+  // without a live /v1/models probe.
+  @state() private catalogModels: CatalogModel[] = [];
 
   override connectedCallback() {
     super.connectedCallback();
@@ -61,8 +72,19 @@ export class GcConnectionWizard extends LitElement {
       this.systemPrompt = this.profile.systemPrompt ?? "";
       // For editing, start at provider step but pre-fill.
       this.step = "provider";
+      // Seed the model dropdown from the catalog when the edited
+      // profile's base URL matches a known provider — same UX as the
+      // new-connection flow, no live probe required.
+      const prov = this.catalog.find(
+        (c) => c.defaultBaseUrl && this.baseUrl.startsWith(c.defaultBaseUrl),
+      );
+      if (prov?.models?.length) {
+        this.catalogModels = prov.models;
+        this.providerName = prov.name;
+      }
       // Pre-discover models so the model dropdown is populated without
-      // requiring the user to re-authenticate.
+      // requiring the user to re-authenticate. Live results supersede
+      // the catalog seed above if they return anything.
       if (this.baseUrl) {
         this.discoverModelsForEdit();
       }
@@ -83,6 +105,11 @@ export class GcConnectionWizard extends LitElement {
       if (!resp.error) {
         this.discoveredModels = resp.modelIds ?? [];
         if (resp.providerName) this.providerName = resp.providerName;
+        // Fresh live results override the catalog seed — same rule as
+        // testConnection, so edit and new-connection flows stay aligned.
+        if (this.discoveredModels.length > 0) {
+          this.catalogModels = [];
+        }
       }
     } catch {
       // Silent — editing can proceed without pre-populated models.
@@ -99,11 +126,16 @@ export class GcConnectionWizard extends LitElement {
     }));
     const cat: ComboboxOption[] = [...this.catalog]
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((c) => ({
-        value: c.id,
-        label: c.name,
-        description: `${c.type} · ${c.models?.length ?? 0} models`,
-      }));
+      .map((c) => {
+        const sourceTag = formatSources(providerSources(c));
+        return {
+          value: c.id,
+          label: c.name,
+          description: [c.type, `${c.models?.length ?? 0} models`, sourceTag]
+            .filter(Boolean)
+            .join(" · "),
+        };
+      });
     return [
       ...local,
       ...cat,
@@ -126,6 +158,25 @@ export class GcConnectionWizard extends LitElement {
   }
 
   private get modelOptions(): ComboboxOption[] {
+    // Prefer catalog entries when we have them — they carry source,
+    // context window, and pricing metadata that a bare /v1/models
+    // response can't. Live-discovered IDs are the fallback when the
+    // user picked a custom or local provider outside the catalog.
+    if (this.catalogModels.length > 0) {
+      return this.catalogModels.map((m) => {
+        const sourceTag = formatSources(m.sources);
+        const ctx = m.contextWindow
+          ? `${Math.round(Number(m.contextWindow) / 1000)}K`
+          : "";
+        return {
+          value: m.id,
+          label: m.name || m.id,
+          description: [this.providerName, ctx, sourceTag]
+            .filter(Boolean)
+            .join(" · "),
+        };
+      });
+    }
     return this.discoveredModels.map((id) => ({
       value: id,
       label: id,
@@ -136,6 +187,11 @@ export class GcConnectionWizard extends LitElement {
   // ── Actions ─────────────────────────────────────────────────
 
   private selectProvider(opt: ComboboxOption) {
+    // Reset catalog-derived state on every provider change so stale
+    // models from a previous selection don't leak into the model step.
+    this.catalogModels = [];
+    this.discoveredModels = [];
+
     if (opt.value.startsWith("local:")) {
       const url = opt.value.slice(6);
       this.backend = "openai";
@@ -154,6 +210,13 @@ export class GcConnectionWizard extends LitElement {
         this.baseUrl = prov.defaultBaseUrl ?? "";
         this.providerName = prov.name;
         this.model = prov.defaultModelId ?? "";
+        // Catalog already carries the model list — no /v1/models probe
+        // needed to populate the dropdown. The user can still advance
+        // through auth to validate their key; the model step renders
+        // from this immediately.
+        if (prov.models?.length) {
+          this.catalogModels = prov.models;
+        }
       } else {
         this.backend = opt.value;
         this.providerName = opt.label;
@@ -183,6 +246,9 @@ export class GcConnectionWizard extends LitElement {
         this.discoveredModels = resp.modelIds ?? [];
         if (resp.providerName) this.providerName = resp.providerName;
         if (this.discoveredModels.length > 0) {
+          // Live discovery succeeded — prefer it over the catalog snapshot,
+          // which may be stale (new models released since last refresh).
+          this.catalogModels = [];
           this.step = "model";
         }
       }
@@ -391,13 +457,27 @@ export class GcConnectionWizard extends LitElement {
               </label>
             `
           : nothing}
-        <button
-          class="btn primary"
-          ?disabled=${this.discovering}
-          @click=${() => this.testConnection()}
-        >
-          ${this.discovering ? "connecting…" : "test connection"}
-        </button>
+        <div class="auth-actions">
+          <button
+            class="btn primary"
+            ?disabled=${this.discovering}
+            @click=${() => this.testConnection()}
+          >
+            ${this.discovering ? "connecting…" : "test connection"}
+          </button>
+          ${this.catalogModels.length > 0
+            ? html`<button
+                class="btn secondary"
+                type="button"
+                @click=${() => {
+                  this.step = "model";
+                }}
+                title="Skip validation — pick from the ${this.catalogModels.length} catalog models"
+              >
+                use catalog models (${this.catalogModels.length})
+              </button>`
+            : nothing}
+        </div>
         ${this.discoverError ? html`<p class="error">${this.discoverError}</p>` : nothing}
         ${this.discoveredModels.length > 0
           ? html`<p class="success">
@@ -843,9 +923,17 @@ export class GcConnectionWizard extends LitElement {
       color: #fff;
       border-color: var(--accent-assistant);
     }
+    .btn.secondary {
+      background: transparent;
+    }
     .btn:disabled {
       opacity: 0.4;
       cursor: default;
+    }
+    .auth-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
     }
 
     /* Footer */

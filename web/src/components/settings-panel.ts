@@ -8,7 +8,7 @@ import type {
   LocalEndpoint,
 } from "../gen/gitchat/v1/repo_pb.js";
 import * as settings from "../lib/settings.js";
-import { formatSources } from "../lib/catalog.js";
+import { formatSources, providerSources } from "../lib/catalog.js";
 import "./combobox.js";
 import "./connection-wizard.js";
 import "./loading-indicator.js";
@@ -287,15 +287,36 @@ export class GcSettingsPanel extends LitElement {
     const s = (this.constructor as typeof GcSettingsPanel).STATIC_SUGGESTIONS[key];
     if (s) return s;
 
+    if (key === "LLM_ACTIVE_PROFILE") {
+      // Saved profiles are the only valid values — the config field
+      // otherwise accepts an opaque ID string the user would have to
+      // memorize. Listing them here makes the field self-documenting.
+      return this.profiles.map((p) => ({
+        value: p.id,
+        label: p.name || p.id,
+        description: [p.backend, p.model || "backend default"].filter(Boolean).join(" · "),
+      }));
+    }
+
     if (key === "LLM_BASE_URL") {
       const local: ComboboxOption[] = this.localEndpoints.map((ep) => ({
         value: ep.url,
         label: ep.name,
-        description: ep.models?.length ? `${ep.models.length} models` : "detected",
+        description: ep.models?.length ? `${ep.models.length} models · local` : "local",
       }));
       const catalog: ComboboxOption[] = this.catalog
         .filter((c) => c.defaultBaseUrl)
-        .map((c) => ({ value: c.defaultBaseUrl, label: c.name, description: c.type }));
+        .map((c) => ({
+          value: c.defaultBaseUrl,
+          label: c.name,
+          description: [
+            c.type,
+            c.models?.length ? `${c.models.length} models` : "",
+            formatSources(providerSources(c)),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        }));
       const seen = new Set<string>();
       return [...local, ...catalog].filter((o) => {
         if (seen.has(o.value)) return false;
