@@ -245,16 +245,26 @@ export class GcRepoBrowser extends LitElement {
       this._lastRestoredFile = "";
       void this.boot();
     }
-    if (
-      changed.has("initialFilePath") &&
-      this.initialFilePath &&
-      this.initialFilePath !== this._lastRestoredFile
-    ) {
-      this._lastRestoredFile = this.initialFilePath;
-      if (this.state.phase === "ready") {
-        void this.revealAndSelect(this.initialFilePath);
-      } else {
-        this.pendingFile = this.initialFilePath;
+    if (changed.has("initialFilePath")) {
+      if (
+        this.initialFilePath &&
+        this.initialFilePath !== this._lastRestoredFile
+      ) {
+        this._lastRestoredFile = this.initialFilePath;
+        if (this.state.phase === "ready") {
+          void this.revealAndSelect(this.initialFilePath);
+        } else {
+          this.pendingFile = this.initialFilePath;
+        }
+      } else if (!this.initialFilePath && this.selectedFile) {
+        // URL cleared the path (back-button from /browse/foo to /browse,
+        // or a nav that lands on browse with no file). Drop the stale
+        // selection so file-view unmounts instead of lingering with a
+        // path the URL no longer sanctions. Mirrors the same fix in
+        // commit-log (07f6b5d) — derived state must not outlive the
+        // URL state that put it there.
+        this.selectedFile = "";
+        this._lastRestoredFile = "";
       }
     }
     if (
