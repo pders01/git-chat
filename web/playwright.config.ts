@@ -13,7 +13,7 @@ export default defineConfig({
   projects: [
     {
       name: "desktop",
-      testMatch: /layout\.spec|features\.spec|combobox\.spec/,
+      testMatch: /layout\.spec|features\.spec|combobox\.spec|routing\.spec/,
       use: { viewport: { width: 1440, height: 900 } },
     },
     {

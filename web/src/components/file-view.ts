@@ -79,12 +79,21 @@ export class GcFileView extends LitElement {
     this.view = { ...this.view, html: highlighted };
   }
 
+  // Synchronous view reset (when path/repo clear) goes in willUpdate
+  // so it folds into the current render; async loads stay in updated.
+  // Eliminates the Lit "update after update" dev-mode warning.
+  override willUpdate(changed: Map<string, unknown>) {
+    if (changed.has("path") || changed.has("repoId") || changed.has("branch")) {
+      if (!this.path || !this.repoId) {
+        this.view = { phase: "empty" };
+      }
+    }
+  }
+
   override updated(changed: Map<string, unknown>) {
     if (changed.has("path") || changed.has("repoId") || changed.has("branch")) {
       if (this.path && this.repoId) {
         void this.load();
-      } else {
-        this.view = { phase: "empty" };
       }
     }
     if (changed.has("initialBlame") && this.initialBlame && !this.showBlame && this.path) {

@@ -145,17 +145,32 @@ export class GcCommitLog extends LitElement {
   private _lastRestoredSha = "";
   private _lastFocusNonce = 0;
 
+  // Synchronous @state mutations (calendar invalidation, armed-sha
+  // reset) move into willUpdate so they fold into the current render
+  // cycle. Writing them in updated() produced Lit's "scheduled an
+  // update after an update completed" dev-mode warning — benign in
+  // prod but noise under HMR, and occasionally causes visible
+  // half-rendered state in dev-mode reactivity loops.
+  override willUpdate(changed: Map<string, unknown>) {
+    if (
+      (changed.has("repoId") || changed.has("branch") || changed.has("filterPath")) &&
+      this.repoId
+    ) {
+      this.calendarLoaded = false;
+      this.calendarArmedSha = "";
+      this.calendarCommits = [];
+    }
+  }
+
   override updated(changed: Map<string, unknown>) {
     if (
       (changed.has("repoId") || changed.has("branch") || changed.has("filterPath")) &&
       this.repoId
     ) {
+      // RPC kickoff stays in updated() — fine for async work that
+      // resolves in a later tick; the synchronous state resets moved
+      // to willUpdate above.
       void this.load(0);
-      // Invalidate the calendar dataset — different repo/branch
-      // means different history.
-      this.calendarCommits = [];
-      this.calendarLoaded = false;
-      this.calendarArmedSha = "";
     }
     if (
       changed.has("focusNonce") &&
