@@ -921,7 +921,7 @@ export class GcApp extends LitElement {
     }
     if (e.key === "Enter" && this.searchSelectedIdx >= 0) {
       e.preventDefault();
-      this.activateSearchResult(this.searchResults[this.searchSelectedIdx]!);
+      this.activateSearchResult(this.searchResults[this.searchSelectedIdx]!, e.altKey);
     }
   }
 
@@ -943,13 +943,23 @@ export class GcApp extends LitElement {
     }
   }
 
-  private activateSearchResult(r: { source: string; id: string; title: string }) {
+  private activateSearchResult(
+    r: { source: string; id: string; title: string },
+    altBehavior = false,
+  ) {
     this.openOverlay(null);
     if (this.state.phase !== "authenticated") return;
 
     switch (r.source) {
       case "file":
-        this.navigateTo({ tab: "browse", filePath: r.id, browseView: "file" });
+        // Alt (option) on the file source jumps to its log history
+        // instead of opening the file itself — saves the user from
+        // navigating to browse and hitting the "history" button.
+        if (altBehavior) {
+          this.navigateTo({ tab: "log", filterPath: r.id });
+        } else {
+          this.navigateTo({ tab: "browse", filePath: r.id, browseView: "file" });
+        }
         break;
       case "message":
         this.navigateTo({ tab: "chat", sessionId: r.id });
@@ -1229,7 +1239,7 @@ export class GcApp extends LitElement {
                     id="search-hit-${i}"
                     role="option"
                     aria-selected=${i === this.searchSelectedIdx ? "true" : "false"}
-                    @click=${() => this.activateSearchResult(r)}
+                    @click=${(e: MouseEvent) => this.activateSearchResult(r, e.altKey)}
                     @mouseenter=${() => {
                       this.searchSelectedIdx = i;
                     }}
@@ -1246,7 +1256,7 @@ export class GcApp extends LitElement {
           : this.searchQuery.trim()
             ? html`<p class="search-empty">no results</p>`
             : nothing}
-        <div class="search-hint">↑↓ navigate · ↵ open · esc close</div>
+        <div class="search-hint">↑↓ navigate · ↵ open · ⌥↵ history (files) · esc close</div>
       </div>
     `;
   }
