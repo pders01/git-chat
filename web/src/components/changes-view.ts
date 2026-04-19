@@ -9,6 +9,8 @@ import "./diff-pane.js";
 @customElement("gc-changes-view")
 export class GcChangesView extends LitElement {
   @property({ type: String }) repoId = "";
+  // Reflected so :host([zen]) in styles can hide the diff-header.
+  @property({ type: Boolean, reflect: true }) zen = false;
 
   @state() private staged: StatusFile[] = [];
   @state() private unstaged: StatusFile[] = [];
@@ -338,6 +340,12 @@ export class GcChangesView extends LitElement {
       min-height: 0;
       min-width: 0;
       overflow: hidden;
+    }
+    /* Zen: drop the diff-header toolbar. Consistent with compare-view
+       / commit-log / file-view. The file sidebar stays visible so the
+       user can still pick staged/unstaged/untracked files. */
+    :host([zen]) .diff-header {
+      display: none;
     }
     .diff-header {
       display: flex;

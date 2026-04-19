@@ -23,6 +23,9 @@ export class GcCompareView extends LitElement {
   @property({ type: String }) repoId = "";
   @property({ type: String }) baseRef = "";
   @property({ type: String }) headRef = "";
+  // Reflected so :host([zen]) in styles can hide the diff-header
+  // toolbar. Parent (repo-browser) flips it on the global focus mode.
+  @property({ type: Boolean, reflect: true }) zen = false;
 
   @state() private compareState: CompareState = { phase: "loading" };
   @state() private selectedFile = "";
@@ -365,6 +368,11 @@ export class GcCompareView extends LitElement {
       min-height: 0;
       min-width: 0;
       overflow: hidden;
+    }
+    /* Zen: drop the diff-header toolbar (file path + split/3-pane
+       toggles). Consistent with file-view / commit-log / chat-view. */
+    :host([zen]) .diff-header {
+      display: none;
     }
     .diff-header {
       display: flex;

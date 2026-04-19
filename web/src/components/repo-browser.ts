@@ -540,27 +540,51 @@ export class GcRepoBrowser extends LitElement {
           </ul>
         </aside>
 
-        <section>
-          ${this.showCity
-            ? html`<gc-code-city .repoId=${s.repo.id} .branch=${this.branch}></gc-code-city>`
-            : this.showChanges
-              ? html`<gc-changes-view .repoId=${s.repo.id}></gc-changes-view>`
-              : this.comparing
-                ? html`<gc-compare-view
-                    .repoId=${s.repo.id}
-                    .baseRef=${this.baseRef}
-                    .headRef=${this.headRef}
-                  ></gc-compare-view>`
-                : html`<gc-file-view
-                    .repoId=${s.repo.id}
-                    .path=${this.selectedFile}
-                    .branch=${this.branch}
-                    .initialBlame=${this.initialBlame}
-                    ?zen=${this.focusMode === "zen"}
-                  ></gc-file-view>`}
-        </section>
+        <section>${this.renderMainPane(s.repo.id)}</section>
       </div>
     `;
+  }
+
+  // Dispatch the main pane by discriminated mode instead of nesting
+  // ternaries. The boolean triad (showCity / showChanges / comparing)
+  // is mutually exclusive, so one "mode" string collapses it clean
+  // and makes adding a zen-aware branch tractable.
+  private renderMainPane(repoId: string) {
+    const zen = this.focusMode === "zen";
+    const mode: "city" | "changes" | "compare" | "file" = this.showCity
+      ? "city"
+      : this.showChanges
+        ? "changes"
+        : this.comparing
+          ? "compare"
+          : "file";
+    switch (mode) {
+      case "city":
+        return html`<gc-code-city
+          .repoId=${repoId}
+          .branch=${this.branch}
+        ></gc-code-city>`;
+      case "changes":
+        return html`<gc-changes-view
+          .repoId=${repoId}
+          ?zen=${zen}
+        ></gc-changes-view>`;
+      case "compare":
+        return html`<gc-compare-view
+          .repoId=${repoId}
+          .baseRef=${this.baseRef}
+          .headRef=${this.headRef}
+          ?zen=${zen}
+        ></gc-compare-view>`;
+      case "file":
+        return html`<gc-file-view
+          .repoId=${repoId}
+          .path=${this.selectedFile}
+          .branch=${this.branch}
+          .initialBlame=${this.initialBlame}
+          ?zen=${zen}
+        ></gc-file-view>`;
+    }
   }
 
   private onTreeKeydown = (e: KeyboardEvent) => {
