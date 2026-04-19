@@ -596,7 +596,12 @@ func (s *Service) tryKBCacheHit(
 		}
 	}
 
-	_ = s.DB.IncrementCardHit(ctx, card.ID)
+	if err := s.DB.IncrementCardHit(ctx, card.ID); err != nil {
+		// Hit-count drift corrupts KB promotion thresholds — promotion
+		// decides whether an answer graduates to cached. Log loudly so
+		// operators notice; the cache hit itself still serves the user.
+		slog.Warn("KB increment-hit failed", "card_id", card.ID, "err", err)
+	}
 	if err := send(&gitchatv1.MessageChunk{
 		Kind: &gitchatv1.MessageChunk_CardHit{
 			CardHit: &gitchatv1.KnowledgeCardHit{
@@ -789,7 +794,9 @@ func (s *Service) agenticLoop(
 			case llm.ChunkToolUse:
 				tc := llm.ToolCall{ID: c.ToolUseID, Name: c.ToolName, Args: c.ToolArgs}
 				roundCalls = append(roundCalls, tc)
-				_ = send(&gitchatv1.MessageChunk{
+				// Match Token/Reasoning chunks: if the client is gone,
+				// don't keep executing tools (and spending tokens).
+				if err := send(&gitchatv1.MessageChunk{
 					Kind: &gitchatv1.MessageChunk_ToolCall{
 						ToolCall: &gitchatv1.ToolCall{
 							Id:       c.ToolUseID,
@@ -797,7 +804,9 @@ func (s *Service) agenticLoop(
 							ArgsJson: string(c.ToolArgs),
 						},
 					},
-				})
+				}); err != nil {
+					return assistant.String(), totalIn, totalOut, events, "send error"
+				}
 			case llm.ChunkDone:
 				totalIn += c.TokenCountIn
 				totalOut += c.TokenCountOut
@@ -837,7 +846,7 @@ func (s *Service) agenticLoop(
 				output = execErr.Error()
 				isErr = true
 			}
-			_ = send(&gitchatv1.MessageChunk{
+			if err := send(&gitchatv1.MessageChunk{
 				Kind: &gitchatv1.MessageChunk_ToolResult{
 					ToolResult: &gitchatv1.ToolResult{
 						Id:      tc.ID,
@@ -845,7 +854,21 @@ func (s *Service) agenticLoop(
 						IsError: isErr,
 					},
 				},
-			})
+			}); err != nil {
+				// Persist the events we already accumulated via the
+				// caller's event slice, then bail — no point continuing
+				// to spend tokens against a dead stream.
+				events = append(events, storage.ToolEventRow{
+					ToolCallID:    tc.ID,
+					Name:          tc.Name,
+					ArgsJSON:      string(tc.Args),
+					ResultContent: output,
+					IsError:       isErr,
+					Ordinal:       toolOrdinal,
+				})
+				toolOrdinal++
+				return assistant.String(), totalIn, totalOut, events, "send error"
+			}
 			events = append(events, storage.ToolEventRow{
 				ToolCallID:    tc.ID,
 				Name:          tc.Name,
@@ -1095,35 +1118,50 @@ func (s *Service) generateSmartTitle(adapter llm.LLM, model, sessionID, userMsg,
 // the card is auto-verified — it's a general question whose answer
 // doesn't depend on specific files.
 func (s *Service) verifyProvenance(ctx context.Context, card *storage.CardRow, r *repo.Entry, headCommit string) bool {
+	// Helper: log-and-continue for provenance DB writes. These writes
+	// aren't on the user's critical path — the caller has already decided
+	// the correctness action (return true/false); we just need the record
+	// to persist. If the write fails, the card remains in its prior state
+	// and the next verification will re-check, so we log rather than
+	// propagate. Silent discards hid DB contention in production.
+	invalidate := func(reason string, path string) {
+		if err := s.DB.InvalidateCard(ctx, card.ID); err != nil {
+			slog.Warn("KB invalidate failed", "card_id", card.ID, "reason", reason, "err", err)
+		}
+		s.notifyInvalidation(ctx, card, r.ID, path, reason)
+	}
+	markVerified := func() {
+		if err := s.DB.UpdateCardVerification(ctx, card.ID, headCommit); err != nil {
+			slog.Warn("KB verify-update failed", "card_id", card.ID, "err", err)
+		}
+	}
+
 	provRows, err := s.DB.ListProvenance(ctx, card.ID)
 	if err != nil {
 		// Can't verify → treat as stale to be safe.
-		_ = s.DB.InvalidateCard(ctx, card.ID)
-		s.notifyInvalidation(ctx, card, r.ID, "", "provenance_error")
+		invalidate("provenance_error", "")
 		return false
 	}
 	if len(provRows) == 0 {
 		// No file dependencies → auto-verify.
-		_ = s.DB.UpdateCardVerification(ctx, card.ID, headCommit)
+		markVerified()
 		return true
 	}
 	for _, p := range provRows {
 		resp, err := r.GetFile("", p.Path, 1)
 		if err != nil {
 			// File was deleted → stale.
-			_ = s.DB.InvalidateCard(ctx, card.ID)
-			s.notifyInvalidation(ctx, card, r.ID, p.Path, "file_deleted")
+			invalidate("file_deleted", p.Path)
 			return false
 		}
 		if resp.BlobSha != p.BlobSHA {
 			// File changed → stale.
-			_ = s.DB.InvalidateCard(ctx, card.ID)
-			s.notifyInvalidation(ctx, card, r.ID, p.Path, "file_changed")
+			invalidate("file_changed", p.Path)
 			return false
 		}
 	}
 	// All provenance SHAs match → still valid.
-	_ = s.DB.UpdateCardVerification(ctx, card.ID, headCommit)
+	markVerified()
 	return true
 }
 

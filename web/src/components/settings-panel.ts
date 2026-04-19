@@ -113,14 +113,33 @@ export class GcSettingsPanel extends LitElement {
     }
   }
 
+  /** Dispatch a gc:toast with the given kind + message. Factored out
+   * so every mutation path in this panel surfaces failures the same
+   * way — silent catches are how safe-config guarantees quietly drift. */
+  private toast(kind: "info" | "success" | "warn" | "error", message: string) {
+    this.dispatchEvent(
+      new CustomEvent("gc:toast", {
+        bubbles: true,
+        composed: true,
+        detail: { kind, message },
+      }),
+    );
+  }
+
+  private errorMessage(e: unknown, fallback: string): string {
+    if (e instanceof Error && e.message) return `${fallback}: ${e.message}`;
+    return fallback;
+  }
+
   private async saveProfile(profile: any) {
     try {
       const resp = await repoClient.saveProfile({ profile });
       if (!profile.id) profile.id = resp.id;
       await this.loadProfiles();
       this.editingProfile = null;
-    } catch {
-      // TODO: surface error
+      this.toast("success", `profile "${profile.name}" saved`);
+    } catch (e) {
+      this.toast("error", this.errorMessage(e, "could not save profile"));
     }
   }
 
@@ -130,8 +149,8 @@ export class GcSettingsPanel extends LitElement {
       await this.loadProfiles();
       await this.loadConfig();
       this.editingProfile = null;
-    } catch {
-      // TODO: surface error
+    } catch (e) {
+      this.toast("error", this.errorMessage(e, "could not delete profile"));
     }
   }
 
@@ -140,6 +159,8 @@ export class GcSettingsPanel extends LitElement {
       const resp = await repoClient.getProviderCatalog({});
       this.catalog = resp.providers ?? [];
     } catch {
+      // Initial load is silent — the user hasn't asked for anything yet.
+      // Refresh path (below) surfaces errors.
       this.catalog = [];
     }
   }
@@ -149,8 +170,9 @@ export class GcSettingsPanel extends LitElement {
     try {
       const resp = await repoClient.refreshProviderCatalog({});
       this.catalog = resp.providers ?? [];
-    } catch {
-      // TODO: surface error
+      this.toast("success", `catalog refreshed · ${this.catalog.length} providers`);
+    } catch (e) {
+      this.toast("error", this.errorMessage(e, "catalog refresh failed"));
     } finally {
       this.catalogLoading = false;
     }
@@ -161,8 +183,12 @@ export class GcSettingsPanel extends LitElement {
     try {
       const resp = await repoClient.discoverLocalEndpoints({});
       this.localEndpoints = resp.endpoints ?? [];
-    } catch {
+      if (this.localEndpoints.length === 0) {
+        this.toast("info", "no local endpoints detected on the usual ports");
+      }
+    } catch (e) {
       this.localEndpoints = [];
+      this.toast("error", this.errorMessage(e, "local endpoint discovery failed"));
     } finally {
       this.localDiscovering = false;
     }
@@ -173,8 +199,8 @@ export class GcSettingsPanel extends LitElement {
       await repoClient.activateProfile({ id });
       await this.loadProfiles();
       await this.loadConfig();
-    } catch {
-      // TODO: surface error
+    } catch (e) {
+      this.toast("error", this.errorMessage(e, "could not activate profile"));
     }
   }
 
@@ -191,8 +217,8 @@ export class GcSettingsPanel extends LitElement {
       setTimeout(async () => {
         try {
           await repoClient.updateConfig({ key, value });
-        } catch {
-          /* toast could go here */
+        } catch (e) {
+          this.toast("error", this.errorMessage(e, `could not save ${key}`));
         }
         this.configDebounceTimers.delete(key);
       }, 300),
@@ -227,17 +253,10 @@ export class GcSettingsPanel extends LitElement {
     // Local endpoints don't use the key — no leak risk, skip the warn.
     if (isLocalhostURL(newValue)) return;
 
-    this.dispatchEvent(
-      new CustomEvent("gc:toast", {
-        bubbles: true,
-        composed: true,
-        detail: {
-          kind: "warn",
-          message:
-            "LLM_BASE_URL changed but LLM_API_KEY is still set. " +
-            "If the new provider differs, update or clear the key before sending.",
-        },
-      }),
+    this.toast(
+      "warn",
+      "LLM_BASE_URL changed but LLM_API_KEY is still set. " +
+        "If the new provider differs, update or clear the key before sending.",
     );
   }
 

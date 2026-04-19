@@ -399,7 +399,14 @@ func (s *Service) SaveProfile(
 	id := p.Id
 	if id == "" {
 		b := make([]byte, 16)
-		_, _ = rand.Read(b)
+		// crypto/rand.Read failing would mean the kernel CSPRNG is
+		// unavailable — extremely rare (e.g. broken minimal container).
+		// Returning rather than silently using a zero-byte ID prevents
+		// all-zero profile IDs from landing in the DB.
+		if _, err := rand.Read(b); err != nil {
+			return nil, connect.NewError(connect.CodeInternal,
+				fmt.Errorf("generate profile id: %w", err))
+		}
 		id = hex.EncodeToString(b)
 	}
 	// Encrypt API key before storage.
@@ -452,8 +459,14 @@ func (s *Service) DeleteProfile(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	// If the deleted profile was active, clear the active profile.
+	// A DB failure here leaves LLM_ACTIVE_PROFILE pointing at a deleted
+	// ID — every subsequent turn then fails at resolve time with no
+	// visible cause. Propagate to the caller so the UI can re-sync.
 	if active := s.Config.GetCtx(ctx, "LLM_ACTIVE_PROFILE"); active == req.Msg.Id {
-		_ = s.Config.Set(ctx, "LLM_ACTIVE_PROFILE", "")
+		if err := s.Config.Set(ctx, "LLM_ACTIVE_PROFILE", ""); err != nil {
+			return nil, connect.NewError(connect.CodeInternal,
+				fmt.Errorf("clear active profile after delete: %w", err))
+		}
 	}
 	return connect.NewResponse(&gitchatv1.DeleteProfileResponse{}), nil
 }
@@ -469,7 +482,10 @@ func (s *Service) ActivateProfile(
 	}
 	// Allow deactivation (empty ID = use individual LLM_* settings).
 	if req.Msg.Id == "" {
-		_ = s.Config.Set(ctx, "LLM_ACTIVE_PROFILE", "")
+		if err := s.Config.Set(ctx, "LLM_ACTIVE_PROFILE", ""); err != nil {
+			return nil, connect.NewError(connect.CodeInternal,
+				fmt.Errorf("deactivate profile: %w", err))
+		}
 		return connect.NewResponse(&gitchatv1.ActivateProfileResponse{}), nil
 	}
 	p, err := s.DB.GetProfile(ctx, req.Msg.Id)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -424,7 +425,16 @@ func commitDiffStats(ctx context.Context, c *object.Commit) *diffStats {
 	if c.NumParents() > 0 {
 		parent, err := c.Parents().Next()
 		if err == nil {
-			pTree, _ = parent.Tree()
+			t, tErr := parent.Tree()
+			if tErr != nil {
+				// Corrupted packfile or missing tree object — fall back
+				// to the root-commit path below, but log so silent
+				// stats-of-zero doesn't mask repo corruption.
+				slog.Warn("parent tree unavailable; diff stats degraded",
+					"commit", c.Hash.String(), "err", tErr)
+			} else {
+				pTree = t
+			}
 		}
 	}
 	if pTree == nil {
@@ -737,7 +747,13 @@ func (e *Entry) churnWalkGoGit(resolvedTip string, since, until int64, effCap in
 		if c.NumParents() > 0 {
 			parent, perr := c.Parents().Next()
 			if perr == nil {
-				pTree, _ = parent.Tree()
+				t, tErr := parent.Tree()
+				if tErr != nil {
+					slog.Warn("parent tree unavailable in churn walk",
+						"commit", c.Hash.String(), "err", tErr)
+				} else {
+					pTree = t
+				}
 			}
 		}
 
