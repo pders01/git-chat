@@ -412,12 +412,13 @@ func commitTouchedPath(c *object.Commit, path string) bool {
 	return cFile.Hash != pFile.Hash
 }
 
-// SearchCommits returns commits whose subject/body contains query OR
-// whose author name contains query (case-insensitive, literal-match).
-// Runs two `git log` subprocesses in parallel (one --grep, one
-// --author) because git's --all-match semantics make a single call
-// narrower than the OR we want. Results merged by SHA, capped at
-// limit, preserving newest-first order from the --grep pass.
+// SearchCommits returns commits matching query across three axes:
+// subject/body (--grep), author name (--author), and hex SHA prefix
+// when the query looks like one. All three passes run in parallel
+// because git's --all-match semantics make a single combined call
+// narrower than the OR we want. SHA hits prepend the results so a
+// pasted SHA surfaces first; grep/author hits follow in newest-first
+// order. Results merged by SHA, capped at limit.
 //
 // Locking: e.mu is only held long enough to snapshot e.Path. The
 // subprocesses don't touch the go-git in-memory index, so holding
@@ -438,6 +439,7 @@ func (e *Entry) SearchCommits(ctx context.Context, query string, limit int) ([]*
 	}
 	msgCh := make(chan result, 1)
 	authCh := make(chan result, 1)
+	shaCh := make(chan result, 1)
 	go func() {
 		c, err := gitLogGrepCommits(ctx, repoDir, "grep", q, limit)
 		msgCh <- result{c, err}
@@ -446,11 +448,26 @@ func (e *Entry) SearchCommits(ctx context.Context, query string, limit int) ([]*
 		c, err := gitLogGrepCommits(ctx, repoDir, "author", q, limit)
 		authCh <- result{c, err}
 	}()
+	go func() {
+		// Only attempt SHA resolution for hex-looking queries — otherwise
+		// `git log <word>` would resolve arbitrary branch/tag names the
+		// user wasn't trying to look up and mis-surface their tips.
+		if !looksLikeSHA(q) {
+			shaCh <- result{nil, nil}
+			return
+		}
+		c, _, err := gitLogCommits(ctx, repoDir, q, 1, 0, "")
+		// An unknown SHA prefix makes git log exit non-zero; that's
+		// expected ("no such commit") and shouldn't poison the search.
+		if err != nil {
+			shaCh <- result{nil, nil}
+			return
+		}
+		shaCh <- result{c, nil}
+	}()
 	msgRes := <-msgCh
 	authRes := <-authCh
-	// Surface one error if both passes failed; if only one failed the
-	// partial is still useful, but log it so a systematic breakage
-	// (bad PATH, etc.) isn't silently swallowed.
+	shaRes := <-shaCh
 	if msgRes.err != nil && authRes.err != nil {
 		return nil, msgRes.err
 	}
@@ -463,7 +480,9 @@ func (e *Entry) SearchCommits(ctx context.Context, query string, limit int) ([]*
 
 	seen := make(map[string]bool, limit*2)
 	out := make([]*gitchatv1.CommitEntry, 0, limit)
-	for _, src := range [][]*gitchatv1.CommitEntry{msgRes.commits, authRes.commits} {
+	// SHA hit first so a pasted hash surfaces at the top. Then --grep
+	// (commonly more relevant than author matches), then --author.
+	for _, src := range [][]*gitchatv1.CommitEntry{shaRes.commits, msgRes.commits, authRes.commits} {
 		for _, c := range src {
 			if seen[c.Sha] {
 				continue
@@ -476,6 +495,22 @@ func (e *Entry) SearchCommits(ctx context.Context, query string, limit int) ([]*
 		}
 	}
 	return out, nil
+}
+
+// looksLikeSHA reports whether s plausibly is a hex commit prefix.
+// 4 chars is git's historical minimum for abbreviated SHAs; 40 is
+// the full SHA-1 length (sha256 repos would push this to 64, but
+// this project is SHA-1 only today).
+func looksLikeSHA(s string) bool {
+	if len(s) < 4 || len(s) > 40 {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 type diffStats struct {
