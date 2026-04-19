@@ -6,7 +6,6 @@ import {
   readFocus,
   writeFocus,
   cycleFocus,
-  focusButtonLabel,
   focusGlyph,
   focusNextLabel,
   type FocusMode,
@@ -534,14 +533,13 @@ export class GcRepoBrowser extends LitElement {
               ⇄
             </button>
             <button
-              class="focus-btn"
+              class="hd-btn focus-hd ${this.focusMode !== "off" ? "active" : ""}"
               @click=${this.onToggleFocus}
               aria-label=${focusNextLabel(this.focusMode)}
               aria-pressed=${this.focusMode !== "off" ? "true" : "false"}
               title=${focusNextLabel(this.focusMode)}
             >
               ${focusGlyph(this.focusMode)}
-              <span class="focus-label">${focusButtonLabel(this.focusMode)}</span>
             </button>
           </div>
 
@@ -738,23 +736,12 @@ export class GcRepoBrowser extends LitElement {
       flex: 1;
       min-height: 0;
     }
-    .focus-btn {
+    /* Focus toggle shares the .hd-btn look with the sub-view picker
+       siblings — icon-only so nothing gets clipped when the sidebar
+       narrows. .focus-hd just pushes it to the trailing edge of the
+       header row so it doesn't get bunched in with the picker. */
+    .focus-hd {
       margin-left: auto;
-      padding: var(--space-1);
-      background: transparent;
-      color: var(--text);
-      border: none;
-      font-family: inherit;
-      font-size: var(--text-xs);
-      cursor: pointer;
-      opacity: 0.35;
-    }
-    .focus-btn:hover {
-      opacity: 0.9;
-    }
-    .focus-btn:focus-visible {
-      outline: 2px solid var(--accent-user);
-      outline-offset: 1px;
     }
     .hd-btn {
       padding: var(--space-1);
