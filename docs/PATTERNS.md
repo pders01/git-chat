@@ -227,6 +227,76 @@ this.tree = updateNode(this.tree, path, { expanded: true });
 usually means a `@state` property is being mutated in a way Lit
 can't detect.
 
+### 5.6 `classMap` truthiness — don't pass a non-empty string enum
+
+`classMap({ foo: value })` adds `.foo` whenever `value` is truthy.
+Enum strings like `"off" | "focus" | "zen"` are **all truthy**, so
+binding a mode field directly flips the class on unconditionally.
+
+```ts
+// ❌ — every state, including "off", applies .focused
+class=${classMap({ focused: this.focusMode })}
+
+// ✅ — explicit compare
+class=${classMap({
+  focused: this.focusMode !== "off",
+  zen: this.focusMode === "zen",
+})}
+```
+
+**Why:** the focus-mode tri-state migration (`f32a468`) replaced a
+boolean flag with a string enum in shared state. `commit-log.ts`
+kept the original boolean-era binding and silently collapsed its
+three-column layout until `df4abcf` fixed the check.
+
+**How to apply:** any time `classMap` gates on a field whose type is
+a string/enum/object, compare explicitly. Booleans can pass through.
+
+### 5.7 `changed.has(x)` in `updated()` — check the previous value too
+
+On the very first `update` cycle Lit puts **every** declared reactive
+property into `changedProperties` with previous value `undefined`.
+So `changed.has("foo")` is `true` even for properties the parent
+never bound — it just reflects the field initializer running.
+
+```ts
+// ❌ — fires on first mount whether or not rawDiff was bound,
+//       and the side-effect cancels whatever connectedCallback
+//       just kicked off.
+override updated(changed: Map<string, unknown>) {
+  if (changed.has("rawDiff")) {
+    void this.loadFromRaw(); // bumps generation inside
+    return;
+  }
+  ...
+}
+
+// ✅ — distinguish first-mount from real transitions by
+//       checking the previous value. undefined === first
+//       render; anything else === consumer actually changed it.
+override updated(changed: Map<string, unknown>) {
+  if (changed.has("rawDiff") && changed.get("rawDiff") !== undefined) {
+    void this.loadFromRaw();
+    return;
+  }
+  ...
+}
+```
+
+**Why:** `diff-pane` used the first form and cancelled its own
+whole-commit fetch on every cold mount (`3e2bac9` / `8f341b8`).
+`connectedCallback` had already picked the right loader; the
+`updated` branch was redoing it with stale inputs.
+
+**How to apply:** any `updated()` branch that starts async work or
+mutates state based on a specific property change should gate on
+`changed.get(x) !== undefined`. Branches that only read the current
+value (e.g. `if (changed.has("path")) recompute()` with no
+cancellation implications) are fine as-is. When in doubt, also
+consider whether `willUpdate()` is a better home — synchronous
+state resets belong there (see `commit-log`'s calendar invalidation
+for the pattern).
+
 ---
 
 ## Section 6 — Git + commits
