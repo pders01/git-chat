@@ -5,6 +5,9 @@ import {
   isProviderAvailable,
   hostOf,
   isLocalhostURL,
+  findModelPricing,
+  estimateTokensFromChars,
+  estimateCostUsd,
   type AvailabilityContext,
 } from "./catalog.js";
 import type { CatalogProvider } from "../gen/gitchat/v1/repo_pb.js";
@@ -206,5 +209,56 @@ describe("isLocalhostURL", () => {
     ["", false],
   ])("%s → %s", (input, expected) => {
     expect(isLocalhostURL(input)).toBe(expected);
+  });
+});
+
+describe("findModelPricing", () => {
+  function catalogWith(models: Array<{ id: string; in: number; out: number }>): CatalogProvider[] {
+    return [
+      {
+        models: models.map((m) => ({
+          id: m.id,
+          costPer1mIn: m.in,
+          costPer1mOut: m.out,
+        })),
+      } as unknown as CatalogProvider,
+    ];
+  }
+
+  test("returns pricing when model exists", () => {
+    const cat = catalogWith([{ id: "gpt-4o", in: 2.5, out: 10 }]);
+    expect(findModelPricing("gpt-4o", cat)).toEqual({ in: 2.5, out: 10 });
+  });
+
+  test("returns null when model isn't in catalog", () => {
+    const cat = catalogWith([{ id: "gpt-4o", in: 2.5, out: 10 }]);
+    expect(findModelPricing("missing-model", cat)).toBeNull();
+  });
+
+  test("returns null for empty catalog", () => {
+    expect(findModelPricing("anything", [])).toBeNull();
+  });
+});
+
+describe("estimateTokensFromChars", () => {
+  test("4-chars-per-token heuristic", () => {
+    expect(estimateTokensFromChars(0)).toBe(0);
+    expect(estimateTokensFromChars(4)).toBe(1);
+    expect(estimateTokensFromChars(15)).toBe(4); // ceil(15/4) = 4
+  });
+});
+
+describe("estimateCostUsd", () => {
+  test("computes cost from tokens + pricing", () => {
+    // 10K in @ $2.5/M + 5K out @ $10/M = 0.025 + 0.05 = 0.075
+    expect(estimateCostUsd(10_000, 5_000, { in: 2.5, out: 10 })).toBeCloseTo(0.075);
+  });
+
+  test("returns 0 when pricing is null", () => {
+    expect(estimateCostUsd(1000, 1000, null)).toBe(0);
+  });
+
+  test("free models (0/0) return 0", () => {
+    expect(estimateCostUsd(10000, 5000, { in: 0, out: 0 })).toBe(0);
   });
 });

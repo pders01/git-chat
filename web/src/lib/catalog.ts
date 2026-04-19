@@ -137,3 +137,49 @@ export function hostOf(u: string): string {
     return "";
   }
 }
+
+/** Per-1M-token pricing pair. */
+export interface ModelPricing {
+  in: number;
+  out: number;
+}
+
+/** Look up pricing for a model by scanning the catalog. Returns null
+ * if the model isn't listed, or if it's listed but priced at 0 on both
+ * axes (free models — caller decides whether that still means "free"
+ * or "unknown pricing" in context). */
+export function findModelPricing(
+  modelId: string,
+  catalog: readonly CatalogProvider[],
+): ModelPricing | null {
+  for (const prov of catalog) {
+    for (const m of prov.models ?? []) {
+      if (m.id === modelId) {
+        return { in: m.costPer1mIn, out: m.costPer1mOut };
+      }
+    }
+  }
+  return null;
+}
+
+/** Convert a character count to a rough token count. 1 token ≈ 4 chars
+ * for English prose is the well-known heuristic; code and non-English
+ * text will diverge, but for pre-send cost estimation this is fine —
+ * the actual count comes back with the turn and the estimate's job is
+ * "give the user a ballpark before they commit." */
+export function estimateTokensFromChars(chars: number): number {
+  return Math.ceil(chars / 4);
+}
+
+/** Combine input/output token counts with a pricing pair to produce a
+ * USD cost. Returns 0 when pricing is null (unknown) — callers should
+ * render "unknown" separately if that's a material distinction for
+ * them; most surfaces just want "the number or zero." */
+export function estimateCostUsd(
+  tokensIn: number,
+  tokensOut: number,
+  pricing: ModelPricing | null,
+): number {
+  if (!pricing) return 0;
+  return (tokensIn * pricing.in + tokensOut * pricing.out) / 1_000_000;
+}

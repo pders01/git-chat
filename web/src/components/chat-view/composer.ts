@@ -121,6 +121,20 @@ export class GcComposer extends LitElement {
     void this.checkMention();
     this.checkSlash();
     void this.checkArgContext();
+    this.emitInputChanged();
+  }
+
+  /** Emit the composed payload size so the chat-view can render a live
+   * token/cost estimate in the active-model indicator. Kept to
+   * primitives — text is not sent over the event, only its byte size
+   * and the running attachment total, so listeners can't accidentally
+   * leak the draft into other surfaces. */
+  private emitInputChanged() {
+    const attachmentBytes = this.pendingAttachments.reduce((n, a) => n + a.size, 0);
+    this.fire("gc:input-changed", {
+      textLength: this.input.length,
+      attachmentBytes,
+    });
   }
 
   private async checkArgContext() {
@@ -615,6 +629,7 @@ export class GcComposer extends LitElement {
       this.fire("gc:announce", {
         message: `${additions.length} attachment${additions.length === 1 ? "" : "s"} added`,
       });
+      this.emitInputChanged();
     }
     if (rejections.length > 0) {
       this.fire("gc:error", { message: rejections.join("; ") });
@@ -625,6 +640,7 @@ export class GcComposer extends LitElement {
     const next = this.pendingAttachments.slice();
     next.splice(index, 1);
     this.pendingAttachments = next;
+    this.emitInputChanged();
   }
 
   private async onPickFiles(e: Event) {
@@ -1276,5 +1292,6 @@ declare global {
   }
   interface HTMLElementEventMap {
     "gc:slash-action": CustomEvent<{ command: string; args: string[] }>;
+    "gc:input-changed": CustomEvent<{ textLength: number; attachmentBytes: number }>;
   }
 }

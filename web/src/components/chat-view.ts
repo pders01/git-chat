@@ -3,7 +3,14 @@ import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { chatClient, repoClient } from "../lib/transport.js";
 import { readFocus, writeFocus } from "../lib/focus.js";
-import { isProviderAvailable } from "../lib/catalog.js";
+import {
+  isProviderAvailable,
+  isLocalhostURL,
+  hostOf,
+  findModelPricing,
+  estimateTokensFromChars,
+  estimateCostUsd,
+} from "../lib/catalog.js";
 import {
   type Turn,
   type ClientAttachment,
@@ -36,6 +43,24 @@ function loadMarkdown() {
   return markdownModule;
 }
 
+// Route metadata for pre-send consent + cost estimation. Computed from
+// live config/profiles/catalog on each send; gated by isLocal so local
+// endpoints skip confirmation altogether.
+interface RouteInfo {
+  model: string;
+  baseUrl: string;
+  backend: string;
+  profileId: string;
+  profileName: string;
+  destinationHost: string;
+  isLocal: boolean;
+  isFree: boolean;
+}
+
+function routeKey(r: RouteInfo): string {
+  return `${r.backend}::${r.baseUrl}::${r.model}::${r.profileId}`;
+}
+
 @customElement("gc-chat-view")
 export class GcChatView extends LitElement {
   @property({ type: String }) repoId = "";
@@ -61,6 +86,30 @@ export class GcChatView extends LitElement {
   // after every slash-action (/model, /profile).
   @state() private activeModel = "";
   @state() private activeProfileName = "";
+  // Pricing for the active model, used to render a live cost estimate
+  // in the indicator as the user types. Null when the model isn't in
+  // the catalog or pricing isn't known; indicator falls back to
+  // showing tokens only in that case.
+  @state() private activeModelPricing: import("../lib/catalog.js").ModelPricing | null = null;
+  @state() private activeRouteIsLocal = true;
+  @state() private composerTextLength = 0;
+  @state() private composerAttachmentBytes = 0;
+
+  // Pre-send confirmation state. Set when the user invokes send() on
+  // a remote paid route that hasn't been confirmed yet in this session;
+  // rendered as an inline confirmation card above the composer. The
+  // consent key caches "this route is OK" so subsequent turns through
+  // the same (model, baseUrl, profile) combo skip the prompt — changing
+  // any of those re-triggers confirmation.
+  @state() private pendingSend: {
+    text: string;
+    attachments: ClientAttachment[];
+    replaceFromMessageId?: string;
+    route: RouteInfo;
+    inputTokensEstimate: number;
+    costEstimateUsd: number;
+  } | null = null;
+  private confirmedRouteKey: string | null = null;
 
   private _lastRestoredSession = "";
   private _lastPrefillNonce = 0;
@@ -153,6 +202,14 @@ export class GcChatView extends LitElement {
       const active = profs.profiles?.find((p) => p.id === activeId);
       this.activeProfileName = active?.name ?? "";
       this.activeModel = active?.model || modelEntry?.value || modelEntry?.defaultValue || "";
+
+      // Load routing + pricing so the indicator can surface the
+      // live-cost estimate without further RPCs per keystroke.
+      const route = await this.resolveRoute();
+      this.activeRouteIsLocal = route.isLocal;
+      this.activeModelPricing = this.activeModel
+        ? await this.priceFor(this.activeModel)
+        : null;
     } catch {
       // Unreachable backend → leave indicator blank rather than error.
     }
@@ -332,15 +389,58 @@ export class GcChatView extends LitElement {
     this.sessionTokensOut = 0;
   }
 
+  /** Route send() through pre-send consent for remote paid providers.
+   * Returns true if the turn was dispatched (caller can clear input),
+   * false if we're blocked on confirmation or rejected the send.
+   *
+   * Consent is cached per-route per-session: once the user confirms
+   * sending to (model, baseUrl, profile), subsequent turns through the
+   * same combo go straight through. Any config change re-triggers. */
   private async send(
     opts: {
       text?: string;
       attachments?: ClientAttachment[];
       replaceFromMessageId?: string;
     } = {},
-  ) {
+  ): Promise<boolean> {
     const text = (opts.text ?? "").trim();
     const attachments = opts.attachments ?? [];
+    if (!text && attachments.length === 0) return false;
+    if (this.sending || this.state.phase !== "ready") return false;
+
+    const route = await this.resolveRoute();
+    if (!route.isLocal && routeKey(route) !== this.confirmedRouteKey) {
+      const tokens = estimateTokensFromChars(
+        text.length + attachments.reduce((n, a) => n + a.size, 0),
+      );
+      this.pendingSend = {
+        text,
+        attachments,
+        replaceFromMessageId: opts.replaceFromMessageId,
+        route,
+        inputTokensEstimate: tokens,
+        // Assume parity output for the estimate — most chat turns come
+        // back within 0.5–2× the input. The real number will be known
+        // after the turn; this one is just to prevent sticker shock.
+        costEstimateUsd: estimateCostUsd(tokens, tokens, await this.priceFor(route.model)),
+      };
+      return false;
+    }
+
+    void this.doSend({ text, attachments, replaceFromMessageId: opts.replaceFromMessageId });
+    return true;
+  }
+
+  /** The actual streaming send. Split from send() so the confirmation
+   * path can bypass the route check on user approval without re-running
+   * the (model, baseUrl, profile) resolution. */
+  private async doSend(opts: {
+    text: string;
+    attachments: ClientAttachment[];
+    replaceFromMessageId?: string;
+  }): Promise<void> {
+    const text = opts.text;
+    const attachments = opts.attachments;
     if (!text && attachments.length === 0) return;
     if (this.sending || this.state.phase !== "ready") return;
 
@@ -514,6 +614,165 @@ export class GcChatView extends LitElement {
     this.abortController?.abort();
   }
 
+  /** Resolve the (model, baseUrl, profile) the next turn will hit.
+   * Profile-active routes take precedence; otherwise we use the raw
+   * LLM_* overrides. Anthropic backend is marked non-local since the
+   * protocol URL is hardcoded and remote. */
+  private async resolveRoute(): Promise<RouteInfo> {
+    try {
+      const [cfg, profs] = await Promise.all([
+        repoClient.getConfig({}),
+        repoClient.listProfiles({}),
+      ]);
+      const readConfig = (key: string) =>
+        cfg.entries?.find((e) => e.key === key)?.value ?? "";
+
+      const activeId = profs.activeProfileId ?? "";
+      const active = profs.profiles?.find((p) => p.id === activeId);
+
+      const backend = active?.backend || readConfig("LLM_BACKEND") || "openai";
+      const baseUrl = active?.baseUrl || readConfig("LLM_BASE_URL") || "";
+      const model =
+        active?.model ||
+        readConfig("LLM_MODEL") ||
+        (cfg.entries?.find((e) => e.key === "LLM_MODEL")?.defaultValue ?? "");
+
+      const isLocal = backend !== "anthropic" && !!baseUrl && isLocalhostURL(baseUrl);
+      const destinationHost =
+        backend === "anthropic" ? "api.anthropic.com" : hostOf(baseUrl) || "(unset)";
+
+      return {
+        model,
+        baseUrl,
+        backend,
+        profileId: active?.id ?? "",
+        profileName: active?.name ?? "",
+        destinationHost,
+        isLocal,
+        isFree: false, // filled in by price lookup
+      };
+    } catch {
+      return {
+        model: "",
+        baseUrl: "",
+        backend: "openai",
+        profileId: "",
+        profileName: "",
+        destinationHost: "(unknown)",
+        isLocal: false,
+        isFree: false,
+      };
+    }
+  }
+
+  /** Pricing lookup for a model id via the catalog. Catalog fetch is
+   * cheap and cached server-side, so we just call it each time rather
+   * than wiring a per-component cache. Returns null when the model
+   * isn't listed — cost displays as "?" in that case. */
+  private async priceFor(modelId: string) {
+    if (!modelId) return null;
+    try {
+      const cat = await repoClient.getProviderCatalog({});
+      return findModelPricing(modelId, cat.providers ?? []);
+    } catch {
+      return null;
+    }
+  }
+
+  private confirmPendingSend() {
+    if (!this.pendingSend) return;
+    this.confirmedRouteKey = routeKey(this.pendingSend.route);
+    const { text, attachments, replaceFromMessageId } = this.pendingSend;
+    this.pendingSend = null;
+    void this.doSend({ text, attachments, replaceFromMessageId });
+    this.getComposer()?.clearAfterSend();
+  }
+
+  private cancelPendingSend() {
+    // Leave the composer populated — user may want to tweak before
+    // resending. Only the confirmation state resets.
+    this.pendingSend = null;
+  }
+
+  /** Live estimate under the model indicator. Only renders on non-local
+   * routes — local models don't cost money and don't need a cost nag.
+   * Shows nothing until the composer has any content, so an empty
+   * composer on a remote route stays clean. */
+  private renderCostEstimate() {
+    if (this.activeRouteIsLocal) return nothing;
+    const bytes = this.composerTextLength + this.composerAttachmentBytes;
+    if (bytes === 0) return nothing;
+    const tokens = estimateTokensFromChars(bytes);
+    const cost = estimateCostUsd(tokens, tokens, this.activeModelPricing);
+    const costStr =
+      cost === 0
+        ? this.activeModelPricing
+          ? "free"
+          : "?"
+        : cost < 0.001
+          ? "<$0.001"
+          : `~$${cost.toFixed(3)}`;
+    return html`<span class="model-indicator-sep">·</span>
+      <span
+        class="model-indicator-estimate"
+        title="Rough estimate: input tokens are chars/4; output assumed equal. Real cost comes back with the turn."
+      >
+        ≈${tokens.toLocaleString()}t · ${costStr}
+      </span>`;
+  }
+
+  private renderPendingConfirmation() {
+    if (!this.pendingSend) return nothing;
+    const p = this.pendingSend;
+    const costStr =
+      p.costEstimateUsd > 0
+        ? `~$${p.costEstimateUsd.toFixed(3)}`
+        : "pricing unknown — check catalog";
+    const routeLine = p.route.profileName
+      ? `${p.route.destinationHost} · profile: ${p.route.profileName}`
+      : p.route.destinationHost;
+    return html`
+      <div class="presend-confirm" role="alertdialog" aria-labelledby="presend-title">
+        <div class="presend-head">
+          <span class="presend-icon" aria-hidden="true">⚠</span>
+          <strong id="presend-title">Confirm remote call</strong>
+        </div>
+        <dl class="presend-meta">
+          <dt>destination</dt>
+          <dd>${routeLine}</dd>
+          <dt>model</dt>
+          <dd>${p.route.model || "(unset)"}</dd>
+          <dt>input</dt>
+          <dd>≈ ${p.inputTokensEstimate.toLocaleString()} tokens</dd>
+          <dt>cost</dt>
+          <dd>${costStr}</dd>
+        </dl>
+        <p class="presend-note">
+          Your API key + this prompt will be sent to
+          <code>${p.route.destinationHost}</code>. Confirming remembers the
+          route for this session — subsequent turns on the same route don't
+          re-prompt until the model, base URL, or profile changes.
+        </p>
+        <div class="presend-actions">
+          <button
+            type="button"
+            class="presend-btn cancel"
+            @click=${() => this.cancelPendingSend()}
+          >
+            cancel
+          </button>
+          <button
+            type="button"
+            class="presend-btn confirm"
+            @click=${() => this.confirmPendingSend()}
+          >
+            send
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
   // Retry after a mid-stream failure.
   private retryLast() {
     const last = this.turns.length - 1;
@@ -552,9 +811,17 @@ export class GcChatView extends LitElement {
   }
 
   // ── Child component event handlers ──────────────────────────────
-  private onComposerSend = (e: CustomEvent<{ text: string; attachments: ClientAttachment[] }>) => {
-    void this.send({ text: e.detail.text, attachments: e.detail.attachments });
-    this.getComposer()?.clearAfterSend();
+  private onComposerSend = async (
+    e: CustomEvent<{ text: string; attachments: ClientAttachment[] }>,
+  ) => {
+    const dispatched = await this.send({
+      text: e.detail.text,
+      attachments: e.detail.attachments,
+    });
+    // Only clear the composer if the turn actually went out. If we're
+    // blocked on pre-send confirmation, keep the input so the user can
+    // tweak it after cancelling without retyping.
+    if (dispatched) this.getComposer()?.clearAfterSend();
   };
 
   private onComposerStop = () => this.stop();
@@ -565,6 +832,13 @@ export class GcChatView extends LitElement {
 
   private onComposerAnnounce = (e: CustomEvent<{ message: string }>) => {
     this.announce(e.detail.message);
+  };
+
+  private onComposerInputChanged = (
+    e: CustomEvent<{ textLength: number; attachmentBytes: number }>,
+  ) => {
+    this.composerTextLength = e.detail.textLength;
+    this.composerAttachmentBytes = e.detail.attachmentBytes;
   };
 
   // Slash-action dispatch. Composer parses /model, /profile etc. and
@@ -820,6 +1094,7 @@ export class GcChatView extends LitElement {
                 @gc:edit-turn=${this.onMessageEdit}
                 @gc:update-turns=${this.onUpdateTurns}
               ></gc-message-list>`}
+          ${this.pendingSend ? this.renderPendingConfirmation() : nothing}
           ${this.activeModel
             ? html`<div class="model-indicator" role="status" aria-live="polite">
                 <span class="model-indicator-label">model</span>
@@ -828,6 +1103,7 @@ export class GcChatView extends LitElement {
                   ? html`<span class="model-indicator-sep">·</span>
                       <span class="model-indicator-profile">${this.activeProfileName}</span>`
                   : nothing}
+                ${this.renderCostEstimate()}
               </div>`
             : nothing}
           <gc-composer
@@ -840,6 +1116,7 @@ export class GcChatView extends LitElement {
             @gc:error=${this.onComposerError}
             @gc:announce=${this.onComposerAnnounce}
             @gc:slash-action=${this.onComposerSlashAction}
+            @gc:input-changed=${this.onComposerInputChanged}
           ></gc-composer>
         </section>
         <div class="sr-only" role="status" aria-live="assertive">${this.announcement}</div>
@@ -958,6 +1235,83 @@ export class GcChatView extends LitElement {
       margin-right: auto;
       letter-spacing: 0.01em;
     }
+    /* Pre-send confirmation card. Rendered above the composer when the
+       user submits a turn that would call a remote paid provider they
+       haven't confirmed yet this session. Deliberately prominent —
+       we're asking for explicit consent before money leaves the wallet. */
+    .presend-confirm {
+      max-width: var(--content-max-width);
+      margin: 0 auto var(--space-2);
+      padding: var(--space-3) var(--space-4);
+      background: var(--surface-2);
+      border: 1px solid var(--border-accent);
+      border-left: 3px solid var(--danger, #e88);
+      border-radius: 6px;
+      font-size: var(--text-sm);
+    }
+    .presend-head {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      margin-bottom: var(--space-2);
+    }
+    .presend-icon {
+      font-size: 1rem;
+    }
+    .presend-meta {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      column-gap: var(--space-3);
+      row-gap: var(--space-1);
+      margin: var(--space-2) 0;
+      font-size: var(--text-xs);
+    }
+    .presend-meta dt {
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      opacity: 0.55;
+      font-size: 0.65rem;
+    }
+    .presend-meta dd {
+      margin: 0;
+      font-family: var(--font-mono, ui-monospace, monospace);
+    }
+    .presend-note {
+      font-size: var(--text-xs);
+      opacity: 0.75;
+      margin: var(--space-2) 0;
+      line-height: 1.5;
+    }
+    .presend-note code {
+      font-family: var(--font-mono, ui-monospace, monospace);
+      background: var(--surface-3);
+      padding: 0 0.25em;
+      border-radius: 3px;
+    }
+    .presend-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--space-2);
+    }
+    .presend-btn {
+      padding: var(--space-1) var(--space-4);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      color: var(--text);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+    }
+    .presend-btn.confirm {
+      background: var(--accent-assistant);
+      color: #fff;
+      border-color: var(--accent-assistant);
+    }
+    .presend-btn:hover {
+      border-color: var(--border-strong);
+    }
+
     /* Persistent active-model indicator, pinned directly above the
        composer. Kept small and subdued — it's a reminder, not UI chrome.
        Sits inside the same vertical stack as the composer so it doesn't
@@ -990,6 +1344,10 @@ export class GcChatView extends LitElement {
     }
     .model-indicator-profile {
       font-style: italic;
+    }
+    .model-indicator-estimate {
+      font-family: var(--font-mono, ui-monospace, monospace);
+      opacity: 0.85;
     }
     .dashboard-wrap {
       flex: 1;
