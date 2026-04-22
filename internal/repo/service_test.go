@@ -299,6 +299,111 @@ func TestGetDiff(t *testing.T) {
 	}
 }
 
+// TestGetDiffCaps exercises the file-count and patch-byte caps:
+//
+//   - default (fullRange=false): files beyond the 100-file cap collapse
+//     into a single "truncated" sentinel, and files past the byte cap
+//     still get accurate +/− stats so the sidebar never shows +0/-0 for
+//     a file that actually changed.
+//   - fullRange=true: both caps are skipped — every file is returned
+//     with real stats and the patch contains every file header.
+func TestGetDiffCaps(t *testing.T) {
+	path := mustInitRepo(t)
+	r, err := git.PlainOpen(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	w, err := r.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	// Seed 150 files on the main branch so we have something to modify.
+	const total = 150
+	for i := 0; i < total; i++ {
+		writeFile(t, filepath.Join(path, fmt.Sprintf("f%03d.txt", i)), "one\n")
+	}
+	if _, err := w.Add("."); err != nil {
+		t.Fatalf("add seed: %v", err)
+	}
+	if _, err := w.Commit("seed", &git.CommitOptions{
+		Author: &object.Signature{Name: "test", Email: "t@example.com", When: time.Now()},
+	}); err != nil {
+		t.Fatalf("commit seed: %v", err)
+	}
+
+	// Modify every seeded file with a large unique body so each per-file
+	// patch is big enough that the aggregate blows past the default
+	// 512 KiB patch-byte cap well before file 150.
+	big := strings.Repeat("x", 8*1024) + "\n"
+	for i := 0; i < total; i++ {
+		writeFile(t, filepath.Join(path, fmt.Sprintf("f%03d.txt", i)), big)
+	}
+	if _, err := w.Add("."); err != nil {
+		t.Fatalf("add edits: %v", err)
+	}
+	if _, err := w.Commit("edit", &git.CommitOptions{
+		Author: &object.Signature{Name: "test", Email: "t@example.com", When: time.Now()},
+	}); err != nil {
+		t.Fatalf("commit edits: %v", err)
+	}
+
+	registry := repo.NewRegistry()
+	entry, err := registry.Add(path)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	client := newTestServer(t, registry, true)
+	ctx := context.Background()
+
+	// Default caps: file list slices to 100 + a truncated sentinel, and
+	// every real entry has non-zero stats.
+	capped, err := client.GetDiff(ctx, connect.NewRequest(&gitchatv1.GetDiffRequest{
+		RepoId: entry.ID,
+	}))
+	if err != nil {
+		t.Fatalf("get capped diff: %v", err)
+	}
+	if got, want := len(capped.Msg.Files), 101; got != want {
+		t.Fatalf("capped: want %d files (100 + sentinel), got %d", want, got)
+	}
+	if capped.Msg.Files[100].Status != "truncated" {
+		t.Fatalf("capped: want sentinel at [100], got status=%s", capped.Msg.Files[100].Status)
+	}
+	for i, f := range capped.Msg.Files[:100] {
+		if f.Additions == 0 && f.Deletions == 0 {
+			t.Fatalf("capped[%d]=%s: want non-zero stats, got +0/-0", i, f.Path)
+		}
+	}
+
+	// fullRange=true: no caps. All 150 files returned with stats, no
+	// sentinel row, and every file header appears in the patch.
+	full, err := client.GetDiff(ctx, connect.NewRequest(&gitchatv1.GetDiffRequest{
+		RepoId:    entry.ID,
+		FullRange: true,
+	}))
+	if err != nil {
+		t.Fatalf("get full diff: %v", err)
+	}
+	if got, want := len(full.Msg.Files), total; got != want {
+		t.Fatalf("full: want %d files, got %d", want, got)
+	}
+	for i, f := range full.Msg.Files {
+		if f.Status == "truncated" {
+			t.Fatalf("full[%d]: unexpected truncated sentinel", i)
+		}
+		if f.Additions == 0 && f.Deletions == 0 {
+			t.Fatalf("full[%d]=%s: want non-zero stats, got +0/-0", i, f.Path)
+		}
+	}
+	for i := 0; i < total; i++ {
+		header := fmt.Sprintf("diff --git a/f%03d.txt b/f%03d.txt", i, i)
+		if !strings.Contains(full.Msg.UnifiedDiff, header) {
+			t.Fatalf("full: missing patch header for f%03d.txt", i)
+		}
+	}
+}
+
 func TestRepoServiceRequiresAuth(t *testing.T) {
 	path := mustInitRepo(t)
 	registry := repo.NewRegistry()

@@ -215,6 +215,7 @@ export class GcCompareView extends LitElement {
             .leftLabel=${this.baseRef}
             .rightLabel=${this.headRef}
             .detectRenames=${this.wantRenameDetection}
+            .fullRange=${true}
             @gc:diff-files-loaded=${this.onDiffFilesLoaded}
           ></gc-diff-pane>
         </section>

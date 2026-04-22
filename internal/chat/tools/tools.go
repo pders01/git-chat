@@ -303,7 +303,7 @@ func handleGetDiff(ctx context.Context, entry *repo.Entry, raw json.RawMessage) 
 			return "", fmt.Errorf("get_diff: %w", err)
 		}
 	}
-	diff, _, _, empty, _, err := entry.GetDiff(ctx, args.From, args.To, args.Path, "", false)
+	diff, _, _, empty, _, err := entry.GetDiff(ctx, args.From, args.To, args.Path, "", false, false)
 	if err != nil {
 		return "", err
 	}

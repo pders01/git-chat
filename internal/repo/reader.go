@@ -1184,7 +1184,13 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 // Empty fromRef defaults to the parent of toRef (i.e. "what did this
 // commit do"); empty toRef defaults to HEAD. Returns empty=true if
 // nothing changed between the two commits for the scope requested.
-func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath string, detectRenames bool) (diff, fromSHA, toSHA string, empty bool, files []*gitchatv1.ChangedFile, err error) {
+//
+// fullRange=true drops the file-count and patch-byte caps — callers
+// that picked an explicit range (branch-vs-branch in compare-view)
+// opt into rendering the whole thing. Per-file stats are always
+// populated regardless of caps so the sidebar never shows +0/-0 for
+// real changes.
+func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath string, detectRenames, fullRange bool) (diff, fromSHA, toSHA string, empty bool, files []*gitchatv1.ChangedFile, err error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	// Resolve to-side first so we can default fromRef to its parent.
@@ -1267,8 +1273,10 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 	}
 	// Cap files processed for large diffs. files is index-aligned with
 	// changed, so we slice both together before appending the sentinel.
-	maxFiles := 100
-	if len(changed) > maxFiles {
+	// fullRange opts out — the caller picked an explicit range and wants
+	// the whole thing.
+	const maxFiles = 100
+	if !fullRange && len(changed) > maxFiles {
 		truncatedCount := len(changed) - maxFiles
 		changed = changed[:maxFiles]
 		files = files[:maxFiles]
@@ -1280,6 +1288,7 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 
 	var sb bytes.Buffer
 	truncated := 0
+	overCap := false
 	for i, p := range changed {
 		// For a detected rename, the from-side lives at the old path.
 		// Reading fromCommit under `p` (the new path) would always
@@ -1302,15 +1311,22 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 		if i < len(files) {
 			files[i].Additions, files[i].Deletions = fileDiffStats(from, to)
 		}
+		// Past the byte cap: keep computing stats for remaining files
+		// so the sidebar is accurate, but stop appending to the patch
+		// buffer. fullRange skips this entire gate.
+		if overCap {
+			continue
+		}
 		var filePatch string
 		if needsPlaceholder(from.kind) || needsPlaceholder(to.kind) {
 			filePatch = renderPlaceholderPatch(p, from, to)
 		} else {
 			filePatch = renderUnifiedDiff(p, fromResolved, toResolved, from.content, to.content, contextLines)
 		}
-		if sb.Len()+len(filePatch) > maxDiffBytes {
+		if !fullRange && sb.Len()+len(filePatch) > maxDiffBytes {
 			truncated = len(changed) - i
-			break
+			overCap = true
+			continue
 		}
 		sb.WriteString(filePatch)
 	}

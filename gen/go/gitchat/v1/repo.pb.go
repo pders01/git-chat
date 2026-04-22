@@ -1395,7 +1395,13 @@ type GetDiffRequest struct {
 	// Without this hint the server reads the from-side under `path`,
 	// which doesn't exist for a rename and silently collapses the
 	// diff to add-only.
-	FromPath      string `protobuf:"bytes,6,opt,name=from_path,json=fromPath,proto3" json:"from_path,omitempty"`
+	FromPath string `protobuf:"bytes,6,opt,name=from_path,json=fromPath,proto3" json:"from_path,omitempty"`
+	// full_range: when true, skip the file-count and patch-byte caps
+	// that normally protect us from rendering huge branch-vs-branch
+	// diffs. Set by callers who picked an explicit range (compare-view)
+	// and need the complete diff. Per-file stats are always accurate
+	// regardless of this flag.
+	FullRange     bool `protobuf:"varint,7,opt,name=full_range,json=fullRange,proto3" json:"full_range,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1470,6 +1476,13 @@ func (x *GetDiffRequest) GetFromPath() string {
 		return x.FromPath
 	}
 	return ""
+}
+
+func (x *GetDiffRequest) GetFullRange() bool {
+	if x != nil {
+		return x.FullRange
+	}
+	return false
 }
 
 type GetDiffResponse struct {
@@ -3532,14 +3545,16 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x1c\n" +
 	"\tadditions\x18\x03 \x01(\x05R\tadditions\x12\x1c\n" +
 	"\tdeletions\x18\x04 \x01(\x05R\tdeletions\x12\x1b\n" +
-	"\tfrom_path\x18\x05 \x01(\tR\bfromPath\"\xb3\x01\n" +
+	"\tfrom_path\x18\x05 \x01(\tR\bfromPath\"\xd2\x01\n" +
 	"\x0eGetDiffRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x19\n" +
 	"\bfrom_ref\x18\x02 \x01(\tR\afromRef\x12\x15\n" +
 	"\x06to_ref\x18\x03 \x01(\tR\x05toRef\x12\x12\n" +
 	"\x04path\x18\x04 \x01(\tR\x04path\x12%\n" +
 	"\x0edetect_renames\x18\x05 \x01(\bR\rdetectRenames\x12\x1b\n" +
-	"\tfrom_path\x18\x06 \x01(\tR\bfromPath\"\xb7\x01\n" +
+	"\tfrom_path\x18\x06 \x01(\tR\bfromPath\x12\x1d\n" +
+	"\n" +
+	"full_range\x18\a \x01(\bR\tfullRange\"\xb7\x01\n" +
 	"\x0fGetDiffResponse\x12!\n" +
 	"\funified_diff\x18\x01 \x01(\tR\vunifiedDiff\x12\x1f\n" +
 	"\vfrom_commit\x18\x02 \x01(\tR\n" +

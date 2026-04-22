@@ -57,6 +57,11 @@ export class GcDiffPane extends LitElement {
   // When true, the pane's second getDiff (after initial fast list)
   // enables rename detection and re-fires gc:diff-files-loaded.
   @property({ type: Boolean }) detectRenames = false;
+  // When true, ask the server to skip the file-count and patch-byte
+  // caps. Compare-view sets this because the user picked an explicit
+  // range and expects the whole diff; commit-log leaves it off so
+  // huge single commits still truncate gracefully.
+  @property({ type: Boolean }) fullRange = false;
   // Pre-fetched unified diff to render directly. When non-empty the
   // pane skips its own GetDiff RPC and goes straight to highlight +
   // word-diff + render. Exists so consumers whose diffs come from a
@@ -177,6 +182,7 @@ export class GcDiffPane extends LitElement {
         repoId: this.repoId,
         fromRef: this.fromRef,
         toRef: this.toRef,
+        fullRange: this.fullRange,
       });
       if (gen !== this.generation) return;
       const parentSha = resp.fromCommit || "";
@@ -297,7 +303,13 @@ export class GcDiffPane extends LitElement {
     const gen = this.generation;
     try {
       const resp = await repoClient.getDiff(
-        { repoId: this.repoId, fromRef: this.fromRef, toRef: this.toRef, detectRenames: true },
+        {
+          repoId: this.repoId,
+          fromRef: this.fromRef,
+          toRef: this.toRef,
+          detectRenames: true,
+          fullRange: this.fullRange,
+        },
         { signal: ac.signal },
       );
       if (gen !== this.generation) return;

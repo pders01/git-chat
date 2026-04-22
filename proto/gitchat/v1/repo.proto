@@ -259,6 +259,12 @@ message GetDiffRequest {
   // which doesn't exist for a rename and silently collapses the
   // diff to add-only.
   string from_path = 6;
+  // full_range: when true, skip the file-count and patch-byte caps
+  // that normally protect us from rendering huge branch-vs-branch
+  // diffs. Set by callers who picked an explicit range (compare-view)
+  // and need the complete diff. Per-file stats are always accurate
+  // regardless of this flag.
+  bool full_range = 7;
 }
 
 message GetDiffResponse {
