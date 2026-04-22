@@ -14,6 +14,7 @@ require (
 	github.com/mark3labs/mcp-go v0.47.1
 	github.com/sashabaranov/go-openai v1.41.2
 	golang.org/x/crypto v0.41.0
+	golang.org/x/sync v0.19.0
 	golang.org/x/term v0.42.0
 	google.golang.org/protobuf v1.36.11
 	modernc.org/sqlite v1.48.2
@@ -73,7 +74,6 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/net v0.43.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect

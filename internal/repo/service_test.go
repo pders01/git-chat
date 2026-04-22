@@ -404,6 +404,98 @@ func TestGetDiffCaps(t *testing.T) {
 	}
 }
 
+// TestGetDiffFullRangeStatuses exercises the native-git whole-range
+// path with the full status matrix: add, delete, modify, rename.
+// Guards the --raw / --numstat parsers against format regressions
+// and confirms rename detection plumbs through to FromPath.
+func TestGetDiffFullRangeStatuses(t *testing.T) {
+	path := mustInitRepo(t)
+	r, err := git.PlainOpen(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	w, err := r.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	// Seed: three files we can then modify / delete / rename.
+	writeFile(t, filepath.Join(path, "keep.txt"), "one\ntwo\nthree\n")
+	writeFile(t, filepath.Join(path, "gone.txt"), "bye\n")
+	writeFile(t, filepath.Join(path, "old-name.txt"), "rename me\ncontent\n")
+	if _, err := w.Add("."); err != nil {
+		t.Fatalf("add seed: %v", err)
+	}
+	if _, err := w.Commit("seed", &git.CommitOptions{
+		Author: &object.Signature{Name: "test", Email: "t@example.com", When: time.Now()},
+	}); err != nil {
+		t.Fatalf("commit seed: %v", err)
+	}
+
+	// Apply every status we care about: modify, delete, rename, add.
+	writeFile(t, filepath.Join(path, "keep.txt"), "one\ntwo\nthree\nfour\n")
+	if err := os.Remove(filepath.Join(path, "gone.txt")); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if err := os.Rename(filepath.Join(path, "old-name.txt"), filepath.Join(path, "new-name.txt")); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	writeFile(t, filepath.Join(path, "fresh.txt"), "brand new\n")
+	if _, err := w.Add("."); err != nil {
+		t.Fatalf("add edits: %v", err)
+	}
+	if _, err := w.Commit("edits", &git.CommitOptions{
+		Author: &object.Signature{Name: "test", Email: "t@example.com", When: time.Now()},
+	}); err != nil {
+		t.Fatalf("commit edits: %v", err)
+	}
+
+	registry := repo.NewRegistry()
+	entry, err := registry.Add(path)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	client := newTestServer(t, registry, true)
+	ctx := context.Background()
+
+	resp, err := client.GetDiff(ctx, connect.NewRequest(&gitchatv1.GetDiffRequest{
+		RepoId:        entry.ID,
+		FullRange:     true,
+		DetectRenames: true,
+	}))
+	if err != nil {
+		t.Fatalf("get diff: %v", err)
+	}
+	byPath := make(map[string]*gitchatv1.ChangedFile, len(resp.Msg.Files))
+	for _, f := range resp.Msg.Files {
+		byPath[f.Path] = f
+	}
+	checkFile := func(path, status string, wantFrom string, wantAdds, wantDels int32) {
+		t.Helper()
+		f, ok := byPath[path]
+		if !ok {
+			t.Fatalf("missing file %q in diff", path)
+		}
+		if f.Status != status {
+			t.Fatalf("%q: want status=%s, got %s", path, status, f.Status)
+		}
+		if f.FromPath != wantFrom {
+			t.Fatalf("%q: want fromPath=%q, got %q", path, wantFrom, f.FromPath)
+		}
+		if f.Additions != wantAdds || f.Deletions != wantDels {
+			t.Fatalf("%q: want +%d/-%d, got +%d/-%d",
+				path, wantAdds, wantDels, f.Additions, f.Deletions)
+		}
+	}
+	checkFile("keep.txt", "modified", "", 1, 0)
+	checkFile("gone.txt", "deleted", "", 0, 1)
+	checkFile("fresh.txt", "added", "", 1, 0)
+	checkFile("new-name.txt", "renamed", "old-name.txt", 0, 0)
+	if _, lingering := byPath["old-name.txt"]; lingering {
+		t.Fatal("rename should collapse old path; got separate old-name.txt entry")
+	}
+}
+
 func TestRepoServiceRequiresAuth(t *testing.T) {
 	path := mustInitRepo(t)
 	registry := repo.NewRegistry()

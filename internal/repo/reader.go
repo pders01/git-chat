@@ -27,12 +27,12 @@ import (
 // The Registry path honours live UI edits; these constants only apply
 // if no Registry was wired in or the key isn't registered.
 const (
-	defaultMaxFileBytesFallback      int64 = 512 * 1024
-	defaultMaxDiffBytesFallback            = 512 * 1024
-	defaultCommitLimitFallback             = 50
-	defaultDiffContextLinesFallback        = 3
-	defaultMaxChurnCommitsFallback         = 5000
-	defaultChurnWindowDaysFallback         = 90
+	defaultMaxFileBytesFallback     int64 = 512 * 1024
+	defaultMaxDiffBytesFallback           = 512 * 1024
+	defaultCommitLimitFallback            = 50
+	defaultDiffContextLinesFallback       = 3
+	defaultMaxChurnCommitsFallback        = 5000
+	defaultChurnWindowDaysFallback        = 90
 )
 
 // errPathEscape is returned when a caller-supplied path would escape the
@@ -1172,7 +1172,6 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 	return out, nil
 }
 
-
 // GetDiff returns a unified-diff patch for either a single file or an
 // entire commit range, depending on whether `path` is provided.
 //
@@ -1261,6 +1260,22 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 	}
 
 	// ── Whole-commit path ──────────────────────────────────────────
+	// fullRange: delegate to the native git binary. go-git's serial
+	// tree walk + double Myers per file is O(minutes) on Koha-sized
+	// branch diffs; `git diff` finishes the same workload in seconds
+	// because it reuses packfile streams and parallelises internally.
+	// On exec failure we fall through to the go-git path so hosts
+	// without git installed still work.
+	if fullRange {
+		patch, ngFiles, gerr := gitDiffAll(ctx, e.Path, fromResolved, toResolved, detectRenames)
+		if gerr == nil {
+			if patch == "" && len(ngFiles) == 0 {
+				return "", fromResolved, toResolved, true, nil, nil
+			}
+			return patch, fromResolved, toResolved, false, ngFiles, nil
+		}
+	}
+
 	// Enumerate every path touched between from and to, compute each
 	// file's single-file patch, and concatenate. Sort for determinism.
 	// Also builds per-file metadata in a single tree-diff pass.
@@ -1808,7 +1823,6 @@ func ShortSHA(s string) string {
 	return s
 }
 
-
 // splitLinesKeepNL splits s into lines, keeping trailing newlines so
 // the diff output preserves line terminators. An input ending in "\n"
 // produces N lines; an input without the trailing newline produces the
@@ -1906,10 +1920,10 @@ func diffHunks(a, b []string, contextLines int) []diffHunk {
 
 // diffOp kinds.
 type diffOp struct {
-	kind     int    // opEqual | opDel | opIns
-	line     string // the line from a or b
-	aIdx     int    // 1-based line number in a (0 for inserts)
-	bIdx     int    // 1-based line number in b (0 for deletes)
+	kind int    // opEqual | opDel | opIns
+	line string // the line from a or b
+	aIdx int    // 1-based line number in a (0 for inserts)
+	bIdx int    // 1-based line number in b (0 for deletes)
 }
 
 const (
@@ -2100,4 +2114,3 @@ func min64(a, b int64) int64 {
 	}
 	return b
 }
-
