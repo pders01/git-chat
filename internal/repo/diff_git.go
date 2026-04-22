@@ -18,15 +18,19 @@ import (
 // "add everything" baseline.
 const gitEmptyTreeSHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
-// gitDiffAll runs the entire whole-range diff through the native git
-// binary. Returns the concatenated unified patch plus per-file metadata
-// (status, renames, +/- stats). Used by GetDiff when the caller opts
-// into full_range because the go-git path does 8k+ serial tree lookups
-// and two Myers passes per file — on Koha-scale ranges that's minutes
-// where git finishes in seconds.
+// gitDiffAll runs the whole-range diff through the native git binary.
+// Returns per-file metadata (status, renames, +/- stats) always; the
+// aggregate unified patch is returned only when filesOnly is false.
 //
-// Three parallel invocations:
-//   - `git diff`           → the unified patch itself (big).
+// filesOnly skips the most expensive subprocess — generating the full
+// concatenated patch — which for a multi-thousand-file range is tens
+// of megabytes of text the client has to deserialise and Shiki-
+// highlight before the sidebar even shows. Compare-view asks for the
+// cheap variant on initial load and only fetches the aggregate if the
+// user clicks "all files".
+//
+// Parallel invocations (two or three depending on filesOnly):
+//   - `git diff`           → the unified patch (skipped when filesOnly).
 //   - `git diff --raw`     → status codes + renames per file.
 //   - `git diff --numstat` → per-file add/delete counts.
 //
@@ -37,7 +41,7 @@ const gitEmptyTreeSHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 // fromSHA may be empty — caller passes resolveCommit's result, which
 // is "" for a root commit. We swap in the empty-tree SHA so git treats
 // the left side as "nothing existed".
-func gitDiffAll(ctx context.Context, repoDir, fromSHA, toSHA string, detectRenames bool) (patch string, files []*gitchatv1.ChangedFile, err error) {
+func gitDiffAll(ctx context.Context, repoDir, fromSHA, toSHA string, detectRenames, filesOnly bool) (patch string, files []*gitchatv1.ChangedFile, err error) {
 	if fromSHA == "" {
 		fromSHA = gitEmptyTreeSHA
 	}
@@ -55,11 +59,13 @@ func gitDiffAll(ctx context.Context, repoDir, fromSHA, toSHA string, detectRenam
 
 	var patchB, statB, rawB []byte
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		b, e := gitCmd{repoDir: repoDir, config: cfg, args: mkArgs()}.run(gctx)
-		patchB = b
-		return e
-	})
+	if !filesOnly {
+		g.Go(func() error {
+			b, e := gitCmd{repoDir: repoDir, config: cfg, args: mkArgs()}.run(gctx)
+			patchB = b
+			return e
+		})
+	}
 	g.Go(func() error {
 		b, e := gitCmd{repoDir: repoDir, config: cfg, args: mkArgs("--numstat", "-z")}.run(gctx)
 		statB = b

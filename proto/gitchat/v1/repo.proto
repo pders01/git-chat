@@ -265,6 +265,13 @@ message GetDiffRequest {
   // and need the complete diff. Per-file stats are always accurate
   // regardless of this flag.
   bool full_range = 7;
+  // files_only: when true (whole-commit path only), the server skips
+  // generating the aggregate unified patch and returns just the file
+  // list with per-file stats. Compare-view uses this on initial load
+  // so the sidebar populates without transferring a multi-megabyte
+  // patch no one has asked to see yet. Fetching the aggregate later
+  // is a second GetDiff with files_only=false.
+  bool files_only = 8;
 }
 
 message GetDiffResponse {

@@ -1189,7 +1189,13 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 // opt into rendering the whole thing. Per-file stats are always
 // populated regardless of caps so the sidebar never shows +0/-0 for
 // real changes.
-func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath string, detectRenames, fullRange bool) (diff, fromSHA, toSHA string, empty bool, files []*gitchatv1.ChangedFile, err error) {
+//
+// filesOnly=true (whole-commit path only) makes the server skip the
+// aggregate unified patch entirely and return just the file list +
+// stats. Lets a UI populate its sidebar at the speed of `git diff
+// --raw --numstat` without paying for the patch bytes no one has
+// asked to render yet.
+func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath string, detectRenames, fullRange, filesOnly bool) (diff, fromSHA, toSHA string, empty bool, files []*gitchatv1.ChangedFile, err error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	// Resolve to-side first so we can default fromRef to its parent.
@@ -1267,9 +1273,14 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 	// On exec failure we fall through to the go-git path so hosts
 	// without git installed still work.
 	if fullRange {
-		patch, ngFiles, gerr := gitDiffAll(ctx, e.Path, fromResolved, toResolved, detectRenames)
+		patch, ngFiles, gerr := gitDiffAll(ctx, e.Path, fromResolved, toResolved, detectRenames, filesOnly)
 		if gerr == nil {
-			if patch == "" && len(ngFiles) == 0 {
+			// filesOnly returns an empty patch by design; don't collapse
+			// that into empty=true or the UI thinks nothing changed.
+			if !filesOnly && patch == "" && len(ngFiles) == 0 {
+				return "", fromResolved, toResolved, true, nil, nil
+			}
+			if filesOnly && len(ngFiles) == 0 {
 				return "", fromResolved, toResolved, true, nil, nil
 			}
 			return patch, fromResolved, toResolved, false, ngFiles, nil

@@ -494,6 +494,27 @@ func TestGetDiffFullRangeStatuses(t *testing.T) {
 	if _, lingering := byPath["old-name.txt"]; lingering {
 		t.Fatal("rename should collapse old path; got separate old-name.txt entry")
 	}
+
+	// files_only: same file list + stats, empty patch. Lets compare-
+	// view populate the sidebar without transferring the aggregate.
+	filesOnly, err := client.GetDiff(ctx, connect.NewRequest(&gitchatv1.GetDiffRequest{
+		RepoId:        entry.ID,
+		FullRange:     true,
+		DetectRenames: true,
+		FilesOnly:     true,
+	}))
+	if err != nil {
+		t.Fatalf("get files-only diff: %v", err)
+	}
+	if filesOnly.Msg.UnifiedDiff != "" {
+		t.Fatalf("files_only: expected empty patch, got %d bytes", len(filesOnly.Msg.UnifiedDiff))
+	}
+	if filesOnly.Msg.Empty {
+		t.Fatal("files_only: empty=true even though there are changed files")
+	}
+	if got, want := len(filesOnly.Msg.Files), len(resp.Msg.Files); got != want {
+		t.Fatalf("files_only: want %d files, got %d", want, got)
+	}
 }
 
 func TestRepoServiceRequiresAuth(t *testing.T) {

@@ -1401,7 +1401,14 @@ type GetDiffRequest struct {
 	// diffs. Set by callers who picked an explicit range (compare-view)
 	// and need the complete diff. Per-file stats are always accurate
 	// regardless of this flag.
-	FullRange     bool `protobuf:"varint,7,opt,name=full_range,json=fullRange,proto3" json:"full_range,omitempty"`
+	FullRange bool `protobuf:"varint,7,opt,name=full_range,json=fullRange,proto3" json:"full_range,omitempty"`
+	// files_only: when true (whole-commit path only), the server skips
+	// generating the aggregate unified patch and returns just the file
+	// list with per-file stats. Compare-view uses this on initial load
+	// so the sidebar populates without transferring a multi-megabyte
+	// patch no one has asked to see yet. Fetching the aggregate later
+	// is a second GetDiff with files_only=false.
+	FilesOnly     bool `protobuf:"varint,8,opt,name=files_only,json=filesOnly,proto3" json:"files_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1481,6 +1488,13 @@ func (x *GetDiffRequest) GetFromPath() string {
 func (x *GetDiffRequest) GetFullRange() bool {
 	if x != nil {
 		return x.FullRange
+	}
+	return false
+}
+
+func (x *GetDiffRequest) GetFilesOnly() bool {
+	if x != nil {
+		return x.FilesOnly
 	}
 	return false
 }
@@ -3545,7 +3559,7 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x1c\n" +
 	"\tadditions\x18\x03 \x01(\x05R\tadditions\x12\x1c\n" +
 	"\tdeletions\x18\x04 \x01(\x05R\tdeletions\x12\x1b\n" +
-	"\tfrom_path\x18\x05 \x01(\tR\bfromPath\"\xd2\x01\n" +
+	"\tfrom_path\x18\x05 \x01(\tR\bfromPath\"\xf1\x01\n" +
 	"\x0eGetDiffRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x19\n" +
 	"\bfrom_ref\x18\x02 \x01(\tR\afromRef\x12\x15\n" +
@@ -3554,7 +3568,9 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\x0edetect_renames\x18\x05 \x01(\bR\rdetectRenames\x12\x1b\n" +
 	"\tfrom_path\x18\x06 \x01(\tR\bfromPath\x12\x1d\n" +
 	"\n" +
-	"full_range\x18\a \x01(\bR\tfullRange\"\xb7\x01\n" +
+	"full_range\x18\a \x01(\bR\tfullRange\x12\x1d\n" +
+	"\n" +
+	"files_only\x18\b \x01(\bR\tfilesOnly\"\xb7\x01\n" +
 	"\x0fGetDiffResponse\x12!\n" +
 	"\funified_diff\x18\x01 \x01(\tR\vunifiedDiff\x12\x1f\n" +
 	"\vfrom_commit\x18\x02 \x01(\tR\n" +

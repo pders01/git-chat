@@ -177,12 +177,20 @@ export class GcDiffPane extends LitElement {
     this.diff = { phase: "loading" };
     this.sideFiles = { phase: "idle" };
     this.fullDiff = null;
+    // Explicit-range callers (compare-view) ship the sidebar at the
+    // speed of `git diff --raw --numstat` by asking for files-only.
+    // The aggregate patch is fetched lazily if the user picks
+    // "all files" — most don't, and the patch for a 2k-file branch
+    // is tens of megabytes we'd otherwise serialise + Shiki-highlight
+    // for nothing.
+    const filesOnly = this.fullRange;
     try {
       const resp = await repoClient.getDiff({
         repoId: this.repoId,
         fromRef: this.fromRef,
         toRef: this.toRef,
         fullRange: this.fullRange,
+        filesOnly,
       });
       if (gen !== this.generation) return;
       const parentSha = resp.fromCommit || "";
@@ -193,7 +201,12 @@ export class GcDiffPane extends LitElement {
           detail: { files: resp.files, parentSha, toCommit: resp.toCommit },
         }),
       );
-      if (resp.empty) {
+      if (filesOnly) {
+        // No aggregate yet. Pane sits in "empty" so the sidebar can
+        // drive: selecting a file calls loadForPath (single-file
+        // RPC), selecting "all files" triggers loadAggregate below.
+        this.diff = { phase: "empty" };
+      } else if (resp.empty) {
         const ready = { phase: "ready" as const, rawDiff: "", diffHtml: "", parentSha };
         this.diff = ready;
         this.fullDiff = { rawDiff: "", diffHtml: "", parentSha };
@@ -221,14 +234,57 @@ export class GcDiffPane extends LitElement {
     }
   }
 
+  // Fetch the concatenated whole-range patch on demand. Used when
+  // fullRange skipped the aggregate upfront and the user navigated
+  // to the "all files" view.
+  private async loadAggregate() {
+    const gen = ++this.generation;
+    this.diff = { phase: "loading" };
+    try {
+      const resp = await repoClient.getDiff({
+        repoId: this.repoId,
+        fromRef: this.fromRef,
+        toRef: this.toRef,
+        fullRange: this.fullRange,
+      });
+      if (gen !== this.generation) return;
+      const parentSha = resp.fromCommit || "";
+      if (resp.empty) {
+        const ready = { phase: "ready" as const, rawDiff: "", diffHtml: "", parentSha };
+        this.diff = ready;
+        this.fullDiff = { rawDiff: "", diffHtml: "", parentSha };
+        return;
+      }
+      const { highlight } = await loadHighlight();
+      let highlighted = await highlight(resp.unifiedDiff, "diff");
+      if (gen !== this.generation) return;
+      highlighted = highlightWordDiffs(highlighted);
+      highlighted = addLineNumbers(highlighted);
+      this.diff = {
+        phase: "ready",
+        rawDiff: resp.unifiedDiff,
+        diffHtml: highlighted,
+        parentSha,
+      };
+      this.fullDiff = { rawDiff: resp.unifiedDiff, diffHtml: highlighted, parentSha };
+    } catch (e) {
+      if (gen !== this.generation) return;
+      this.diff = { phase: "error", message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   private async loadForPath() {
     if (this.path === "") {
+      this.sideFiles = { phase: "idle" };
       if (this.fullDiff) {
         this.diff = { phase: "ready", ...this.fullDiff };
+      } else if (this.fullRange) {
+        // Compare-view skipped the aggregate on initial load; fetch
+        // it now that the user is actually looking at "all files".
+        await this.loadAggregate();
       } else {
         this.diff = { phase: "empty" };
       }
-      this.sideFiles = { phase: "idle" };
       return;
     }
     const gen = ++this.generation;
@@ -309,6 +365,9 @@ export class GcDiffPane extends LitElement {
           toRef: this.toRef,
           detectRenames: true,
           fullRange: this.fullRange,
+          // Rename-coalesced reshuffle only touches the sidebar — no
+          // point re-shipping the aggregate patch just to drop it.
+          filesOnly: true,
         },
         { signal: ac.signal },
       );

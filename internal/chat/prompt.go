@@ -220,7 +220,7 @@ func (s *Service) expandHistoryDiffMarkers(ctx context.Context, r *repo.Entry, t
 		if cached, ok := cache[cacheKey]; ok {
 			return cached
 		}
-		diff, _, _, empty, _, err := r.GetDiff(ctx, from, to, path, "", false, false)
+		diff, _, _, empty, _, err := r.GetDiff(ctx, from, to, path, "", false, false, false)
 		if err != nil {
 			cache[cacheKey] = match
 			return match
