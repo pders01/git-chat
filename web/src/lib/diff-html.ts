@@ -39,7 +39,13 @@ export function splitDiffHtml(unifiedHtml: string): Array<{ left: string; right:
     const tempEl = document.createElement("span");
     tempEl.innerHTML = lineHtml;
     const text = tempEl.textContent ?? "";
-    if (text.startsWith("-")) delBuf.push(lineHtml);
+    // File-header lines (`--- a/foo`, `+++ b/foo`) start with '-'/'+' but
+    // are not real del/add edits — mirror them on both sides so they
+    // don't get zipped into a fake del/add pair.
+    if (text.startsWith("---") || text.startsWith("+++")) {
+      flushBuffers();
+      pairs.push({ left: lineHtml, right: lineHtml });
+    } else if (text.startsWith("-")) delBuf.push(lineHtml);
     else if (text.startsWith("+")) addBuf.push(lineHtml);
     else {
       flushBuffers();
@@ -62,14 +68,20 @@ export function highlightWordDiffs(htmlStr: string): string {
   if (!code) return htmlStr;
   const lineEls = Array.from(code.querySelectorAll(".line"));
   if (lineEls.length === 0) return htmlStr;
+  // File-header lines (`--- a/foo`, `+++ b/foo`) start with '-'/'+' but
+  // are not real edits — exclude them so the pair detection below
+  // doesn't word-diff `--- a/foo` against `+++ b/foo`.
+  const isFileHeader = (t: string) => t.startsWith("---") || t.startsWith("+++");
+  const isDel = (t: string) => t.startsWith("-") && !isFileHeader(t);
+  const isAdd = (t: string) => t.startsWith("+") && !isFileHeader(t);
   let i = 0;
   while (i < lineEls.length) {
     const text = lineEls[i].textContent ?? "";
-    if (text.startsWith("-")) {
+    if (isDel(text)) {
       const delStart = i;
-      while (i < lineEls.length && (lineEls[i].textContent ?? "").startsWith("-")) i++;
+      while (i < lineEls.length && isDel(lineEls[i].textContent ?? "")) i++;
       const addStart = i;
-      while (i < lineEls.length && (lineEls[i].textContent ?? "").startsWith("+")) i++;
+      while (i < lineEls.length && isAdd(lineEls[i].textContent ?? "")) i++;
       const delEnd = addStart;
       const addEnd = i;
       const pairCount = Math.min(delEnd - delStart, addEnd - addStart);

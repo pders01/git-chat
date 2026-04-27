@@ -67,6 +67,19 @@ describe("splitDiffHtml", () => {
     ]);
   });
 
+  test("file header lines (--- a/foo, +++ b/foo) mirror, don't pair as del/add", () => {
+    // Regression: `---`/`+++` start with '-'/'+' but are file headers,
+    // not real edits — they must not be zipped into a del/add row.
+    const out = splitDiffHtml(
+      shikiDiff(["--- a/foo.ts", "+++ b/foo.ts", "-real-del", "+real-add"]),
+    );
+    expect(out).toEqual([
+      { left: "--- a/foo.ts", right: "--- a/foo.ts" },
+      { left: "+++ b/foo.ts", right: "+++ b/foo.ts" },
+      { left: "-real-del", right: "+real-add" },
+    ]);
+  });
+
   test("realistic hunk: mix of context + edits round-trips shape", () => {
     const out = splitDiffHtml(
       shikiDiff([" unchanged", "-deleted-a", "-deleted-b", "+added-a", " tail"]),
@@ -140,6 +153,15 @@ describe("highlightWordDiffs", () => {
 
   test("orphan del (no matching add run) skips marking — no paired add available", () => {
     const out = highlightWordDiffs(shikiDiff(["-only delete", " context"]));
+    expect(out).not.toContain("<mark");
+  });
+
+  test("file header pair (--- a/foo / +++ b/foo) is not word-diffed", () => {
+    // Regression: `---` / `+++` headers start with '-'/'+' but are not
+    // real -/+ edits — they should not get LCS'd against each other.
+    const out = highlightWordDiffs(
+      shikiDiff(["--- a/foo.ts", "+++ b/foo.ts", "@@ -1 +1 @@", " ctx"]),
+    );
     expect(out).not.toContain("<mark");
   });
 
