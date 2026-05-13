@@ -180,6 +180,16 @@ func runLocal(args []string) error {
 
 	sessions := auth.NewSessionStore(false)
 	sessions.SetConfig(cfg)
+	// ext-mode flips session cookies to SameSite=None + Secure +
+	// Partitioned so the SPA can authenticate from inside a VS Code
+	// webview iframe (which Chromium treats as cross-site). Safe
+	// because validateLoopback above already refused any non-loopback
+	// bind, and Partitioned scopes the cookie to the (origin,
+	// top-level-site) tuple so an attacker page embedding the loopback
+	// origin can't read the user's webview session.
+	if *extMode {
+		sessions.SetExtMode(true)
+	}
 	localTok := auth.NewLocalTokens()
 	token, _, err := localTok.Mint()
 	if err != nil {

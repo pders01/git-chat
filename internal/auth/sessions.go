@@ -41,6 +41,15 @@ type SessionStore struct {
 	byToken  map[string]*Session
 	cfg      *config.Registry // optional; nil falls back to env + default
 	secureCk bool             // set Secure flag on cookies (true only behind TLS)
+	// extMode flips cookie attributes for VS Code / Open VSX webview
+	// hosting. The SPA runs inside an iframe whose top-level document
+	// is vscode-webview:// or vscode-file://, which Chromium treats as
+	// cross-site to http://localhost — SameSite=Strict (or Lax) blocks
+	// the session cookie on every fetch from the iframe. ext-mode
+	// switches to SameSite=None + Secure + Partitioned, the modern
+	// "third-party-but-trusted" recipe. Loopback gets the Secure
+	// exception on http://localhost in Chromium so no TLS is needed.
+	extMode bool
 	// TTL cache — the Config Registry resolves SESSION_TTL via a DB
 	// round-trip with a 5s timeout; ttlDur is called on every session
 	// op (Create/Get/Rotate/ShouldRotate/TTL/SetCookie) so without a
@@ -70,6 +79,26 @@ func (s *SessionStore) SetConfig(cfg *config.Registry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cfg = cfg
+}
+
+// SetExtMode enables ext-mode cookie attributes (SameSite=None +
+// Secure + Partitioned). MUST only be called when the HTTP server is
+// loopback-bound — without that guarantee, SameSite=None makes the
+// cookie eligible for cross-site requests and defeats CSRF protection.
+//
+// The only legitimate caller is `git-chat local --ext-mode`, which
+// runs validateLoopback before reaching this code path. Adding new
+// callers means re-establishing the loopback invariant first; the
+// store cannot verify the bind itself.
+//
+// Partitioned is the cross-context safety net: it scopes the cookie
+// to the (origin, top-level-site) tuple so an attacker page that
+// iframes our loopback origin cannot read the session a legitimate
+// webview host already established.
+func (s *SessionStore) SetExtMode(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.extMode = enabled
 }
 
 // ttlDur resolves the current session TTL. Values ≤ 0 are rejected so
@@ -183,30 +212,47 @@ func (s *SessionStore) Delete(token string) {
 	s.mu.Unlock()
 }
 
+// CookieAttrs returns the shared cookie attributes for session cookies
+// (Secure, SameSite, Partitioned). Centralised so SetCookie,
+// ClearCookie, and the Connect handler's manual cookie writers stay in
+// sync. ext-mode flips SameSite=Strict → None + Secure + Partitioned so
+// the cookie survives the cross-site iframe context inside a VS Code
+// webview host.
+func (s *SessionStore) CookieAttrs() (secure bool, sameSite http.SameSite, partitioned bool) {
+	if s.extMode {
+		return true, http.SameSiteNoneMode, true
+	}
+	return s.secureCk, http.SameSiteStrictMode, false
+}
+
 // SetCookie writes the session cookie to w.
 func (s *SessionStore) SetCookie(w http.ResponseWriter, sess *Session) {
+	secure, sameSite, partitioned := s.CookieAttrs()
 	http.SetCookie(w, &http.Cookie{
-		Name:     CookieName,
-		Value:    sess.Token,
-		Path:     "/",
-		Expires:  sess.ExpiresAt,
-		MaxAge:   int(s.ttlDur().Seconds()),
-		HttpOnly: true,
-		Secure:   s.secureCk,
-		SameSite: http.SameSiteStrictMode,
+		Name:        CookieName,
+		Value:       sess.Token,
+		Path:        "/",
+		Expires:     sess.ExpiresAt,
+		MaxAge:      int(s.ttlDur().Seconds()),
+		HttpOnly:    true,
+		Secure:      secure,
+		SameSite:    sameSite,
+		Partitioned: partitioned,
 	})
 }
 
 // ClearCookie writes an expired cookie (used by Logout).
 func (s *SessionStore) ClearCookie(w http.ResponseWriter) {
+	secure, sameSite, partitioned := s.CookieAttrs()
 	http.SetCookie(w, &http.Cookie{
-		Name:     CookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   s.secureCk,
-		SameSite: http.SameSiteStrictMode,
+		Name:        CookieName,
+		Value:       "",
+		Path:        "/",
+		MaxAge:      -1,
+		HttpOnly:    true,
+		Secure:      secure,
+		SameSite:    sameSite,
+		Partitioned: partitioned,
 	})
 }
 

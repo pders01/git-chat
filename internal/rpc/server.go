@@ -98,23 +98,21 @@ func NewHTTPServer(cfg Config) *http.Server {
 // headers. The CSP allows inline styles (Shiki uses them for theming)
 // but blocks everything else that's not same-origin.
 //
-// extMode swaps X-Frame-Options: DENY for a frame-ancestors directive
-// that permits VS Code / Open VSX-derived webview origins. The Go
-// server still binds loopback-only — this just unblocks the iframe.
+// extMode drops both X-Frame-Options and the CSP frame-ancestors
+// directive so the SPA can render inside arbitrary editor webview
+// chrome (vscode-webview://, vscode-file://, opaque cdn subdomains).
+// CSP `frame-ancestors *` is NOT a substitute — per CSP spec, `*`
+// only matches network schemes (http/https/ws/wss), so non-network
+// parents like vscode-webview:// are still blocked.
+//
+// The real security gates in ext-mode are:
+//   1. loopback-only bind (validateLoopback in cmd/git-chat/local.go)
+//   2. one-shot claim token (auth.LocalTokens)
+// Both are independent of frame-ancestors.
 func securityHeaders(next http.Handler, extMode bool) http.Handler {
 	const baseCSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; img-src 'self' data:; connect-src 'self'; font-src 'self'"
-	// vscode-webview://*: stable VS Code webview origin.
-	// https://*.vscode-cdn.net: cursor / windsurf / forks that proxy
-	//   webview content through cdn-style hosts.
-	// http://127.0.0.1:* + http://localhost:*: extension dev workflows
-	//   where the webview is loaded from a local dev server.
-	const extCSP = baseCSP + "; frame-ancestors 'self' vscode-webview://* https://*.vscode-cdn.net http://127.0.0.1:* http://localhost:*"
-	csp := baseCSP
-	if extMode {
-		csp = extCSP
-	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", csp)
+		w.Header().Set("Content-Security-Policy", baseCSP)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if !extMode {
 			w.Header().Set("X-Frame-Options", "DENY")

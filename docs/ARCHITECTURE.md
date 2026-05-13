@@ -405,14 +405,12 @@ Same auth substrate (one-shot claim token, loopback bind), three deltas:
    ```
    Extensions parse positionally. Format is a stability contract --
    changes are a protocol bump.
-2. **CSP `frame-ancestors`** replaces `X-Frame-Options: DENY`:
-   ```
-   frame-ancestors 'self' vscode-webview://* https://*.vscode-cdn.net
-                   http://127.0.0.1:* http://localhost:*
-   ```
-   Permits the SPA to render inside a `WebviewPanel` iframe. The server
-   still binds loopback-only -- only processes the extension host
-   spawned can reach the port.
+2. **Drop `X-Frame-Options: DENY` and omit `frame-ancestors`**. VS
+   Code derivatives wrap webviews in non-network ancestor schemes
+   (`vscode-webview://`, `vscode-file://`) that `frame-ancestors *`
+   doesn't match — `*` is network-scheme-only per spec. Skipping the
+   directive entirely is the only viable answer. Loopback bind +
+   one-shot claim token remain the real security boundaries.
 3. **No browser auto-open.** The webview is the consumer.
 
 The extension lives in `extension/` (TypeScript, ~10 KB esbuild bundle).

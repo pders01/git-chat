@@ -118,6 +118,80 @@ func TestSessionStore_SetCookie(t *testing.T) {
 	if cookie.SameSite != http.SameSiteStrictMode {
 		t.Error("expected SameSite=Strict")
 	}
+	if cookie.Partitioned {
+		t.Error("default mode must NOT set Partitioned — would imply third-party context")
+	}
+}
+
+// TestSessionStore_ExtModeCookieAttrs guards the security-sensitive
+// cookie attribute switch in ext-mode. Regression: any change here is
+// a deliberate change to the cross-site security posture and must be
+// reviewed against the threat model in docs/PATTERNS.md §7.6.
+func TestSessionStore_ExtModeCookieAttrs(t *testing.T) {
+	store := auth.NewSessionStore(false)
+	store.SetExtMode(true)
+
+	sess, err := store.Create("local", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	store.SetCookie(rr, sess)
+	cookies := rr.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("expected 1 cookie, got %d", len(cookies))
+	}
+	c := cookies[0]
+	if c.SameSite != http.SameSiteNoneMode {
+		t.Errorf("ext-mode must set SameSite=None for cross-site iframe context, got %v", c.SameSite)
+	}
+	if !c.Secure {
+		t.Error("ext-mode must set Secure (required by SameSite=None and Partitioned)")
+	}
+	if !c.Partitioned {
+		t.Error("ext-mode must set Partitioned — scopes cookie to (origin, top-level-site) tuple, the CSRF safety net")
+	}
+	if !c.HttpOnly {
+		t.Error("HttpOnly must remain set in ext-mode")
+	}
+
+	// ClearCookie must mirror these attrs so the clear actually
+	// matches and removes the active cookie.
+	rr2 := httptest.NewRecorder()
+	store.ClearCookie(rr2)
+	clear := rr2.Result().Cookies()[0]
+	if clear.SameSite != http.SameSiteNoneMode || !clear.Secure || !clear.Partitioned {
+		t.Errorf("ClearCookie ext-mode attrs mismatch SetCookie: same_site=%v secure=%v partitioned=%v",
+			clear.SameSite, clear.Secure, clear.Partitioned)
+	}
+}
+
+// TestSessionStore_DefaultModeUnaffectedBySwitch guards against the
+// ext-mode flip leaking into the default code path. If this test
+// fails, every serve-mode and non-ext local-mode deployment just had
+// its cross-site protection silently weakened.
+func TestSessionStore_DefaultModeUnaffectedBySwitch(t *testing.T) {
+	storeA := auth.NewSessionStore(false)
+	storeB := auth.NewSessionStore(false)
+	storeB.SetExtMode(true)
+	storeB.SetExtMode(false) // toggle back
+
+	for _, store := range []*auth.SessionStore{storeA, storeB} {
+		sess, err := store.Create("p", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		store.SetCookie(rr, sess)
+		c := rr.Result().Cookies()[0]
+		if c.SameSite != http.SameSiteStrictMode {
+			t.Errorf("default cookie must be SameSite=Strict, got %v", c.SameSite)
+		}
+		if c.Partitioned {
+			t.Error("default cookie must NOT be Partitioned")
+		}
+	}
 }
 
 func TestSessionStore_ClearCookie(t *testing.T) {

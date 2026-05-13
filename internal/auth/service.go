@@ -171,28 +171,32 @@ func (s *Service) Logout(
 // map has identical shape so we format the cookie ourselves via
 // (*http.Cookie).String().
 func (s *Service) writeSetCookie(h http.Header, sess *Session) {
+	secure, sameSite, partitioned := s.Sessions.CookieAttrs()
 	c := &http.Cookie{
-		Name:     CookieName,
-		Value:    sess.Token,
-		Path:     "/",
-		Expires:  sess.ExpiresAt,
-		MaxAge:   int(s.Sessions.TTL().Seconds()),
-		HttpOnly: true,
-		Secure:   s.Sessions.secureCk,
-		SameSite: http.SameSiteStrictMode,
+		Name:        CookieName,
+		Value:       sess.Token,
+		Path:        "/",
+		Expires:     sess.ExpiresAt,
+		MaxAge:      int(s.Sessions.TTL().Seconds()),
+		HttpOnly:    true,
+		Secure:      secure,
+		SameSite:    sameSite,
+		Partitioned: partitioned,
 	}
 	h.Add("Set-Cookie", c.String())
 }
 
 func (s *Service) writeClearCookie(h http.Header) {
+	secure, sameSite, partitioned := s.Sessions.CookieAttrs()
 	c := &http.Cookie{
-		Name:     CookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   s.Sessions.secureCk,
-		SameSite: http.SameSiteStrictMode,
+		Name:        CookieName,
+		Value:       "",
+		Path:        "/",
+		MaxAge:      -1,
+		HttpOnly:    true,
+		Secure:      secure,
+		SameSite:    sameSite,
+		Partitioned: partitioned,
 	}
 	h.Add("Set-Cookie", c.String())
 }

@@ -395,12 +395,35 @@ If you add a new auto-probe call site, route it through the same gate.
 
 ### 7.6 `--ext-mode` is loopback-only and the READY line is a stability contract
 
-`cmd/git-chat/local.go` `--ext-mode` flag relaxes one security header
-(swaps `X-Frame-Options: DENY` for a CSP `frame-ancestors` directive
-allowing `vscode-webview://*` and friends). It does NOT relax the
-loopback bind check — `validateLoopback` still runs. Any future
-`--ext-mode` work that needs network exposure has to go through
-`serve` mode, not a flag flip.
+`cmd/git-chat/local.go` `--ext-mode` flag drops `X-Frame-Options: DENY`
+and omits `frame-ancestors` from CSP entirely. Note that
+`frame-ancestors *` is NOT a workable middle ground — per CSP spec the
+`*` token only matches network schemes (`http`/`https`/`ws`/`wss`),
+which would still block legitimate parents like `vscode-webview://` or
+`vscode-file://`. The real security gates are unchanged:
+
+1. **Loopback bind** — `validateLoopback` still runs. The port is
+   reachable from the host's loopback interface only.
+2. **One-shot claim token** — `LocalTokens.Claim` consumes the token
+   on first use; the URL the extension hands to the iframe is single-
+   use within 60s.
+3. **Partitioned session cookies** — ext-mode flips the session cookie
+   from `SameSite=Strict` to `SameSite=None; Secure; Partitioned`
+   because Chromium treats the iframe-in-webview as cross-site, and
+   `Strict` blocks the cookie on every fetch. `Partitioned` is the
+   compensating control: cookies are scoped to the
+   `(origin, top-level-site)` tuple, so an attacker page that iframes
+   the loopback origin sees a different partition than the legitimate
+   webview host and cannot read or replay the session. The switch is
+   gated by `SessionStore.SetExtMode`, which is only called from
+   `cmd/git-chat/local.go` after `validateLoopback` has already
+   refused any non-loopback bind. `git-chat serve --ext-mode` is not
+   accepted by the flag parser. Regression tests live in
+   `internal/auth/sessions_test.go::TestSessionStore_ExtModeCookieAttrs`
+   and `TestSessionStore_DefaultModeUnaffectedBySwitch`.
+
+Any future `--ext-mode` work that needs network exposure has to go
+through `serve` mode, not a flag flip.
 
 The startup line is also a contract:
 
