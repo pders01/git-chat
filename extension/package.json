@@ -1,0 +1,87 @@
+{
+  "name": "git-chat",
+  "displayName": "git-chat",
+  "description": "Self-hosted LLM chat bound to a git repository. Knowledge-base, commit log, diff viewer, code-city — embedded in your editor.",
+  "version": "0.1.0",
+  "publisher": "pders01",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "SCM Providers",
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "chat",
+    "llm",
+    "ai",
+    "knowledge-base",
+    "commit-log",
+    "diff",
+    "mcp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pders01/git-chat"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitChat.open",
+        "title": "git-chat: Open in current workspace",
+        "category": "git-chat"
+      },
+      {
+        "command": "gitChat.restart",
+        "title": "git-chat: Restart server",
+        "category": "git-chat"
+      }
+    ],
+    "configuration": {
+      "title": "git-chat",
+      "properties": {
+        "gitChat.binaryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the git-chat binary. Leave empty to use PATH lookup or the downloaded copy in the extension's global storage."
+        },
+        "gitChat.llmBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Forwarded as --llm-base-url. Empty = use the binary's default (http://localhost:1234/v1)."
+        },
+        "gitChat.llmModel": {
+          "type": "string",
+          "default": "",
+          "description": "Forwarded as --llm-model. Empty = use the binary's default."
+        },
+        "gitChat.llmBackend": {
+          "type": "string",
+          "enum": ["openai", "anthropic"],
+          "default": "openai",
+          "description": "Forwarded as --llm-backend."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --target=node18 --external:vscode --outfile=dist/extension.js",
+    "watch": "bun run build --watch",
+    "check": "tsc --noEmit",
+    "package": "vsce package --no-dependencies --out git-chat.vsix",
+    "publish:ovsx": "ovsx publish git-chat.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "ovsx": "^0.10.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -39,10 +39,12 @@ What makes it distinct from "RAG bot over a repo":
 
 ### Goals
 
-- **Single binary, three modes.** `go build` produces one static executable:
-  `git chat` (local, auto-detect repo, multi-repo workspace support),
-  `git chat serve` (multi-user), `git chat mcp` (MCP server on stdio). No
-  runtime dependencies except `git` on `$PATH`.
+- **Single binary, multiple consumers.** `go build` produces one static
+  executable: `git chat` (local, auto-detect repo, multi-repo workspace
+  support), `git chat serve` (multi-user), `git chat mcp` (MCP server on
+  stdio). A `--ext-mode` flag on `local` turns the same binary into the
+  backend for a VS Code / Open VSX extension. No runtime dependencies
+  except `git` on `$PATH`.
 - **Solo-local is first-class, not a degraded mode.** `git chat` is the
   zero-ceremony path for a developer. No SSH server, no key registration, no
   pairing codes -- just a loopback-bound HTTP listener and a one-time claim
@@ -77,6 +79,7 @@ What makes it distinct from "RAG bot over a repo":
 ```mermaid
 flowchart TB
     browser["Browser<br/>(Lit SPA)"]
+    vscode["VS Code / Open VSX<br/>extension host<br/>(WebviewPanel iframe)"]
     sshcli["User's ssh client"]
     mcpcli["MCP client<br/>(Claude Code, etc.)"]
     webhookdst["Webhook endpoint<br/>(Slack/Discord)"]
@@ -100,6 +103,7 @@ flowchart TB
     end
 
     browser -- "HTTP/1.1<br/>Connect RPC" --> http
+    vscode -- "spawn + iframe<br/>(--ext-mode, loopback)" --> http
     sshcli -- "SSH/2<br/>pubkey auth" --> ssh
     mcpcli -- "stdio<br/>JSON-RPC" --> mcp
     workers -. "POST" .-> webhookdst
@@ -388,6 +392,36 @@ On startup: bind `127.0.0.1:0`, generate 32-byte claim token (60s TTL),
 print URL to stderr, auto-open browser. Token consumed on first use.
 
 No SSH server in local mode. No persistent principals.
+
+### 5.3 Extension host mode -- `--ext-mode`
+
+A thin variant of solo-local mode for VS Code / Open VSX-derived editors.
+Same auth substrate (one-shot claim token, loopback bind), three deltas:
+
+1. **Machine-readable startup line.** Instead of the human-facing banner
+   on stderr, exactly one line on stdout:
+   ```
+   GITCHAT_READY port=<port> token=<hex>
+   ```
+   Extensions parse positionally. Format is a stability contract --
+   changes are a protocol bump.
+2. **CSP `frame-ancestors`** replaces `X-Frame-Options: DENY`:
+   ```
+   frame-ancestors 'self' vscode-webview://* https://*.vscode-cdn.net
+                   http://127.0.0.1:* http://localhost:*
+   ```
+   Permits the SPA to render inside a `WebviewPanel` iframe. The server
+   still binds loopback-only -- only processes the extension host
+   spawned can reach the port.
+3. **No browser auto-open.** The webview is the consumer.
+
+The extension lives in `extension/` (TypeScript, ~10 KB esbuild bundle).
+It spawns `git-chat local --ext-mode --http 127.0.0.1:0 <workspace>`,
+parses the READY line, opens a `WebviewPanel` with a `portMapping` rule
+for the bound port, and renders `<iframe src=http://127.0.0.1:port/?t=token>`.
+Panel disposal kills the child process.
+
+See `extension/README.md` for the build/publish flow.
 
 ---
 
@@ -749,6 +783,15 @@ git-chat/
 │   ├── package.json
 │   ├── vite.config.ts
 │   └── tsconfig.json
+├── extension/                    # VS Code / Open VSX extension
+│   ├── src/
+│   │   ├── extension.ts         # activate, spawn binary, host webview
+│   │   ├── binary.ts            # PATH / env / cached-download resolution
+│   │   └── parseReady.ts        # GITCHAT_READY line parser
+│   ├── package.json             # publisher: pders01, contributes: commands+config
+│   ├── tsconfig.json
+│   ├── LICENSE
+│   └── README.md                # protocol, build, publish
 ├── docs/
 │   └── ARCHITECTURE.md          # this file
 ├── buf.yaml
@@ -779,13 +822,16 @@ CI enforces freshness with `make proto && git diff --exit-code gen/`.
 ### Developer workflow
 
 ```
-make proto      # buf generate > gen/go/, gen/ts/
-make web        # cd web && bun install && bun run build
-make build      # CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" ./cmd/git-chat
-make dev        # buf generate + go run + vite dev in parallel
-make check      # go vet + go test + tsc + oxlint + oxfmt
-make test-e2e   # 24 Playwright tests (desktop + mobile)
-make all        # frontend + Go binary
+make proto         # buf generate > gen/go/, gen/ts/
+make web           # cd web && bun install && bun run build
+make build         # CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" ./cmd/git-chat
+make dev           # buf generate + go run + vite dev in parallel
+make check         # go vet + go test + tsc + oxlint + oxfmt
+make test-e2e      # 24 Playwright tests (desktop + mobile)
+make all           # frontend + Go binary
+make ext           # extension TypeScript bundle (esbuild -> extension/dist/extension.js)
+make ext-package   # vsce package -> extension/git-chat.vsix
+make ext-publish   # ovsx publish (needs OVSX_PAT)
 ```
 
 ### Cross-compilation

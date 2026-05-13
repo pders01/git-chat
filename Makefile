@@ -118,6 +118,27 @@ install:
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/git-chat
 
+.PHONY: ext
+# Build the VS Code / Open VSX extension bundle. Produces
+# extension/dist/extension.js — small (~10 KB) because the heavy
+# lifting still happens in the Go binary + the embedded SPA.
+ext:
+	@command -v bun >/dev/null || { echo "bun not installed"; exit 1; }
+	cd extension && bun install --frozen-lockfile && bun run check && bun run build
+
+.PHONY: ext-package
+# Package the extension as git-chat.vsix. Note this does NOT bundle the
+# Go binary — users must install it separately. Auto-download is the
+# next step (see extension/README.md).
+ext-package: ext
+	cd extension && bun run package
+
+.PHONY: ext-publish
+# Publish to Open VSX. Requires OVSX_PAT in the environment. Bump
+# extension/package.json `version` before running.
+ext-publish: ext-package
+	cd extension && bun run publish:ovsx
+
 .PHONY: tidy
 tidy:
 	go mod tidy
@@ -126,4 +147,5 @@ tidy:
 clean:
 	rm -rf dist
 	rm -rf web/node_modules web/dist web/.vite
+	rm -rf extension/node_modules extension/dist extension/*.vsix
 	find internal/assets/dist -mindepth 1 ! -name '.gitkeep' -delete

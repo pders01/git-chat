@@ -26,6 +26,11 @@ type Config struct {
 	AuthSvc  *auth.Service
 	RepoSvc  *repo.Service
 	ChatSvc  *chat.Service
+	// ExtMode relaxes security headers so the SPA can be hosted inside a
+	// VS Code (or Open VSX-derived editor) webview iframe. Drops
+	// X-Frame-Options and adds frame-ancestors to CSP. Only set this when
+	// the server binds to loopback under an extension host's control.
+	ExtMode bool
 }
 
 // NewHTTPServer returns a configured *http.Server ready for ListenAndServe.
@@ -80,7 +85,7 @@ func NewHTTPServer(cfg Config) *http.Server {
 	handler := auth.SessionMiddleware(cfg.Sessions, mux)
 
 	// Security headers: CSP + basic hardening.
-	secured := securityHeaders(handler)
+	secured := securityHeaders(handler, cfg.ExtMode)
 
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -92,12 +97,28 @@ func NewHTTPServer(cfg Config) *http.Server {
 // securityHeaders adds Content-Security-Policy and other baseline
 // headers. The CSP allows inline styles (Shiki uses them for theming)
 // but blocks everything else that's not same-origin.
-func securityHeaders(next http.Handler) http.Handler {
+//
+// extMode swaps X-Frame-Options: DENY for a frame-ancestors directive
+// that permits VS Code / Open VSX-derived webview origins. The Go
+// server still binds loopback-only — this just unblocks the iframe.
+func securityHeaders(next http.Handler, extMode bool) http.Handler {
+	const baseCSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; img-src 'self' data:; connect-src 'self'; font-src 'self'"
+	// vscode-webview://*: stable VS Code webview origin.
+	// https://*.vscode-cdn.net: cursor / windsurf / forks that proxy
+	//   webview content through cdn-style hosts.
+	// http://127.0.0.1:* + http://localhost:*: extension dev workflows
+	//   where the webview is loaded from a local dev server.
+	const extCSP = baseCSP + "; frame-ancestors 'self' vscode-webview://* https://*.vscode-cdn.net http://127.0.0.1:* http://localhost:*"
+	csp := baseCSP
+	if extMode {
+		csp = extCSP
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; img-src 'self' data:; connect-src 'self'; font-src 'self'")
+		w.Header().Set("Content-Security-Policy", csp)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
+		if !extMode {
+			w.Header().Set("X-Frame-Options", "DENY")
+		}
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		next.ServeHTTP(w, r)
 	})

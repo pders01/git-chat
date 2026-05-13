@@ -50,6 +50,7 @@ func runLocal(args []string) error {
 	fs.Var(&repos, "repo", "explicit repo path (repeatable); if set, positional path is ignored")
 	rangeFlag := fs.String("range", "", "git revspec to open in compare view (A..B, A...B, or single ref)")
 	pprofAddr := fs.String("pprof", "", "if set, start net/http/pprof on this loopback address (e.g. 127.0.0.1:6060)")
+	extMode := fs.Bool("ext-mode", false, "VS Code extension host mode: relaxes frame-ancestors for vscode-webview://*, emits a machine-readable READY line, skips browser auto-open")
 	_ = fs.Parse(args)
 
 	// Validate flags
@@ -257,6 +258,7 @@ func runLocal(args []string) error {
 		AuthSvc:  authSvc,
 		RepoSvc:  repoSvc,
 		ChatSvc:  chatSvc,
+		ExtMode:  *extMode,
 	})
 
 	rangeSummary := ""
@@ -267,13 +269,21 @@ func runLocal(args []string) error {
 		slog.Info("http listening",
 			"addr", addr.String(), "mode", "local", "version", version,
 			"llm_base", *llmBase, "llm_model", *llmModel)
-		fmt.Fprint(os.Stderr, renderOpenBanner(openURL, rangeSummary))
+		if *extMode {
+			// Machine-readable single line for extension hosts to parse.
+			// Kept stable: any change is a breaking protocol bump that
+			// breaks shipped VS Code extensions. Format documented in
+			// extension/README.md.
+			fmt.Fprintf(os.Stdout, "GITCHAT_READY port=%d token=%s\n", addr.Port, token)
+		} else {
+			fmt.Fprint(os.Stderr, renderOpenBanner(openURL, rangeSummary))
+		}
 		if err := httpSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("http failed", "err", err)
 		}
 	}()
 
-	if !*noBrowser {
+	if !*noBrowser && !*extMode {
 		if err := openBrowser(openURL); err != nil {
 			slog.Debug("auto-open failed", "err", err)
 		}

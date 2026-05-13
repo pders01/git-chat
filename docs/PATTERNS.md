@@ -393,6 +393,31 @@ Enforcement in code:
 
 If you add a new auto-probe call site, route it through the same gate.
 
+### 7.6 `--ext-mode` is loopback-only and the READY line is a stability contract
+
+`cmd/git-chat/local.go` `--ext-mode` flag relaxes one security header
+(swaps `X-Frame-Options: DENY` for a CSP `frame-ancestors` directive
+allowing `vscode-webview://*` and friends). It does NOT relax the
+loopback bind check — `validateLoopback` still runs. Any future
+`--ext-mode` work that needs network exposure has to go through
+`serve` mode, not a flag flip.
+
+The startup line is also a contract:
+
+```
+GITCHAT_READY port=<port> token=<hex>
+```
+
+Format is positional and stable. Shipped VS Code / Open VSX extensions
+parse it via `extension/src/parseReady.ts`. Don't reorder fields, don't
+rename `GITCHAT_READY`, don't add fields before `port`/`token`. If you
+need to add structured metadata, append new `key=value` pairs at the
+end — the parser ignores unknown keys.
+
+Why: an extension on an older parser version paired with a newer
+binary must still work. Anything that breaks that invariant is a
+breaking protocol change.
+
 ---
 
 ## Section 8 — Testing

@@ -25,6 +25,7 @@ git chat local ~/workspace       # scan directory for git repos (multi-repo work
 git chat local --no-scan .       # treat CWD as single repo (fail if not valid)
 git chat local --max-repos=5 .   # scan directory, load at most 5 repos
 git chat mcp                     # MCP server mode (stdio)
+git chat local --ext-mode .      # VS Code / Open VSX extension host mode (loopback, READY line on stdout)
 git chat add-key paul@laptop < ~/.ssh/id_ed25519.pub
 ```
 
@@ -155,6 +156,22 @@ All `GITCHAT_*` and `LLM_*` variables are runtime-configurable via the settings 
 | `ArrowRight/Left` | Expand / collapse file tree nodes |
 | Code-city `Arrows` / `+` `-` / `Tab` / `Shift+Tab` / `Esc` | Orbit camera / zoom / cycle buildings / close detail |
 
+## VS Code / Open VSX extension
+
+A thin extension in `extension/` hosts git-chat inside VS Code (and any Open VSX-derived editor: VSCodium, Cursor, Windsurf). The extension spawns `git-chat local --ext-mode` and renders the embedded SPA in a `WebviewPanel` iframe — no frontend rewrite. See [`extension/README.md`](extension/README.md) for the protocol and publishing steps.
+
+```bash
+# Build the extension bundle + .vsix
+make ext-package    # -> extension/git-chat.vsix
+
+# Install locally: VS Code -> Command Palette -> "Install from VSIX"
+
+# Publish to Open VSX (needs OVSX_PAT)
+make ext-publish
+```
+
+The extension expects the `git-chat` binary on PATH (or `gitChat.binaryPath` setting). Auto-download from GitHub releases is the next step.
+
 ## Development
 
 ```bash
@@ -164,6 +181,8 @@ make test-e2e     # Playwright (desktop + mobile), 29 tests
 make size-check   # fails if embedded SPA exceeds MAX_BUNDLE_BYTES (default 6 MiB)
 make proto        # buf generate
 make all          # frontend + Go binary
+make ext          # extension TS bundle
+make ext-package  # .vsix package
 ```
 
 Frontend unit tests (via `bun:test`, happy-dom harness): `cd web && bun run test`.
