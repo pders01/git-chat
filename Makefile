@@ -63,8 +63,10 @@ dev:
 proto:
 	@which buf > /dev/null 2>&1 || { echo "buf not installed — see https://buf.build/docs/cli/installation"; exit 1; }
 	buf generate
-	@# Freshness guard for CI: fail if gen/ or web/src/gen/ is dirty after regen
-	@if [ -n "$$CI" ]; then git diff --exit-code gen/ web/src/gen/ || { echo "generated code is stale — run 'make proto' locally and commit"; exit 1; }; fi
+	@# Freshness guard for CI: fail if Go-side gen/ is dirty after regen.
+	@# The TS-side proto stubs live in the sibling @pders01/chatworks repo
+	@# (see buf.gen.yaml) and are checked by that repo's own CI.
+	@if [ -n "$$CI" ]; then git diff --exit-code gen/ || { echo "generated code is stale — run 'make proto' locally and commit"; exit 1; }; fi
 
 .PHONY: size-check
 # size-check fails if the embedded SPA bundle exceeds MAX_BUNDLE_BYTES.
