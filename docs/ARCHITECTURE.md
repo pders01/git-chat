@@ -154,7 +154,9 @@ A single `.proto` file in `proto/gitchat/v1/` is the source of truth for all
 client-server types. `buf generate` produces:
 
 - Go server handlers (`gen/go/`) -- we implement the service interfaces.
-- TypeScript clients (`web/src/gen/`) -- the Lit frontend imports them.
+- TypeScript clients -- land in the sibling [`@pders01/chatworks`](../../chatworks)
+  package (configured in `buf.gen.yaml`). The Lit frontend imports them via
+  the package's `proto/{auth,chat,repo}` subpath exports.
 
 **Why Connect over vanilla gRPC / REST:**
 - Connect speaks HTTP/1.1 with JSON or binary bodies. Plain `fetch()` works.

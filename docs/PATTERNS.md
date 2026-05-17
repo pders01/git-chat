@@ -69,12 +69,20 @@ Check it and `return` on failure, matching the pattern in
 
 ## Section 2 — Custom events
 
-### 2.1 Declare every `gc:*` event in `web/src/lib/events.ts`
+### 2.1 Declare every `gc:*` event in the `events.ts` of its owning package
 
 Lit components dispatch `CustomEvent` instances that bubble up through
 the app. Every such event MUST have a corresponding entry in
-`HTMLElementEventMap` in `lib/events.ts`, with a named payload
-interface exported from the same file.
+`HTMLElementEventMap`, with a named payload interface exported from
+the same file. Two files hold these declarations:
+
+- **`chatworks/src/lib/events.ts`** — chat/settings/cross-cutting events
+  (`gc:send`, `gc:toast`, `gc:open-file`, …). Lives in the sibling
+  `@pders01/chatworks` package.
+- **`web/src/lib/events.ts`** — host-only events that reference types
+  the package can't see (`gc:nav` → `NavState`, `gc:diff-files-loaded`
+  → `ChangedFile[]`). The file `import`s the package's events module so
+  both augmentations land in the same global type.
 
 Adding a new event is a four-step ritual:
 1. Add `export interface MyEventDetail { ... }` to `lib/events.ts`.
@@ -157,12 +165,16 @@ Recent lifts (as examples):
 - `statusLabel`, `fileName` → `lib/diff-types.ts`
 - `buildAvailabilityContext` → `lib/catalog.ts`
 
-### 4.2 Pure helpers live in `web/src/lib/`
+### 4.2 Pure helpers live in `lib/`
 
 Anything without DOM/Lit dependencies goes in `lib/`. Component-
 specific rendering helpers stay in the component file. If a helper
-grows a DOM dep later, extract the pure core, keep the DOM wrapper
-in the component.
+grows a DOM dep later, extract the pure core, keep the DOM wrapper in
+the component. The chat/settings-related helpers (catalog, slash,
+attachments, markdown, highlight, clipboard, chat-types, settings,
+focus, transport) live in the sibling `@pders01/chatworks` package;
+host-shell helpers (routing, diff-html, diff-parse, commit-graph,
+diff-types) live in `web/src/lib/`.
 
 ### 4.3 One lib/ file per domain concept
 
@@ -382,12 +394,12 @@ Why: opening settings or editing a profile shouldn't expose your
 presence (or key) to a third-party provider. The user made a local
 action; it should stay local unless they ask otherwise.
 
-Enforcement in code:
-- `web/src/components/settings-panel.ts`:
+Enforcement in code (now in the sibling `@pders01/chatworks` package):
+- `chatworks/src/components/settings-panel.ts`:
   `discoverModelsForCurrentBaseUrl({force})` — auto-callers pass no
   options; the force flag is reserved for the "discover models" button
   rendered by `renderEntryAction`.
-- `web/src/components/connection-wizard.ts`: `connectedCallback`
+- `chatworks/src/components/connection-wizard.ts`: `connectedCallback`
   checks `isLocalhostURL(this.baseUrl)` before calling
   `discoverModelsForEdit`.
 
