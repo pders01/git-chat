@@ -165,8 +165,17 @@ export class GcKbView extends LitElement {
         this.cardDetail = null;
         this.detailHtml = "";
       }
-    } catch {
-      /* swallow */
+    } catch (e) {
+      this.dispatchEvent(
+        new CustomEvent("gc:toast", {
+          bubbles: true,
+          composed: true,
+          detail: {
+            kind: "error",
+            message: `Delete failed: ${e instanceof Error ? e.message : String(e)}`,
+          },
+        }),
+      );
     }
   }
 

@@ -37,6 +37,7 @@ import {
   clearStaleState,
   normalizeBrowseState,
 } from "./lib/routing.js";
+import { messageOf } from "./lib/error.js";
 
 type AppState =
   | { phase: "booting" }
@@ -943,8 +944,15 @@ export class GcApp extends LitElement {
         title: h.title,
         body: h.body,
       }));
-    } catch {
+    } catch (e) {
       this.searchResults = [];
+      this.dispatchEvent(
+        new CustomEvent("gc:toast", {
+          bubbles: true,
+          composed: true,
+          detail: { kind: "error", message: `Search failed: ${messageOf(e)}` },
+        }),
+      );
     }
   }
 
@@ -1838,8 +1846,4 @@ export class GcApp extends LitElement {
       }
     }
   `;
-}
-
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }

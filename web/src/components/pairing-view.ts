@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { authClient } from "@jpahd/chatworks/transport";
+import { messageOf } from "../lib/error.js";
 
 type PairingState =
   | { phase: "starting" }
@@ -162,8 +163,4 @@ ${cmd}</pre
       background: var(--surface-3);
     }
   `;
-}
-
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }

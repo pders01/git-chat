@@ -10,6 +10,7 @@ import {
   focusNextLabel,
   type FocusMode,
 } from "@jpahd/chatworks/focus";
+import { messageOf } from "../lib/error.js";
 import { EntryType, type Repo } from "@jpahd/chatworks/proto/repo";
 import type { BrowseView } from "../lib/routing.js";
 import "@jpahd/chatworks/loading-indicator";
@@ -936,8 +937,4 @@ export class GcRepoBrowser extends LitElement {
       }
     }
   `;
-}
-
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }
