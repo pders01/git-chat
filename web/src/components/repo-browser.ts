@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
-import { repoClient } from "../lib/transport.js";
+import { repoClient } from "@pders01/chatworks/transport";
 import {
   readFocus,
   writeFocus,
@@ -9,10 +9,10 @@ import {
   focusGlyph,
   focusNextLabel,
   type FocusMode,
-} from "../lib/focus.js";
-import { EntryType, type Repo } from "../gen/gitchat/v1/repo_pb.js";
+} from "@pders01/chatworks/focus";
+import { EntryType, type Repo } from "@pders01/chatworks/proto/repo";
 import type { BrowseView } from "../lib/routing.js";
-import "./loading-indicator.js";
+import "@pders01/chatworks/loading-indicator";
 import "./file-view.js";
 import "./compare-view.js";
 import "./changes-view.js";

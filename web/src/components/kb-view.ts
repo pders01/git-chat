@@ -1,15 +1,15 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
-import { chatClient } from "../lib/transport.js";
-import type { KBCard } from "../gen/gitchat/v1/chat_pb.js";
-import "./loading-indicator.js";
+import { chatClient } from "@pders01/chatworks/transport";
+import type { KBCard } from "@pders01/chatworks/proto/chat";
+import "@pders01/chatworks/loading-indicator";
 
 // Lazy-load markdown renderer (same pattern as chat-view).
-let markdownModule: Promise<typeof import("../lib/markdown.js")> | null = null;
+let markdownModule: Promise<typeof import("@pders01/chatworks/markdown")> | null = null;
 function loadMarkdown() {
   if (!markdownModule) {
-    markdownModule = import("../lib/markdown.js");
+    markdownModule = import("@pders01/chatworks/markdown");
   }
   return markdownModule;
 }

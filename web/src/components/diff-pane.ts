@@ -1,18 +1,18 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
-import { repoClient } from "../lib/transport.js";
-import { onChange as onSettingsChange } from "../lib/settings.js";
+import { repoClient } from "@pders01/chatworks/transport";
+import { onChange as onSettingsChange } from "@pders01/chatworks/settings";
 import type { SideFilesState } from "../lib/diff-types.js";
 import { splitDiffHtml, highlightWordDiffs, addLineNumbers } from "../lib/diff-html.js";
-import "./loading-indicator.js";
+import "@pders01/chatworks/loading-indicator";
 import "./three-pane-view.js";
 
 // Lazy-import the highlighter so the initial bundle stays lean; the
 // highlighter pulls in Shiki which is 1MB+ uncompressed.
-let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
+let highlightModule: Promise<typeof import("@pders01/chatworks/highlight")> | null = null;
 function loadHighlight() {
-  if (!highlightModule) highlightModule = import("../lib/highlight.js");
+  if (!highlightModule) highlightModule = import("@pders01/chatworks/highlight");
   return highlightModule;
 }
 

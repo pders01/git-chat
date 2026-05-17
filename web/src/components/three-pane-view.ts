@@ -2,13 +2,13 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { parseUnifiedDiff, type ParsedDiff } from "../lib/diff-parse.js";
-import { onChange as onSettingsChange } from "../lib/settings.js";
-import "./loading-indicator.js";
+import { onChange as onSettingsChange } from "@pders01/chatworks/settings";
+import "@pders01/chatworks/loading-indicator";
 
 // Lazy-load highlight — same lazy pattern other views use.
-let highlightModule: Promise<typeof import("../lib/highlight.js")> | null = null;
+let highlightModule: Promise<typeof import("@pders01/chatworks/highlight")> | null = null;
 function loadHighlight() {
-  if (!highlightModule) highlightModule = import("../lib/highlight.js");
+  if (!highlightModule) highlightModule = import("@pders01/chatworks/highlight");
   return highlightModule;
 }
 

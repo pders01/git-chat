@@ -4,12 +4,12 @@ import { classMap } from "lit/directives/class-map.js";
 import { repeat } from "lit/directives/repeat.js";
 import { svg } from "lit";
 import "./diff-pane.js";
-import { repoClient } from "../lib/transport.js";
-import type { CommitEntry, ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
-import { copyText } from "../lib/clipboard.js";
+import { repoClient } from "@pders01/chatworks/transport";
+import type { CommitEntry, ChangedFile } from "@pders01/chatworks/proto/repo";
+import { copyText } from "@pders01/chatworks/clipboard";
 import { statusLabel, fileName } from "../lib/diff-types.js";
 import { layoutGraph } from "../lib/commit-graph.js";
-import "./loading-indicator.js";
+import "@pders01/chatworks/loading-indicator";
 import "./commit-log/commit-calendar.js";
 import {
   readFocus,
@@ -19,7 +19,7 @@ import {
   focusButtonLabel,
   focusNextLabel,
   type FocusMode,
-} from "../lib/focus.js";
+} from "@pders01/chatworks/focus";
 
 type LogState =
   | { phase: "loading" }

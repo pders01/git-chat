@@ -1,8 +1,8 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { ChangedFile } from "../gen/gitchat/v1/repo_pb.js";
+import type { ChangedFile } from "@pders01/chatworks/proto/repo";
 import { statusLabel, fileName } from "../lib/diff-types.js";
-import "./loading-indicator.js";
+import "@pders01/chatworks/loading-indicator";
 import "./diff-pane.js";
 
 // CompareState models the file-list sidebar. Totals sum the per-file

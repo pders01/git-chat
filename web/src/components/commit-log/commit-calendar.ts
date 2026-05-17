@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import "@jpahd/kalendus";
-import type { CommitEntry } from "../../gen/gitchat/v1/repo_pb.js";
+import type { CommitEntry } from "@pders01/chatworks/proto/repo";
 
 // commitEntryToCalendar maps one CommitEntry → one CalendarEntry.
 // author_time is unix seconds; we convert to a local Date and

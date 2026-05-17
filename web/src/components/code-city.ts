@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { repoClient } from "../lib/transport.js";
-import "./loading-indicator.js";
+import { repoClient } from "@pders01/chatworks/transport";
+import "@pders01/chatworks/loading-indicator";
 
 /* ------------------------------------------------------------------ */
 /*  Data model                                                         */

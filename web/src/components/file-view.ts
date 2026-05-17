@@ -2,12 +2,12 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
-import { repoClient } from "../lib/transport.js";
-import { copyText } from "../lib/clipboard.js";
-import type { BlameLine } from "../gen/gitchat/v1/repo_pb.js";
-import "./loading-indicator.js";
-import type { GetFileResponse } from "../gen/gitchat/v1/repo_pb.js";
-import { onChange as onSettingsChange } from "../lib/settings.js";
+import { repoClient } from "@pders01/chatworks/transport";
+import { copyText } from "@pders01/chatworks/clipboard";
+import type { BlameLine } from "@pders01/chatworks/proto/repo";
+import "@pders01/chatworks/loading-indicator";
+import type { GetFileResponse } from "@pders01/chatworks/proto/repo";
+import { onChange as onSettingsChange } from "@pders01/chatworks/settings";
 
 // Shiki + its grammars are ~300 kB gzipped. Import lazily so the initial
 // bundle doesn't pay for them on the auth / pairing path — they only load
@@ -16,7 +16,7 @@ type HighlightFn = (code: string, lang: string) => Promise<string>;
 let highlightPromise: Promise<HighlightFn> | null = null;
 function loadHighlight(): Promise<HighlightFn> {
   if (!highlightPromise) {
-    highlightPromise = import("../lib/highlight.js").then((m) => m.highlight);
+    highlightPromise = import("@pders01/chatworks/highlight").then((m) => m.highlight);
   }
   return highlightPromise;
 }

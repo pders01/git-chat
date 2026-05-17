@@ -1,4 +1,4 @@
-import { applyAll, setHostTheme, setHostTokens } from "./lib/settings.js";
+import { applyAll, setHostTheme, setHostTokens } from "@pders01/chatworks/settings";
 
 // Optional embedder bridge. Extension hosts (VS Code, Open VSX) pass
 // the active editor theme via URL on first paint and via postMessage

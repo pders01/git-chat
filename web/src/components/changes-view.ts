@@ -1,9 +1,9 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { repoClient } from "../lib/transport.js";
-import type { StatusFile } from "../gen/gitchat/v1/repo_pb.js";
+import { repoClient } from "@pders01/chatworks/transport";
+import type { StatusFile } from "@pders01/chatworks/proto/repo";
 import { statusLabel, fileName } from "../lib/diff-types.js";
-import "./loading-indicator.js";
+import "@pders01/chatworks/loading-indicator";
 import "./diff-pane.js";
 
 @customElement("gc-changes-view")

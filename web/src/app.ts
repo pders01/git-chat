@@ -1,19 +1,20 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
-import { authClient, repoClient, chatClient } from "./lib/transport.js";
-import { AuthMode } from "./gen/gitchat/v1/auth_pb.js";
-import type { Repo } from "./gen/gitchat/v1/repo_pb.js";
+import { authClient, repoClient, chatClient } from "@pders01/chatworks/transport";
+import { AuthMode } from "@pders01/chatworks/proto/auth";
+import type { Repo } from "@pders01/chatworks/proto/repo";
 import "./components/pairing-view.js";
 import "./components/repo-browser.js";
-import "./components/chat-view.js";
+import "@pders01/chatworks/chat-view";
 import "./components/commit-log.js";
-import "./components/toast.js";
+import "@pders01/chatworks/toast";
 import "./components/kb-view.js";
-import "./components/loading-indicator.js";
-import "./components/settings-panel.js";
-import * as settings from "./lib/settings.js";
-import { readFocus, writeFocus, cycleFocus, type FocusMode } from "./lib/focus.js";
+import "@pders01/chatworks/loading-indicator";
+import "@pders01/chatworks/settings-panel";
+import "./lib/events.js"; // host-side event-map augmentation
+import * as settings from "@pders01/chatworks/settings";
+import { readFocus, writeFocus, cycleFocus, type FocusMode } from "@pders01/chatworks/focus";
 import {
   type Tab,
   type ParsedRoute,
