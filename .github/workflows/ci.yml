@@ -125,6 +125,9 @@ jobs:
       - name: Install chatworks dependencies
         run: cd ../chatworks && bun install --frozen-lockfile
 
+      - name: Build chatworks dist
+        run: cd ../chatworks && bun run build
+
       - name: Build binary
         run: make all
 
