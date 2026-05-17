@@ -11,6 +11,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # web/package.json declares @pders01/chatworks as `file:../../chatworks`,
+      # so the sibling repo must exist next to this checkout before any
+      # `bun install` runs. Public repo — no token needed. Pinned to main;
+      # CHATWORKS_REF (workflow_dispatch input or repo var) lets us swap
+      # in a tag or commit SHA for release builds without touching the file.
+      - name: Checkout sibling chatworks
+        uses: actions/checkout@v4
+        with:
+          repository: pders01/chatworks
+          ref: ${{ vars.CHATWORKS_REF || 'main' }}
+          path: chatworks-sibling
+
+      - name: Place chatworks at ../chatworks
+        run: mv chatworks-sibling ../chatworks
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -49,10 +64,13 @@ jobs:
       - name: Proto freshness
         run: |
           make proto
-          git diff --exit-code gen/ web/src/gen/ || {
+          git diff --exit-code gen/ || {
             echo "Generated code is stale — run 'make proto' locally and commit"
             exit 1
           }
+          # TS-side stubs land in the sibling @pders01/chatworks repo
+          # (see buf.gen.yaml); freshness there is enforced by that
+          # repo's own CI.
 
   e2e:
     runs-on: ubuntu-latest
@@ -63,6 +81,16 @@ jobs:
         with:
           # Full history needed for e2e tests to have commits to display
           fetch-depth: 0
+
+      - name: Checkout sibling chatworks
+        uses: actions/checkout@v4
+        with:
+          repository: pders01/chatworks
+          ref: ${{ vars.CHATWORKS_REF || 'main' }}
+          path: chatworks-sibling
+
+      - name: Place chatworks at ../chatworks
+        run: mv chatworks-sibling ../chatworks
 
       - uses: actions/setup-go@v5
         with:
