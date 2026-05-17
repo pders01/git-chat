@@ -1,9 +1,21 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { provide } from "@lit/context";
 import { classMap } from "lit/directives/class-map.js";
 import { authClient, repoClient, chatClient } from "@pders01/chatworks/transport";
 import { AuthMode } from "@pders01/chatworks/proto/auth";
 import type { Repo } from "@pders01/chatworks/proto/repo";
+import {
+  createConnectRpcHosts,
+  repoHostContext,
+  chatHostContext,
+  llmConfigHostContext,
+  authHostContext,
+  type RepoHost,
+  type ChatHost,
+  type LlmConfigHost,
+  type AuthHost,
+} from "@pders01/chatworks";
 import "./components/pairing-view.js";
 import "./components/repo-browser.js";
 import "@pders01/chatworks/chat-view";
@@ -42,6 +54,26 @@ type AppState =
 
 @customElement("gc-app")
 export class GcApp extends LitElement {
+  // Build the host bundle once at element-construction time. Same-origin
+  // Connect-RPC transport with cookies included — same wire behavior
+  // git-chat had pre-v0.2.0 when chatworks owned its own transport
+  // singleton. Providing them via @lit/context is what lets the
+  // chatworks components reach the backend; without these, every
+  // chatworks RPC call would throw on `this.repoHost.x is undefined`.
+  private hosts = createConnectRpcHosts();
+  // The @provide decorator publishes these fields onto the @lit/context
+  // tree; chatworks components @consume them. They're not read by
+  // gc-app itself — left as public class fields so noUnusedLocals
+  // doesn't trip on the "unused private" they otherwise look like.
+  @provide({ context: repoHostContext })
+  repoHost: RepoHost = this.hosts.repoHost;
+  @provide({ context: chatHostContext })
+  chatHost: ChatHost = this.hosts.chatHost;
+  @provide({ context: llmConfigHostContext })
+  llmConfigHost: LlmConfigHost = this.hosts.llmConfigHost;
+  @provide({ context: authHostContext })
+  authHost: AuthHost = this.hosts.authHost;
+
   @state() private state: AppState = { phase: "booting" };
   @state() private showShortcuts = false;
   @state() private showSettings = false;

@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: pders01/chatworks
-          ref: ${{ vars.CHATWORKS_REF || 'v0.1.0' }}
+          ref: ${{ vars.CHATWORKS_REF || 'v0.2.0' }}
           path: chatworks-sibling
 
       - name: Place chatworks at ../chatworks
@@ -95,7 +95,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: pders01/chatworks
-          ref: ${{ vars.CHATWORKS_REF || 'v0.1.0' }}
+          ref: ${{ vars.CHATWORKS_REF || 'v0.2.0' }}
           path: chatworks-sibling
 
       - name: Place chatworks at ../chatworks
