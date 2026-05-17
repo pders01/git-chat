@@ -4,10 +4,31 @@ import { startServer, authenticate, waitForShadowElement, clickShadowElement } f
 let server: Awaited<ReturnType<typeof startServer>>;
 let page: Page;
 
+// Helper: seed the LLM_BASE_URL combobox with mock local endpoints so
+// the tests have options to navigate. Fresh e2e servers have an empty
+// catalog and no real local endpoints, so the combobox renders zero rows.
+async function seedComboboxOptions(page: Page) {
+  await page.evaluate(() => {
+    const app = document.querySelector("gc-app");
+    const panel = app?.shadowRoot?.querySelector("cw-settings-panel") as any;
+    if (panel && panel.localEndpoints.length === 0) {
+      panel.localEndpoints = [
+        { url: "http://localhost:1234/v1", name: "LM Studio", models: ["mock-model"] },
+        { url: "http://localhost:11434/v1", name: "Ollama", models: ["mock-model"] },
+      ];
+    }
+  });
+  await page.waitForTimeout(100);
+}
+
 // Helper: open settings → LLM → Advanced config.
 async function openLLMAdvanced(page: Page) {
   await clickShadowElement(page, "gc-app", ".settings-btn");
-  await waitForShadowElement(page, "gc-app cw-settings-panel", '[role="dialog"][aria-label="Settings"]');
+  await waitForShadowElement(
+    page,
+    "gc-app cw-settings-panel",
+    '[role="dialog"][aria-label="Settings"]',
+  );
   await page.evaluate(() => {
     const app = document.querySelector("gc-app");
     const panel = app?.shadowRoot?.querySelector("cw-settings-panel");
@@ -19,17 +40,27 @@ async function openLLMAdvanced(page: Page) {
   await page.evaluate(() => {
     const app = document.querySelector("gc-app");
     const panel = app?.shadowRoot?.querySelector("cw-settings-panel");
-    const details = panel?.shadowRoot?.querySelector("details.advanced-config") as HTMLDetailsElement | null;
+    const details = panel?.shadowRoot?.querySelector(
+      "details.advanced-config",
+    ) as HTMLDetailsElement | null;
     if (details && !details.open) details.open = true;
   });
+  await seedComboboxOptions(page);
 }
 
-// Helper: focus the first cw-combobox input and clear filter.
+// Helper: focus the LLM_BASE_URL cw-combobox input and clear filter.
 async function focusCombobox(page: Page) {
   await page.evaluate(() => {
     const app = document.querySelector("gc-app");
     const panel = app?.shadowRoot?.querySelector("cw-settings-panel");
-    const combobox = panel?.shadowRoot?.querySelector(".settings-content cw-combobox");
+    const entries = panel?.shadowRoot?.querySelectorAll(".config-entry") ?? [];
+    let combobox: Element | null = null;
+    for (const entry of entries) {
+      if (entry.querySelector("label")?.textContent?.includes("base url")) {
+        combobox = entry.querySelector("cw-combobox");
+        break;
+      }
+    }
     const input = combobox?.shadowRoot?.querySelector("input") as HTMLInputElement | null;
     if (input) {
       input.focus();
@@ -45,8 +76,24 @@ async function getState(page: Page) {
   return page.evaluate(() => {
     const app = document.querySelector("gc-app");
     const panel = app?.shadowRoot?.querySelector("cw-settings-panel");
-    const combobox = panel?.shadowRoot?.querySelector(".settings-content cw-combobox") as any;
-    if (!combobox) return { open: false, activeIndex: -1, optionCount: 0, activeLabel: "", inputValue: "", ariaExpanded: "false", ariaActivedescendant: "" };
+    const entries = panel?.shadowRoot?.querySelectorAll(".config-entry") ?? [];
+    let combobox: any = null;
+    for (const entry of entries) {
+      if (entry.querySelector("label")?.textContent?.includes("base url")) {
+        combobox = entry.querySelector("cw-combobox");
+        break;
+      }
+    }
+    if (!combobox)
+      return {
+        open: false,
+        activeIndex: -1,
+        optionCount: 0,
+        activeLabel: "",
+        inputValue: "",
+        ariaExpanded: "false",
+        ariaActivedescendant: "",
+      };
     const input = combobox.shadowRoot?.querySelector("input") as HTMLInputElement | null;
     const options = combobox.shadowRoot?.querySelectorAll(".option") ?? [];
     const active = combobox.shadowRoot?.querySelector(".option.active");
@@ -77,14 +124,7 @@ test.describe("combobox keyboard navigation", () => {
     server.cleanup();
   });
 
-  // TODO: re-enable once the test fixture seeds a catalog. The spec
-  // opens LLM settings and expects the LLM_BASE_URL combobox to have
-  // options, but fresh e2e servers (new SQLite) have an empty catalog
-  // and no local endpoints running, so the listbox renders with zero
-  // rows and ArrowDown never lands on activeIndex=0. Unrelated to any
-  // commit in this branch — was already red on main after silent-probe
-  // gating (3ebb7c9) stopped firing auto-discovery on remote URLs.
-  test.skip("arrow keys, enter, escape, and aria attributes", async () => {
+  test("arrow keys, enter, escape, and aria attributes", async () => {
     await openLLMAdvanced(page);
     await focusCombobox(page);
 
@@ -113,7 +153,14 @@ test.describe("combobox keyboard navigation", () => {
     const valid = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const panel = app?.shadowRoot?.querySelector("cw-settings-panel");
-      const combobox = panel?.shadowRoot?.querySelector(".settings-content cw-combobox");
+      const entries = panel?.shadowRoot?.querySelectorAll(".config-entry") ?? [];
+      let combobox: Element | null = null;
+      for (const entry of entries) {
+        if (entry.querySelector("label")?.textContent?.includes("base url")) {
+          combobox = entry.querySelector("cw-combobox");
+          break;
+        }
+      }
       const input = combobox?.shadowRoot?.querySelector("input");
       const id = input?.getAttribute("aria-activedescendant") ?? "";
       return id !== "" && !!combobox?.shadowRoot?.getElementById(id);
@@ -154,7 +201,14 @@ test.describe("combobox keyboard navigation", () => {
     await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const panel = app?.shadowRoot?.querySelector("cw-settings-panel");
-      const combobox = panel?.shadowRoot?.querySelector(".settings-content cw-combobox");
+      const entries = panel?.shadowRoot?.querySelectorAll(".config-entry") ?? [];
+      let combobox: Element | null = null;
+      for (const entry of entries) {
+        if (entry.querySelector("label")?.textContent?.includes("base url")) {
+          combobox = entry.querySelector("cw-combobox");
+          break;
+        }
+      }
       const input = combobox?.shadowRoot?.querySelector("input") as HTMLInputElement | null;
       if (input) {
         input.focus();
@@ -168,12 +222,15 @@ test.describe("combobox keyboard navigation", () => {
 
     // Clean up: close settings.
     await clickShadowElement(page, "gc-app cw-settings-panel", ".modal-backdrop");
-    await waitForShadowElement(page, "gc-app cw-settings-panel", '[role="dialog"][aria-label="Settings"]', { state: "hidden" });
+    await waitForShadowElement(
+      page,
+      "gc-app cw-settings-panel",
+      '[role="dialog"][aria-label="Settings"]',
+      { state: "hidden" },
+    );
   });
 
-  // TODO: re-enable alongside the sibling skip above once the e2e
-  // fixture seeds a provider catalog.
-  test.skip("typing filters the option list", async () => {
+  test("typing filters the option list", async () => {
     await openLLMAdvanced(page);
     await focusCombobox(page);
 
@@ -189,30 +246,45 @@ test.describe("combobox keyboard navigation", () => {
     await page.evaluate(() => {
       const app = document.querySelector("gc-app");
       const panel = app?.shadowRoot?.querySelector("cw-settings-panel");
-      const combobox = panel?.shadowRoot?.querySelector(".settings-content cw-combobox");
+      const entries = panel?.shadowRoot?.querySelectorAll(".config-entry") ?? [];
+      let combobox: Element | null = null;
+      for (const entry of entries) {
+        if (entry.querySelector("label")?.textContent?.includes("base url")) {
+          combobox = entry.querySelector("cw-combobox");
+          break;
+        }
+      }
       const input = combobox?.shadowRoot?.querySelector("input") as HTMLInputElement | null;
       if (input) {
-        input.value = "anthropic";
+        input.value = "LM";
         input.dispatchEvent(new Event("input", { bubbles: true }));
       }
     });
 
-    await expect.poll(async () => {
-      const s = await getState(page);
-      return s.optionCount;
-    }, { timeout: 3000 }).toBeLessThan(unfiltered.optionCount);
+    await expect
+      .poll(
+        async () => {
+          const s = await getState(page);
+          return s.optionCount;
+        },
+        { timeout: 3000 },
+      )
+      .toBeLessThan(unfiltered.optionCount);
 
     const s = await getState(page);
     expect(s.optionCount).toBeGreaterThan(0);
 
     await page.keyboard.press("Escape");
     await clickShadowElement(page, "gc-app cw-settings-panel", ".modal-backdrop");
-    await waitForShadowElement(page, "gc-app cw-settings-panel", '[role="dialog"][aria-label="Settings"]', { state: "hidden" });
+    await waitForShadowElement(
+      page,
+      "gc-app cw-settings-panel",
+      '[role="dialog"][aria-label="Settings"]',
+      { state: "hidden" },
+    );
   });
 
-  // TODO: re-enable alongside the sibling skips above once the e2e
-  // fixture seeds a provider catalog.
-  test.skip("dropdown is positioned directly below input", async () => {
+  test("dropdown is positioned directly below input", async () => {
     await openLLMAdvanced(page);
     // Wait for modal entrance animation to finish (0.12s).
     await page.waitForTimeout(200);
@@ -223,28 +295,45 @@ test.describe("combobox keyboard navigation", () => {
     await page.waitForTimeout(100);
 
     // Poll until positions stabilize (animation + layout settle).
-    await expect.poll(async () => {
-      const pos = await page.evaluate(() => {
-        const app = document.querySelector("gc-app");
-        const panel = app?.shadowRoot?.querySelector("cw-settings-panel");
-        const combobox = panel?.shadowRoot?.querySelector(".settings-content cw-combobox");
-        const input = combobox?.shadowRoot?.querySelector("input");
-        const listbox = combobox?.shadowRoot?.querySelector(".listbox") as HTMLElement | null;
-        if (!input || !listbox) return null;
-        const ir = input.getBoundingClientRect();
-        const lr = listbox.getBoundingClientRect();
-        return {
-          vertGap: Math.round(lr.top - ir.bottom),
-          leftDiff: Math.round(Math.abs(lr.left - ir.left)),
-          widthDiff: Math.round(Math.abs(lr.width - ir.width)),
-        };
-      });
-      if (!pos) return false;
-      return pos.vertGap >= 0 && pos.vertGap <= 10 && pos.leftDiff <= 5 && pos.widthDiff <= 5;
-    }, { timeout: 3000 }).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          const pos = await page.evaluate(() => {
+            const app = document.querySelector("gc-app");
+            const panel = app?.shadowRoot?.querySelector("cw-settings-panel");
+            const entries = panel?.shadowRoot?.querySelectorAll(".config-entry") ?? [];
+            let combobox: Element | null = null;
+            for (const entry of entries) {
+              if (entry.querySelector("label")?.textContent?.includes("base url")) {
+                combobox = entry.querySelector("cw-combobox");
+                break;
+              }
+            }
+            const input = combobox?.shadowRoot?.querySelector("input");
+            const listbox = combobox?.shadowRoot?.querySelector(".listbox") as HTMLElement | null;
+            if (!input || !listbox) return null;
+            const ir = input.getBoundingClientRect();
+            const lr = listbox.getBoundingClientRect();
+            return {
+              vertGap: Math.round(lr.top - ir.bottom),
+              leftDiff: Math.round(Math.abs(lr.left - ir.left)),
+              widthDiff: Math.round(Math.abs(lr.width - ir.width)),
+            };
+          });
+          if (!pos) return false;
+          return pos.vertGap >= 0 && pos.vertGap <= 10 && pos.leftDiff <= 5 && pos.widthDiff <= 5;
+        },
+        { timeout: 3000 },
+      )
+      .toBe(true);
 
     await page.keyboard.press("Escape");
     await clickShadowElement(page, "gc-app cw-settings-panel", ".modal-backdrop");
-    await waitForShadowElement(page, "gc-app cw-settings-panel", '[role="dialog"][aria-label="Settings"]', { state: "hidden" });
+    await waitForShadowElement(
+      page,
+      "gc-app cw-settings-panel",
+      '[role="dialog"][aria-label="Settings"]',
+      { state: "hidden" },
+    );
   });
 });
