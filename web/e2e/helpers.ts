@@ -32,14 +32,21 @@ async function getUniquePort(): Promise<number> {
   });
 }
 
-// buildBinary builds the Go server binary if it doesn't exist or is
-// stale. Returns the path to the binary.
+// ensureBinary returns the path to the Go server binary. If it already
+// exists (e.g. `make build` ran first), it is reused as-is. Otherwise
+// it is built to a tempfile and atomically renamed into place — this
+// prevents the ETXTBSY race where one worker spawns the binary while
+// another worker is still writing it.
 export function ensureBinary(): string {
+  const bin = resolve(repoRoot, "dist/git-chat");
+  if (fs.existsSync(bin)) return bin;
+  const tmp = `${bin}.tmp.${process.pid}`;
   execSync(
-    `go build -trimpath -ldflags "-s -w -X main.version=e2e" -o dist/git-chat ./cmd/git-chat`,
+    `go build -trimpath -ldflags "-s -w -X main.version=e2e" -o ${tmp} ./cmd/git-chat`,
     { stdio: "pipe", cwd: repoRoot },
   );
-  return resolve(repoRoot, "dist/git-chat");
+  fs.renameSync(tmp, bin);
+  return bin;
 }
 
 // startServer starts a git-chat local instance on a free port and
