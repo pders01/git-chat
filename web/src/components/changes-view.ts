@@ -1,9 +1,9 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { repoClient } from "@pders01/chatworks/transport";
-import type { StatusFile } from "@pders01/chatworks/proto/repo";
+import { repoClient } from "@jpahd/chatworks/transport";
+import type { StatusFile } from "@jpahd/chatworks/proto/repo";
 import { statusLabel, fileName } from "../lib/diff-types.js";
-import "@pders01/chatworks/loading-indicator";
+import "@jpahd/chatworks/loading-indicator";
 import "./diff-pane.js";
 
 @customElement("gc-changes-view")
@@ -132,10 +132,10 @@ export class GcChangesView extends LitElement {
   override render() {
     if (this.statusLoading) {
       return html`
-        <gc-loading-banner
+        <cw-loading-banner
           heading="scanning working tree…"
           detail="asking git for staged / unstaged / untracked files"
-        ></gc-loading-banner>
+        ></cw-loading-banner>
       `;
     }
     if (this.statusError) {
@@ -180,7 +180,7 @@ export class GcChangesView extends LitElement {
           </div>
           <div class="diff-body">
             ${this.diffLoading
-              ? html`<gc-loading-banner heading="loading diff…"></gc-loading-banner>`
+              ? html`<cw-loading-banner heading="loading diff…"></cw-loading-banner>`
               : this.diffError
                 ? html`<p class="diff-err">${this.diffError}</p>`
                 : this.selectedFile && this.rawDiff

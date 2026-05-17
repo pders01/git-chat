@@ -2,9 +2,9 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { provide } from "@lit/context";
 import { classMap } from "lit/directives/class-map.js";
-import { authClient, repoClient, chatClient } from "@pders01/chatworks/transport";
-import { AuthMode } from "@pders01/chatworks/proto/auth";
-import type { Repo } from "@pders01/chatworks/proto/repo";
+import { authClient, repoClient, chatClient } from "@jpahd/chatworks/transport";
+import { AuthMode } from "@jpahd/chatworks/proto/auth";
+import type { Repo } from "@jpahd/chatworks/proto/repo";
 import {
   createConnectRpcHosts,
   repoHostContext,
@@ -15,18 +15,18 @@ import {
   type ChatHost,
   type LlmConfigHost,
   type AuthHost,
-} from "@pders01/chatworks";
+} from "@jpahd/chatworks";
 import "./components/pairing-view.js";
 import "./components/repo-browser.js";
-import "@pders01/chatworks/chat-view";
+import "@jpahd/chatworks/chat-view";
 import "./components/commit-log.js";
-import "@pders01/chatworks/toast";
+import "@jpahd/chatworks/toast";
 import "./components/kb-view.js";
-import "@pders01/chatworks/loading-indicator";
-import "@pders01/chatworks/settings-panel";
+import "@jpahd/chatworks/loading-indicator";
+import "@jpahd/chatworks/settings-panel";
 import "./lib/events.js"; // host-side event-map augmentation
-import * as settings from "@pders01/chatworks/settings";
-import { readFocus, writeFocus, cycleFocus, type FocusMode } from "@pders01/chatworks/focus";
+import * as settings from "@jpahd/chatworks/settings";
+import { readFocus, writeFocus, cycleFocus, type FocusMode } from "@jpahd/chatworks/focus";
 import {
   type Tab,
   type ParsedRoute,
@@ -225,7 +225,7 @@ export class GcApp extends LitElement {
 
   // ── Modal focus management ───────────────────────────────────
   override async updated(changed: Map<string, unknown>) {
-    this.handleOverlay(changed, "showSettings", "settings", "gc-settings-panel");
+    this.handleOverlay(changed, "showSettings", "settings", "cw-settings-panel");
     this.handleOverlay(changed, "showShortcuts", "shortcuts", ".modal");
     this.handleOverlay(changed, "showPalette", "palette", ".palette-input");
     this.handleOverlay(changed, "showSearch", "search", ".search-input");
@@ -810,7 +810,7 @@ export class GcApp extends LitElement {
           </div>
         </header>
         <main class="shell-main" id="main-content">
-          <gc-chat-view
+          <cw-chat-view
             .repoId=${selectedRepo}
             .branch=${this.currentBranch}
             .initialSessionId=${this.currentRoute.sessionId ?? ""}
@@ -818,9 +818,10 @@ export class GcApp extends LitElement {
             .pendingFileMention=${this.pendingFileMention}
             .newChatNonce=${this.newChatNonce}
             .focusNonce=${this.focusNonce}
+            sessionMaxCostKey="GITCHAT_SESSION_MAX_COST_USD"
             class="tab-panel"
             ?hidden=${tab !== "chat"}
-          ></gc-chat-view>
+          ></cw-chat-view>
           <gc-repo-browser
             .repoId=${selectedRepo}
             .branch=${this.currentBranch}
@@ -857,15 +858,15 @@ export class GcApp extends LitElement {
         </main>
       </div>
       ${this.showShortcuts ? this.renderShortcutsModal() : nothing}
-      <gc-settings-panel
+      <cw-settings-panel
         .open=${this.showSettings}
         @gc:close=${() => {
           this.openOverlay(null);
         }}
-      ></gc-settings-panel>
+      ></cw-settings-panel>
       ${this.showSearch ? this.renderSearchOverlay() : nothing}
       ${this.showPalette ? this.renderCommandPalette() : nothing}
-      <gc-toast></gc-toast>
+      <cw-toast></cw-toast>
     `;
   }
 
@@ -1409,7 +1410,7 @@ export class GcApp extends LitElement {
       flex-shrink: 0;
     }
     /* Zen: strip every shell-level affordance. Children each hide
-       their own chrome (see gc-chat-view, gc-repo-browser,
+       their own chrome (see cw-chat-view, gc-repo-browser,
        gc-commit-log); this rule only covers the app shell itself.
        Exit via the floating button, the palette, or Cmd+\ cycling. */
     .shell.zen .shell-hd {

@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { authClient } from "@pders01/chatworks/transport";
+import { authClient } from "@jpahd/chatworks/transport";
 
 type PairingState =
   | { phase: "starting" }

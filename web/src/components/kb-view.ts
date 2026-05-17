@@ -1,15 +1,15 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
-import { chatClient } from "@pders01/chatworks/transport";
-import type { KBCard } from "@pders01/chatworks/proto/chat";
-import "@pders01/chatworks/loading-indicator";
+import { chatClient } from "@jpahd/chatworks/transport";
+import type { KBCard } from "@jpahd/chatworks/proto/chat";
+import "@jpahd/chatworks/loading-indicator";
 
 // Lazy-load markdown renderer (same pattern as chat-view).
-let markdownModule: Promise<typeof import("@pders01/chatworks/markdown")> | null = null;
+let markdownModule: Promise<typeof import("@jpahd/chatworks/markdown")> | null = null;
 function loadMarkdown() {
   if (!markdownModule) {
-    markdownModule = import("@pders01/chatworks/markdown");
+    markdownModule = import("@jpahd/chatworks/markdown");
   }
   return markdownModule;
 }
@@ -249,7 +249,7 @@ export class GcKbView extends LitElement {
             }}
           />
           ${this.loading
-            ? html`<gc-loading-banner heading="loading cards…"></gc-loading-banner>`
+            ? html`<cw-loading-banner heading="loading cards…"></cw-loading-banner>`
             : this.filteredCards.length === 0
               ? html`<p class="hint">${this.cards.length === 0 ? "no cards yet" : "no matches"}</p>`
               : html`
@@ -284,7 +284,7 @@ export class GcKbView extends LitElement {
         </aside>
         <section class="detail">
           ${this.detailLoading
-            ? html`<gc-loading-banner heading="loading card…"></gc-loading-banner>`
+            ? html`<cw-loading-banner heading="loading card…"></cw-loading-banner>`
             : this.cardDetail
               ? this.renderDetail()
               : html`<p class="hint">select a card to view details</p>`}

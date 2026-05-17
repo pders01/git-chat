@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { repoClient } from "@pders01/chatworks/transport";
-import "@pders01/chatworks/loading-indicator";
+import { repoClient } from "@jpahd/chatworks/transport";
+import "@jpahd/chatworks/loading-indicator";
 
 /* ------------------------------------------------------------------ */
 /*  Data model                                                         */
@@ -1518,10 +1518,10 @@ export class GcCodeCity extends LitElement {
   override render() {
     if (this.loading && !this.scene)
       return html`
-        <gc-loading-banner
+        <cw-loading-banner
           heading="building code city…"
           detail="walking commit history to aggregate per-file activity; takes a few seconds on large repos"
-        ></gc-loading-banner>
+        ></cw-loading-banner>
       `;
     if (this.error && !this.scene) return html`<div class="hint err">${this.error}</div>`;
 
@@ -1535,7 +1535,7 @@ export class GcCodeCity extends LitElement {
         ></canvas>
         ${this.loading
           ? html`<div class="city-loading">
-              <gc-spinner></gc-spinner>
+              <cw-spinner></cw-spinner>
               ${this.currentMaxCommits > 0
                 ? "walking all commits… (may take minutes on large repos)"
                 : "updating…"}

@@ -1,8 +1,8 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { ChangedFile } from "@pders01/chatworks/proto/repo";
+import type { ChangedFile } from "@jpahd/chatworks/proto/repo";
 import { statusLabel, fileName } from "../lib/diff-types.js";
-import "@pders01/chatworks/loading-indicator";
+import "@jpahd/chatworks/loading-indicator";
 import "./diff-pane.js";
 
 // CompareState models the file-list sidebar. Totals sum the per-file
@@ -91,7 +91,7 @@ export class GcCompareView extends LitElement {
     switch (this.compareState.phase) {
       case "loading":
         return html`<div class="hint">
-          <gc-spinner></gc-spinner>
+          <cw-spinner></cw-spinner>
           comparing…
         </div>`;
       case "error":

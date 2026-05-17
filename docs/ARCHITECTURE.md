@@ -154,7 +154,7 @@ A single `.proto` file in `proto/gitchat/v1/` is the source of truth for all
 client-server types. `buf generate` produces:
 
 - Go server handlers (`gen/go/`) -- we implement the service interfaces.
-- TypeScript clients -- land in the sibling [`@pders01/chatworks`](../../chatworks)
+- TypeScript clients -- land in the sibling [`@jpahd/chatworks`](../../chatworks)
   package (configured in `buf.gen.yaml`). The Lit frontend imports them via
   the package's `proto/{auth,chat,repo}` subpath exports.
 

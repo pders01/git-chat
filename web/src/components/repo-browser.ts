@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
-import { repoClient } from "@pders01/chatworks/transport";
+import { repoClient } from "@jpahd/chatworks/transport";
 import {
   readFocus,
   writeFocus,
@@ -9,10 +9,10 @@ import {
   focusGlyph,
   focusNextLabel,
   type FocusMode,
-} from "@pders01/chatworks/focus";
-import { EntryType, type Repo } from "@pders01/chatworks/proto/repo";
+} from "@jpahd/chatworks/focus";
+import { EntryType, type Repo } from "@jpahd/chatworks/proto/repo";
 import type { BrowseView } from "../lib/routing.js";
-import "@pders01/chatworks/loading-indicator";
+import "@jpahd/chatworks/loading-indicator";
 import "./file-view.js";
 import "./compare-view.js";
 import "./changes-view.js";
@@ -423,7 +423,7 @@ export class GcRepoBrowser extends LitElement {
   override render() {
     switch (this.state.phase) {
       case "loading":
-        return html`<gc-loading-banner heading="loading repositories…"></gc-loading-banner>`;
+        return html`<cw-loading-banner heading="loading repositories…"></cw-loading-banner>`;
       case "no-repos":
         return html`<p class="hint">no repositories configured</p>`;
       case "error":
@@ -636,7 +636,7 @@ export class GcRepoBrowser extends LitElement {
           <li>
             <button class="entry dir" style=${indent} @click=${() => this.toggleDir(node)}>
               <span class="icon">${node.open ? "▾" : "▸"}</span>
-              ${node.name} ${node.loading ? html`<gc-spinner></gc-spinner>` : nothing}
+              ${node.name} ${node.loading ? html`<cw-spinner></cw-spinner>` : nothing}
             </button>
             ${node.open && node.children
               ? html`<ul class="entries nested">

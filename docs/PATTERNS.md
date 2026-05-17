@@ -78,7 +78,7 @@ the same file. Two files hold these declarations:
 
 - **`chatworks/src/lib/events.ts`** — chat/settings/cross-cutting events
   (`gc:send`, `gc:toast`, `gc:open-file`, …). Lives in the sibling
-  `@pders01/chatworks` package.
+  `@jpahd/chatworks` package.
 - **`web/src/lib/events.ts`** — host-only events that reference types
   the package can't see (`gc:nav` → `NavState`, `gc:diff-files-loaded`
   → `ChangedFile[]`). The file `import`s the package's events module so
@@ -172,7 +172,7 @@ specific rendering helpers stay in the component file. If a helper
 grows a DOM dep later, extract the pure core, keep the DOM wrapper in
 the component. The chat/settings-related helpers (catalog, slash,
 attachments, markdown, highlight, clipboard, chat-types, settings,
-focus, transport) live in the sibling `@pders01/chatworks` package;
+focus, transport) live in the sibling `@jpahd/chatworks` package;
 host-shell helpers (routing, diff-html, diff-parse, commit-graph,
 diff-types) live in `web/src/lib/`.
 
@@ -394,7 +394,7 @@ Why: opening settings or editing a profile shouldn't expose your
 presence (or key) to a third-party provider. The user made a local
 action; it should stay local unless they ask otherwise.
 
-Enforcement in code (now in the sibling `@pders01/chatworks` package):
+Enforcement in code (now in the sibling `@jpahd/chatworks` package):
 - `chatworks/src/components/settings-panel.ts`:
   `discoverModelsForCurrentBaseUrl({force})` — auto-callers pass no
   options; the force flag is reserved for the "discover models" button

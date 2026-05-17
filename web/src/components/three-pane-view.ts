@@ -2,13 +2,13 @@ import { LitElement, html, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { parseUnifiedDiff, type ParsedDiff } from "../lib/diff-parse.js";
-import { onChange as onSettingsChange } from "@pders01/chatworks/settings";
-import "@pders01/chatworks/loading-indicator";
+import { onChange as onSettingsChange } from "@jpahd/chatworks/settings";
+import "@jpahd/chatworks/loading-indicator";
 
 // Lazy-load highlight — same lazy pattern other views use.
-let highlightModule: Promise<typeof import("@pders01/chatworks/highlight")> | null = null;
+let highlightModule: Promise<typeof import("@jpahd/chatworks/highlight")> | null = null;
 function loadHighlight() {
-  if (!highlightModule) highlightModule = import("@pders01/chatworks/highlight");
+  if (!highlightModule) highlightModule = import("@jpahd/chatworks/highlight");
   return highlightModule;
 }
 
@@ -270,7 +270,7 @@ export class GcThreePaneView extends LitElement {
 
   override render() {
     if (!this.ready) {
-      return html`<gc-loading-banner heading="preparing 3-pane view…"></gc-loading-banner>`;
+      return html`<cw-loading-banner heading="preparing 3-pane view…"></cw-loading-banner>`;
     }
     if (this.rows.length === 0) {
       return html`<div class="empty">(no changes)</div>`;

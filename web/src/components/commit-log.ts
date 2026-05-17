@@ -4,12 +4,12 @@ import { classMap } from "lit/directives/class-map.js";
 import { repeat } from "lit/directives/repeat.js";
 import { svg } from "lit";
 import "./diff-pane.js";
-import { repoClient } from "@pders01/chatworks/transport";
-import type { CommitEntry, ChangedFile } from "@pders01/chatworks/proto/repo";
-import { copyText } from "@pders01/chatworks/clipboard";
+import { repoClient } from "@jpahd/chatworks/transport";
+import type { CommitEntry, ChangedFile } from "@jpahd/chatworks/proto/repo";
+import { copyText } from "@jpahd/chatworks/clipboard";
 import { statusLabel, fileName } from "../lib/diff-types.js";
 import { layoutGraph } from "../lib/commit-graph.js";
-import "@pders01/chatworks/loading-indicator";
+import "@jpahd/chatworks/loading-indicator";
 import "./commit-log/commit-calendar.js";
 import {
   readFocus,
@@ -19,7 +19,7 @@ import {
   focusButtonLabel,
   focusNextLabel,
   type FocusMode,
-} from "@pders01/chatworks/focus";
+} from "@jpahd/chatworks/focus";
 
 type LogState =
   | { phase: "loading" }
@@ -669,10 +669,10 @@ export class GcCommitLog extends LitElement {
   override render() {
     if (this.state.phase === "loading") {
       return html`
-        <gc-loading-banner
+        <cw-loading-banner
           heading="loading commits…"
           detail="walking git history; first load on a large repo or with a path filter can take a second"
-        ></gc-loading-banner>
+        ></cw-loading-banner>
       `;
     }
     if (this.state.phase === "error") {

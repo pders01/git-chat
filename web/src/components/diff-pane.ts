@@ -1,18 +1,18 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
-import { repoClient } from "@pders01/chatworks/transport";
-import { onChange as onSettingsChange } from "@pders01/chatworks/settings";
+import { repoClient } from "@jpahd/chatworks/transport";
+import { onChange as onSettingsChange } from "@jpahd/chatworks/settings";
 import type { SideFilesState } from "../lib/diff-types.js";
 import { splitDiffHtml, highlightWordDiffs, addLineNumbers } from "../lib/diff-html.js";
-import "@pders01/chatworks/loading-indicator";
+import "@jpahd/chatworks/loading-indicator";
 import "./three-pane-view.js";
 
 // Lazy-import the highlighter so the initial bundle stays lean; the
 // highlighter pulls in Shiki which is 1MB+ uncompressed.
-let highlightModule: Promise<typeof import("@pders01/chatworks/highlight")> | null = null;
+let highlightModule: Promise<typeof import("@jpahd/chatworks/highlight")> | null = null;
 function loadHighlight() {
-  if (!highlightModule) highlightModule = import("@pders01/chatworks/highlight");
+  if (!highlightModule) highlightModule = import("@jpahd/chatworks/highlight");
   return highlightModule;
 }
 
@@ -405,10 +405,10 @@ export class GcDiffPane extends LitElement {
       case "empty":
         return nothing;
       case "loading":
-        return html`<gc-loading-banner
+        return html`<cw-loading-banner
           heading="loading diff…"
           detail="fetching changes from git; large diffs can take a second"
-        ></gc-loading-banner>`;
+        ></cw-loading-banner>`;
       case "error":
         return html`<p class="diff-error">${this.diff.message}</p>`;
       case "ready": {
@@ -428,7 +428,7 @@ export class GcDiffPane extends LitElement {
     switch (this.sideFiles.phase) {
       case "idle":
       case "loading":
-        return html`<gc-loading-banner heading="loading 3-pane…"></gc-loading-banner>`;
+        return html`<cw-loading-banner heading="loading 3-pane…"></cw-loading-banner>`;
       case "ready": {
         const left =
           this.leftLabel ||

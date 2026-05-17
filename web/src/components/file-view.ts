@@ -2,12 +2,12 @@ import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
-import { repoClient } from "@pders01/chatworks/transport";
-import { copyText } from "@pders01/chatworks/clipboard";
-import type { BlameLine } from "@pders01/chatworks/proto/repo";
-import "@pders01/chatworks/loading-indicator";
-import type { GetFileResponse } from "@pders01/chatworks/proto/repo";
-import { onChange as onSettingsChange } from "@pders01/chatworks/settings";
+import { repoClient } from "@jpahd/chatworks/transport";
+import { copyText } from "@jpahd/chatworks/clipboard";
+import type { BlameLine } from "@jpahd/chatworks/proto/repo";
+import "@jpahd/chatworks/loading-indicator";
+import type { GetFileResponse } from "@jpahd/chatworks/proto/repo";
+import { onChange as onSettingsChange } from "@jpahd/chatworks/settings";
 
 // Shiki + its grammars are ~300 kB gzipped. Import lazily so the initial
 // bundle doesn't pay for them on the auth / pairing path — they only load
@@ -16,7 +16,7 @@ type HighlightFn = (code: string, lang: string) => Promise<string>;
 let highlightPromise: Promise<HighlightFn> | null = null;
 function loadHighlight(): Promise<HighlightFn> {
   if (!highlightPromise) {
-    highlightPromise = import("@pders01/chatworks/highlight").then((m) => m.highlight);
+    highlightPromise = import("@jpahd/chatworks/highlight").then((m) => m.highlight);
   }
   return highlightPromise;
 }
@@ -152,7 +152,7 @@ export class GcFileView extends LitElement {
           <p class="empty-sub">click a file in the tree to view its contents</p>
         </div>`;
       case "loading":
-        return html`<gc-loading-banner heading="loading file…"></gc-loading-banner>`;
+        return html`<cw-loading-banner heading="loading file…"></cw-loading-banner>`;
       case "error":
         return html`<div class="err">
           ${this.view.message}
@@ -204,10 +204,10 @@ export class GcFileView extends LitElement {
 
   private renderBlameLoading() {
     return html`
-      <gc-loading-banner
+      <cw-loading-banner
         heading="computing blame…"
         detail="this can take a while on large files or deep histories (first load only — subsequent opens of the same file are instant)"
-      ></gc-loading-banner>
+      ></cw-loading-banner>
     `;
   }
 
@@ -275,7 +275,7 @@ export class GcFileView extends LitElement {
           aria-label="Toggle git blame"
           aria-busy=${this.blameLoading ? "true" : "false"}
         >
-          ${this.blameLoading ? html`<gc-spinner></gc-spinner>` : nothing} blame
+          ${this.blameLoading ? html`<cw-spinner></cw-spinner>` : nothing} blame
         </button>
         <button
           class="hd-btn"

@@ -11,9 +11,9 @@ plugins:
   # protoc-gen-es v2 generates BOTH messages and service definitions into
   # a single _pb.ts file. The old connectrpc/es plugin is deprecated and
   # generates broken import paths when paired with es v2 output.
-  # TS codegen lives in the sibling @pders01/chatworks package, which owns
+  # TS codegen lives in the sibling @jpahd/chatworks package, which owns
   # the typed Connect-RPC client surface. git-chat/web consumes it via the
-  # `@pders01/chatworks/proto/*` exports. The package is linked through
+  # `@jpahd/chatworks/proto/*` exports. The package is linked through
   # web/package.json's file: dependency.
   - remote: buf.build/bufbuild/es
     out: ../chatworks/src/gen
