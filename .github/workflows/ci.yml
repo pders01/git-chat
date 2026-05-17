@@ -43,6 +43,15 @@ jobs:
           restore-keys: |
             bun-${{ runner.os }}-
 
+      # chatworks declares lit + @bufbuild/protobuf + @connectrpc/* +
+      # @shikijs/langs/* in peerDependencies and devDependencies. tsc
+      # in web/ follows imports into ../chatworks/src/ and resolves
+      # modules from that file's own node_modules tree — so the sibling
+      # needs its own install or every chat-view import comes back
+      # unresolved and the host picks up implicit-any everywhere.
+      - name: Install chatworks dependencies
+        run: cd ../chatworks && bun install --frozen-lockfile
+
       - uses: bufbuild/buf-action@v1
         with:
           setup_only: true
@@ -108,6 +117,10 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
           restore-keys: |
             bun-${{ runner.os }}-
+
+      # See comment on the equivalent step in the check job.
+      - name: Install chatworks dependencies
+        run: cd ../chatworks && bun install --frozen-lockfile
 
       - name: Build binary
         run: make all
