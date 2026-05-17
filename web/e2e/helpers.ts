@@ -15,7 +15,7 @@ let portCounter = 10000 + Math.floor(Math.random() * 1000);
 
 // Get a unique, available port
 async function getUniquePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const tryPort = () => {
       portCounter++;
       const server = net.createServer();
@@ -41,10 +41,10 @@ export function ensureBinary(): string {
   const bin = resolve(repoRoot, "dist/git-chat");
   if (fs.existsSync(bin)) return bin;
   const tmp = `${bin}.tmp.${process.pid}`;
-  execSync(
-    `go build -trimpath -ldflags "-s -w -X main.version=e2e" -o ${tmp} ./cmd/git-chat`,
-    { stdio: "pipe", cwd: repoRoot },
-  );
+  execSync(`go build -trimpath -ldflags "-s -w -X main.version=e2e" -o ${tmp} ./cmd/git-chat`, {
+    stdio: "pipe",
+    cwd: repoRoot,
+  });
   fs.renameSync(tmp, bin);
   return bin;
 }
@@ -67,7 +67,7 @@ export async function startServer(maxRetries = 3): Promise<{
       // If the error is about port in use, retry
       if (lastError.message.includes("address already in use")) {
         console.log(`Port conflict on attempt ${attempt + 1}, retrying...`);
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 100));
         continue;
       }
       // Other errors are fatal
@@ -91,16 +91,14 @@ async function startServerOnce(): Promise<{
   // Open log file fd and close it when child spawns to prevent leaks
   const logFd = fs.openSync(logPath, "w");
 
-  const child = spawn(bin, [
-    "local",
-    "--http", `127.0.0.1:${port}`,
-    "--no-browser",
-    "--db", dbPath,
-    repoRoot,
-  ], {
-    stdio: ["ignore", "ignore", logFd],
-    detached: true,
-  });
+  const child = spawn(
+    bin,
+    ["local", "--http", `127.0.0.1:${port}`, "--no-browser", "--db", dbPath, repoRoot],
+    {
+      stdio: ["ignore", "ignore", logFd],
+      detached: true,
+    },
+  );
 
   // Close our copy of the fd now that child has inherited it
   fs.closeSync(logFd);
@@ -136,9 +134,15 @@ async function startServerOnce(): Promise<{
     url,
     logPath,
     cleanup: () => {
-      try { process.kill(-child.pid!, "SIGTERM"); } catch {}
-      try { fs.unlinkSync(dbPath); } catch {}
-      try { fs.unlinkSync(logPath); } catch {}
+      try {
+        process.kill(-child.pid!, "SIGTERM");
+      } catch {}
+      try {
+        fs.unlinkSync(dbPath);
+      } catch {}
+      try {
+        fs.unlinkSync(logPath);
+      } catch {}
     },
   };
 }
@@ -148,41 +152,39 @@ export async function waitForShadowElement(
   page: Page,
   hostSelector: string,
   shadowSelector: string,
-  options?: { timeout?: number; state?: 'visible' | 'hidden' }
+  options?: { timeout?: number; state?: "visible" | "hidden" },
 ) {
-  const { timeout = 20000, state = 'visible' } = options ?? {};
-  await expect.poll(
-    async () => {
-      const el = await page.evaluate(
-        ({ host, shadow }) => {
-          // Support nested shadow hosts (space-separated selectors)
-          const hosts = host.split(/\s+/).filter(Boolean);
-          let current: Element | null = document.querySelector(hosts[0] ?? '');
-          for (let i = 1; i < hosts.length && current; i++) {
-            current = current.shadowRoot?.querySelector(hosts[i]!) ?? null;
-          }
-          if (!current) return null;
-          return current.shadowRoot?.querySelector(shadow) ?? null;
-        },
-        { host: hostSelector, shadow: shadowSelector }
-      );
-      return state === 'visible' ? el !== null : el === null;
-    },
-    { timeout, intervals: [200] }
-  ).toBe(true);
+  const { timeout = 20000, state = "visible" } = options ?? {};
+  await expect
+    .poll(
+      async () => {
+        const el = await page.evaluate(
+          ({ host, shadow }) => {
+            // Support nested shadow hosts (space-separated selectors)
+            const hosts = host.split(/\s+/).filter(Boolean);
+            let current: Element | null = document.querySelector(hosts[0] ?? "");
+            for (let i = 1; i < hosts.length && current; i++) {
+              current = current.shadowRoot?.querySelector(hosts[i]!) ?? null;
+            }
+            if (!current) return null;
+            return current.shadowRoot?.querySelector(shadow) ?? null;
+          },
+          { host: hostSelector, shadow: shadowSelector },
+        );
+        return state === "visible" ? el !== null : el === null;
+      },
+      { timeout, intervals: [200] },
+    )
+    .toBe(true);
 }
 
-export async function clickShadowElement(
-  page: Page,
-  hostSelector: string,
-  shadowSelector: string
-) {
+export async function clickShadowElement(page: Page, hostSelector: string, shadowSelector: string) {
   await waitForShadowElement(page, hostSelector, shadowSelector);
   await page.evaluate(
     ({ host, shadow }) => {
       // Support nested shadow hosts (space-separated selectors)
       const hosts = host.split(/\s+/).filter(Boolean);
-      let current: Element | null = document.querySelector(hosts[0] ?? '');
+      let current: Element | null = document.querySelector(hosts[0] ?? "");
       for (let i = 1; i < hosts.length && current; i++) {
         current = current.shadowRoot?.querySelector(hosts[i]!) ?? null;
       }
@@ -190,7 +192,7 @@ export async function clickShadowElement(
       const el = current.shadowRoot?.querySelector(shadow) as HTMLElement | null;
       el?.click();
     },
-    { host: hostSelector, shadow: shadowSelector }
+    { host: hostSelector, shadow: shadowSelector },
   );
 }
 
@@ -198,14 +200,14 @@ export async function typeInShadowInput(
   page: Page,
   hostSelector: string,
   shadowSelector: string,
-  value: string
+  value: string,
 ) {
   await waitForShadowElement(page, hostSelector, shadowSelector);
   await page.evaluate(
     ({ host, shadow, val }) => {
       // Support nested shadow hosts (space-separated selectors)
       const hosts = host.split(/\s+/).filter(Boolean);
-      let current: Element | null = document.querySelector(hosts[0] ?? '');
+      let current: Element | null = document.querySelector(hosts[0] ?? "");
       for (let i = 1; i < hosts.length && current; i++) {
         current = current.shadowRoot?.querySelector(hosts[i]!) ?? null;
       }
@@ -213,63 +215,68 @@ export async function typeInShadowInput(
       const input = current.shadowRoot?.querySelector(shadow) as HTMLInputElement | null;
       if (input) {
         input.value = val;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event("input", { bubbles: true }));
       }
     },
-    { host: hostSelector, shadow: shadowSelector, val: value }
+    { host: hostSelector, shadow: shadowSelector, val: value },
   );
 }
 
 export async function getShadowElementCount(
   page: Page,
   hostSelector: string,
-  shadowSelector: string
+  shadowSelector: string,
 ): Promise<number> {
   return page.evaluate(
     ({ host, shadow }) => {
       // Support nested shadow hosts (space-separated selectors)
       const hosts = host.split(/\s+/).filter(Boolean);
-      let current: Element | null = document.querySelector(hosts[0] ?? '');
+      let current: Element | null = document.querySelector(hosts[0] ?? "");
       for (let i = 1; i < hosts.length && current; i++) {
         current = current.shadowRoot?.querySelector(hosts[i]!) ?? null;
       }
       if (!current) return 0;
       return current.shadowRoot?.querySelectorAll(shadow).length ?? 0;
     },
-    { host: hostSelector, shadow: shadowSelector }
+    { host: hostSelector, shadow: shadowSelector },
   );
 }
 
 // authenticate navigates to the claim URL so the session cookie is set,
 // then waits for the authenticated shell to render.
 export async function authenticate(page: Page, url: string, logPath?: string) {
+  const debug = process.env.DEBUG_E2E === "1";
+
   // Enable console logging for debugging
-  page.on("console", msg => {
-    console.log(`[Browser ${msg.type()}] ${msg.text()}`);
+  page.on("console", (msg) => {
+    if (debug) console.log(`[Browser ${msg.type()}] ${msg.text()}`);
   });
-  page.on("pageerror", err => {
+  page.on("pageerror", (err) => {
     console.error("[Browser error]", err);
   });
 
   await page.goto(url, { waitUntil: "networkidle" });
 
-  // Debug: log initial state
   const initialUrl = await page.evaluate(() => window.location.href);
-  console.log("Initial URL:", initialUrl);
+  if (debug) console.log("Initial URL:", initialUrl);
 
   // Wait for the hash redirect which only happens after successful auth
   // (boot → localClaim → whoami → enterAuthenticated → pushHash).
   // Note: history.pushState() doesn't trigger navigation events, so we poll.
   try {
-    await expect.poll(
-      async () => {
-        const hash = await page.evaluate(() => window.location.hash);
-        const href = await page.evaluate(() => window.location.href);
-        console.log(`Polling: hash=${hash}, href=${href}`);
-        return hash.startsWith("#/");
-      },
-      { timeout: 30_000, interval: 500 }
-    ).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          const hash = await page.evaluate(() => window.location.hash);
+          if (debug) {
+            const href = await page.evaluate(() => window.location.href);
+            console.log(`Polling: hash=${hash}, href=${href}`);
+          }
+          return hash.startsWith("#/");
+        },
+        { timeout: 30_000, interval: 500 },
+      )
+      .toBe(true);
   } catch (e) {
     // Log page content and server logs on failure
     const content = await page.content();
@@ -284,15 +291,17 @@ export async function authenticate(page: Page, url: string, logPath?: string) {
   }
 
   // Wait for authenticated state to be fully rendered
-  await expect.poll(
-    async () => {
-      const phase = await page.evaluate(() => {
-        const app = document.querySelector("gc-app");
-        return (app as any)?.state?.phase;
-      });
-      console.log(`Phase: ${phase}`);
-      return phase;
-    },
-    { timeout: 10_000, interval: 100 }
-  ).toBe("authenticated");
+  await expect
+    .poll(
+      async () => {
+        const phase = await page.evaluate(() => {
+          const app = document.querySelector("gc-app");
+          return (app as any)?.state?.phase;
+        });
+        if (debug) console.log(`Phase: ${phase}`);
+        return phase;
+      },
+      { timeout: 10_000, intervals: [100] },
+    )
+    .toBe("authenticated");
 }
