@@ -69,19 +69,19 @@ test.describe("features", () => {
 
   test("settings modal opens via gear icon", async () => {
     await clickShadowElement(page, "gc-app", ".settings-btn");
-    await waitForShadowElement(page, "gc-app gc-settings-panel", '[role="dialog"][aria-label="Settings"]');
+    await waitForShadowElement(page, "gc-app cw-settings-panel", '[role="dialog"][aria-label="Settings"]');
 
     const visible = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const panel = app?.shadowRoot?.querySelector("gc-settings-panel");
+      const panel = app?.shadowRoot?.querySelector("cw-settings-panel");
       const dialog = panel?.shadowRoot?.querySelector('div[role="dialog"][aria-label="Settings"]');
       return !!dialog;
     });
     expect(visible).toBe(true);
 
     // Close.
-    await clickShadowElement(page, "gc-app gc-settings-panel", ".modal-backdrop");
-    await waitForShadowElement(page, "gc-app gc-settings-panel", '[role="dialog"][aria-label="Settings"]', { state: 'hidden' });
+    await clickShadowElement(page, "gc-app cw-settings-panel", ".modal-backdrop");
+    await waitForShadowElement(page, "gc-app cw-settings-panel", '[role="dialog"][aria-label="Settings"]', { state: 'hidden' });
   });
 
   // ── Composer ───────────────────────────────────────────────
@@ -89,8 +89,8 @@ test.describe("features", () => {
   test("composer has proper a11y attributes", async () => {
     const attrs = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const composer = chat?.shadowRoot?.querySelector("gc-composer");
+      const chat = app?.shadowRoot?.querySelector("cw-chat-view");
+      const composer = chat?.shadowRoot?.querySelector("cw-composer");
       const ta = composer?.shadowRoot?.querySelector("textarea");
       if (!ta) return null;
       return {
@@ -108,8 +108,8 @@ test.describe("features", () => {
   test("composer status has role=status", async () => {
     const role = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const composer = chat?.shadowRoot?.querySelector("gc-composer");
+      const chat = app?.shadowRoot?.querySelector("cw-chat-view");
+      const composer = chat?.shadowRoot?.querySelector("cw-composer");
       const hint = composer?.shadowRoot?.querySelector("#composer-status");
       return hint?.getAttribute("role");
     });
@@ -125,21 +125,21 @@ test.describe("features", () => {
     const sidebarWidth = () =>
       page.evaluate(() => {
         const app = document.querySelector("gc-app");
-        const chat = app?.shadowRoot?.querySelector("gc-chat-view");
+        const chat = app?.shadowRoot?.querySelector("cw-chat-view");
         const sidebar = chat?.shadowRoot?.querySelector(".sidebar");
         return sidebar?.getBoundingClientRect().width ?? -1;
       });
 
     // off → focus: sidebar collapses.
-    await clickShadowElement(page, "gc-app gc-chat-view", ".focus-btn");
+    await clickShadowElement(page, "gc-app cw-chat-view", ".focus-btn");
     await expect.poll(sidebarWidth, { timeout: 5000 }).toBeLessThanOrEqual(1);
 
     // focus → zen: sidebar still collapsed (zen extends focus).
-    await clickShadowElement(page, "gc-app gc-chat-view", ".focus-btn");
+    await clickShadowElement(page, "gc-app cw-chat-view", ".focus-btn");
     await expect.poll(sidebarWidth, { timeout: 5000 }).toBeLessThanOrEqual(1);
 
     // zen → off: sidebar expands.
-    await clickShadowElement(page, "gc-app gc-chat-view", ".focus-btn");
+    await clickShadowElement(page, "gc-app cw-chat-view", ".focus-btn");
     await expect.poll(sidebarWidth, { timeout: 5000 }).toBeGreaterThan(1);
   });
 
@@ -148,7 +148,7 @@ test.describe("features", () => {
   test("export button not visible when no session selected", async () => {
     const visible = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
+      const chat = app?.shadowRoot?.querySelector("cw-chat-view");
       return !!chat?.shadowRoot?.querySelector(".export-btn");
     });
     expect(visible).toBe(false);

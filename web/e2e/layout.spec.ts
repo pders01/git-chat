@@ -23,23 +23,23 @@ test.describe("layout", () => {
   test("chat: messages and composer aligned", async () => {
     const vw = page.viewportSize()?.width ?? 1440;
     if (vw <= 768) return;
-    // The chat pane renders either gc-message-list (when turns exist)
-    // or gc-chat-dashboard (empty state). Both apply the same
+    // The chat pane renders either cw-message-list (when turns exist)
+    // or cw-chat-dashboard (empty state). Both apply the same
     // max-width: var(--content-max-width); margin: auto centering that
-    // gc-composer uses, so they should share x/w with the composer
+    // cw-composer uses, so they should share x/w with the composer
     // regardless of which view is active. Fresh auth lands on the
     // empty dashboard; populated sessions exercise the message-list
     // branch.
     const rects = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
+      const chat = app?.shadowRoot?.querySelector("cw-chat-view");
       if (!chat?.shadowRoot) return null;
       const sr = chat.shadowRoot;
       const inner =
-        sr.querySelector("gc-message-list")?.shadowRoot?.querySelector(".messages-inner") ??
-        sr.querySelector("gc-chat-dashboard")?.shadowRoot?.querySelector(".empty-chat");
+        sr.querySelector("cw-message-list")?.shadowRoot?.querySelector(".messages-inner") ??
+        sr.querySelector("cw-chat-dashboard")?.shadowRoot?.querySelector(".empty-chat");
       const composer = sr
-        .querySelector("gc-composer")
+        .querySelector("cw-composer")
         ?.shadowRoot?.querySelector(".composer-inner");
       return {
         inner: inner ? { x: Math.round(inner.getBoundingClientRect().x), w: Math.round(inner.getBoundingClientRect().width) } : null,
@@ -58,7 +58,7 @@ test.describe("layout", () => {
     if (vw <= 768) return;
     const chatWidth = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
+      const chat = app?.shadowRoot?.querySelector("cw-chat-view");
       return chat?.shadowRoot?.querySelector(".sidebar")?.getBoundingClientRect().width ?? -1;
     });
 
@@ -131,8 +131,8 @@ test.describe("layout", () => {
   test("chat empty state shows example buttons", async () => {
     const count = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const dashboard = chat?.shadowRoot?.querySelector("gc-chat-dashboard");
+      const chat = app?.shadowRoot?.querySelector("cw-chat-view");
+      const dashboard = chat?.shadowRoot?.querySelector("cw-chat-dashboard");
       return dashboard?.shadowRoot?.querySelectorAll(".example")?.length ?? 0;
     });
     expect(count).toBeGreaterThanOrEqual(1);

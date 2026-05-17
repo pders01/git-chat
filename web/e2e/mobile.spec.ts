@@ -24,7 +24,7 @@ test.describe("mobile", () => {
   test("sidebar hidden by default", async () => {
     const sidebarX = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
+      const chat = app?.shadowRoot?.querySelector("cw-chat-view");
       const sidebar = chat?.shadowRoot?.querySelector(".sidebar");
       return sidebar?.getBoundingClientRect().x ?? 999;
     });
@@ -32,13 +32,13 @@ test.describe("mobile", () => {
   });
 
   test("drawer toggle opens sidebar", async () => {
-    await clickShadowElement(page, "gc-app gc-chat-view", ".drawer-toggle");
+    await clickShadowElement(page, "gc-app cw-chat-view", ".drawer-toggle");
 
     // Wait for sidebar animation
     await expect.poll(async () => {
       const sidebarX = await page.evaluate(() => {
         const app = document.querySelector("gc-app");
-        const chat = app?.shadowRoot?.querySelector("gc-chat-view");
+        const chat = app?.shadowRoot?.querySelector("cw-chat-view");
         const sidebar = chat?.shadowRoot?.querySelector(".sidebar");
         return sidebar?.getBoundingClientRect().x ?? -999;
       });
@@ -46,13 +46,13 @@ test.describe("mobile", () => {
     }, { timeout: 5000 }).toBeGreaterThanOrEqual(0);
 
     // Close via backdrop.
-    await clickShadowElement(page, "gc-app gc-chat-view", ".drawer-backdrop");
+    await clickShadowElement(page, "gc-app cw-chat-view", ".drawer-backdrop");
     
     // Wait for sidebar to close
     await expect.poll(async () => {
       const sidebarX = await page.evaluate(() => {
         const app = document.querySelector("gc-app");
-        const chat = app?.shadowRoot?.querySelector("gc-chat-view");
+        const chat = app?.shadowRoot?.querySelector("cw-chat-view");
         const sidebar = chat?.shadowRoot?.querySelector(".sidebar");
         return sidebar?.getBoundingClientRect().x ?? 999;
       });
@@ -63,7 +63,7 @@ test.describe("mobile", () => {
   test("chat content readable (not zero-width)", async () => {
     const width = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
+      const chat = app?.shadowRoot?.querySelector("cw-chat-view");
       const pane = chat?.shadowRoot?.querySelector(".pane");
       return pane?.getBoundingClientRect().width ?? 0;
     });
@@ -73,8 +73,8 @@ test.describe("mobile", () => {
   test("composer usable", async () => {
     const w = await page.evaluate(() => {
       const app = document.querySelector("gc-app");
-      const chat = app?.shadowRoot?.querySelector("gc-chat-view");
-      const composer = chat?.shadowRoot?.querySelector("gc-composer");
+      const chat = app?.shadowRoot?.querySelector("cw-chat-view");
+      const composer = chat?.shadowRoot?.querySelector("cw-composer");
       const c = composer?.shadowRoot?.querySelector(".composer-inner");
       return c?.getBoundingClientRect().width ?? 0;
     });

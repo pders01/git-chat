@@ -56,7 +56,7 @@ test.describe("routing", () => {
   test("deep link /chat lands on chat tab", async () => {
     await navigateHash("#/git-chat/chat");
     expect(await activeTab()).toBe("chat");
-    await waitForShadowElement(page, "gc-app", "gc-chat-view:not([hidden])");
+    await waitForShadowElement(page, "gc-app", "cw-chat-view:not([hidden])");
   });
 
   test("deep link /browse lands on browse tab with tree visible", async () => {
