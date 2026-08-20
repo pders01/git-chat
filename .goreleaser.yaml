@@ -1,9 +1,5 @@
 version: 2
 
-before:
-  hooks:
-    - sh -c "cd web && bun install --frozen-lockfile && NODE_ENV=production bun run build"
-
 builds:
   - id: git-chat
     main: ./cmd/git-chat

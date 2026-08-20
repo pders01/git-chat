@@ -1,6 +1,3 @@
 dist/
-web/node_modules/
-web/.vite/
-web/test-results/
 .git/
 *.db

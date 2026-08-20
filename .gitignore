@@ -7,24 +7,11 @@
 *.out
 /vendor/
 
-# Web build output (embedded into Go binary at build time).
-# Vite owns this directory fully; we keep only .gitkeep committed so
-# //go:embed has a file to match on fresh clones. The user-facing
-# fallback HTML lives in internal/assets/stub/.
-/internal/assets/dist/*
-!/internal/assets/dist/.gitkeep
-
-# Web dev
-/web/node_modules
-/web/dist
-/web/.vite
-
 # SSH host keys (generated at first run)
 host_ed25519*
 
 # Test artifacts
 /test-results/
-/web/test-results/
 
 # Claude Code worktrees
 /.claude/worktrees/

@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
-	"golang.org/x/term"
 )
 
 var (
@@ -26,10 +24,6 @@ var (
 	styleURL     = lipgloss.NewStyle().Foreground(colAccent).Underline(true)
 	styleError   = lipgloss.NewStyle().Foreground(colErrFg).Bold(true)
 	styleFlag    = lipgloss.NewStyle().Foreground(colBrand)
-	styleBanner  = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colBrand).
-			Padding(0, 2)
 )
 
 // installLogger wires charmbracelet/log as the global slog default. Level
@@ -54,70 +48,6 @@ func installLogger(w io.Writer, level string) {
 	slog.SetDefault(slog.New(h))
 }
 
-// renderOpenBanner returns a styled block advertising the URL the user
-// should open in their browser. Includes the resolved revspec when set.
-//
-// Falls back to an unboxed two-line layout if the URL wouldn't fit inside
-// the border at the current terminal width — a wrapped URL is unclickable
-// and a clipped box is worse than no box.
-func renderOpenBanner(openURL, rangeSummary string) string {
-	const (
-		hPadding   = 2 // lipgloss banner left+right padding (per side)
-		borderCols = 2 // ╭ + ╮
-		labelCols  = 6 // "Open  " label before the URL
-	)
-	termWidth := terminalWidth(os.Stderr)
-	required := len(openURL) + labelCols + 2*hPadding + borderCols
-	if termWidth > 0 && required > termWidth {
-		var b strings.Builder
-		b.WriteString("\n")
-		b.WriteString(styleHeading.Render("Open:"))
-		b.WriteString("\n  ")
-		b.WriteString(styleURL.Render(openURL))
-		if rangeSummary != "" {
-			b.WriteString("\n")
-			b.WriteString(styleDim.Render("range:"))
-			b.WriteString(" ")
-			b.WriteString(styleBrand.Render(rangeSummary))
-		}
-		b.WriteString("\n")
-		return b.String()
-	}
-
-	var b strings.Builder
-	// Keep a literal "Open: " prefix (colon + single space) in both
-	// branches — scripts, e2e helpers, and log greppers parse it with
-	// a /Open: (http\S+)/ regex that would miss two-space variants.
-	b.WriteString(styleHeading.Render("Open:"))
-	b.WriteString(" ")
-	b.WriteString(styleURL.Render(openURL))
-	if rangeSummary != "" {
-		b.WriteString("\n")
-		b.WriteString(styleDim.Render("range:"))
-		b.WriteString(" ")
-		b.WriteString(styleBrand.Render(rangeSummary))
-	}
-	return "\n" + styleBanner.Render(b.String()) + "\n"
-}
-
-// terminalWidth returns the terminal width in columns for w, or 0 if w is
-// not a tty or the width can't be determined.
-func terminalWidth(w any) int {
-	type fder interface{ Fd() uintptr }
-	f, ok := w.(fder)
-	if !ok {
-		return 0
-	}
-	if !term.IsTerminal(int(f.Fd())) {
-		return 0
-	}
-	cols, _, err := term.GetSize(int(f.Fd()))
-	if err != nil {
-		return 0
-	}
-	return cols
-}
-
 // renderUsage returns the styled help text for `git chat --help`.
 func renderUsage() string {
 	heading := func(s string) string { return styleHeading.Render(s) }
@@ -129,12 +59,10 @@ func renderUsage() string {
 
 	b.WriteString(heading("usage:") + "\n")
 	for _, line := range [][2]string{
-		{"git chat", "open current repo in browser"},
-		{"git chat <path>", "open a specific repo or directory"},
-		{"git chat <path> <revspec>", "open compare view pre-filled with a git range"},
-		{"git chat serve [flags]", "multi-user self-hosted mode"},
-		{"git chat local [path] [revspec] [flags]", "explicit solo-local mode"},
+		{"git chat chat [flags] <message>", "one-shot terminal chat"},
 		{"git chat mcp [path]", "MCP server mode (stdio)"},
+		{"git chat local [path] [flags]", "loopback Connect API"},
+		{"git chat serve [flags]", "multi-user Connect API"},
 		{"git chat add-key <principal>", "append SSH pubkey from stdin"},
 		{"git chat remove-key <principal>", "revoke a principal's SSH key"},
 		{"git chat list-keys", "show registered principals"},
@@ -144,27 +72,23 @@ func renderUsage() string {
 		fmt.Fprintf(&b, "  %-40s %s\n", flag(line[0]), dim(line[1]))
 	}
 
-	b.WriteString("\n" + heading("flags (local / serve):") + "\n")
+	b.WriteString("\n" + heading("common flags:") + "\n")
 	for _, line := range [][2]string{
-		{"--http <addr>", "listen address (default: 127.0.0.1:0)"},
+		{"--http <addr>", "API listen address"},
+		{"--repo <path>", "repository path (repeatable in server modes)"},
 		{"--llm-backend <name>", "openai (default) or anthropic"},
 		{"--llm-model <name>", "model name"},
 		{"--llm-api-key <key>", "API key"},
-		{"--range <revspec>", "open compare view for A..B, A...B, or single ref"},
-		{"                  ", "use --range=<val> if val starts with '-' (e.g. --range=-5..HEAD)"},
-		{"--no-browser", "don't auto-open browser"},
 	} {
 		fmt.Fprintf(&b, "  %-24s %s\n", flag(line[0]), dim(line[1]))
 	}
 
 	b.WriteString("\n" + heading("examples:") + "\n")
 	for _, line := range [][2]string{
-		{"git chat", "chat about the repo in $PWD"},
-		{"git chat ~/Projects/myproject", "open a specific repo"},
-		{"git chat . HEAD~5..HEAD", "compare the last 5 commits"},
-		{"git chat . main...feature", "compare feature branch against its merge-base"},
-		{"git chat --range v1.0..v2.0", "compare two tags in $PWD"},
-		{"git chat serve --repo ~/r1 --repo ~/r2", "multi-repo server"},
+		{"git chat chat \"summarize this repository\"", "run one terminal turn"},
+		{"git chat mcp .", "serve repository tools over stdio"},
+		{"git chat local .", "start a loopback API and print a claim token"},
+		{"git chat serve --repo ~/r1 --repo ~/r2", "start a multi-repository API"},
 	} {
 		fmt.Fprintf(&b, "  %s\n    %s\n", flag(line[0]), dim(line[1]))
 	}

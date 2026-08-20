@@ -15,12 +15,10 @@ import (
 const CookieName = "git-chat.sid"
 
 // defaultSessionTTL is the compile-time fallback for GITCHAT_SESSION_TTL.
-// Used when no Config Registry is attached (tests) or the key is unset
-// and env is empty. UI edits to the key land via SetConfig → per-use
-// resolution in ttlDur.
+// Used when no Config Registry is attached or the key is unset.
 const defaultSessionTTL = 7 * 24 * time.Hour
 
-// Session is the in-memory record of an authenticated browser.
+// Session is the in-memory record of an authenticated API client.
 type Session struct {
 	Token     string // raw token value (also the cookie value)
 	Principal string
@@ -41,22 +39,12 @@ type SessionStore struct {
 	byToken  map[string]*Session
 	cfg      *config.Registry // optional; nil falls back to env + default
 	secureCk bool             // set Secure flag on cookies (true only behind TLS)
-	// extMode flips cookie attributes for VS Code / Open VSX webview
-	// hosting. The SPA runs inside an iframe whose top-level document
-	// is vscode-webview:// or vscode-file://, which Chromium treats as
-	// cross-site to http://localhost — SameSite=Strict (or Lax) blocks
-	// the session cookie on every fetch from the iframe. ext-mode
-	// switches to SameSite=None + Secure + Partitioned, the modern
-	// "third-party-but-trusted" recipe. Loopback gets the Secure
-	// exception on http://localhost in Chromium so no TLS is needed.
-	extMode bool
 	// TTL cache — the Config Registry resolves SESSION_TTL via a DB
 	// round-trip with a 5s timeout; ttlDur is called on every session
 	// op (Create/Get/Rotate/ShouldRotate/TTL/SetCookie) so without a
 	// cache, steady-state auth traffic hammers the DB for a value that
-	// changes on the order of days. The cache refreshes in the
-	// background every ttlCacheRefresh seconds; UI edits to the TTL
-	// take effect within that window.
+	// changes on the order of days. The cache refreshes every
+	// ttlCacheRefresh seconds so configuration updates take effect promptly.
 	ttlCached   time.Duration
 	ttlCachedAt time.Time
 	ttlMu       sync.Mutex
@@ -81,28 +69,8 @@ func (s *SessionStore) SetConfig(cfg *config.Registry) {
 	s.cfg = cfg
 }
 
-// SetExtMode enables ext-mode cookie attributes (SameSite=None +
-// Secure + Partitioned). MUST only be called when the HTTP server is
-// loopback-bound — without that guarantee, SameSite=None makes the
-// cookie eligible for cross-site requests and defeats CSRF protection.
-//
-// The only legitimate caller is `git-chat local --ext-mode`, which
-// runs validateLoopback before reaching this code path. Adding new
-// callers means re-establishing the loopback invariant first; the
-// store cannot verify the bind itself.
-//
-// Partitioned is the cross-context safety net: it scopes the cookie
-// to the (origin, top-level-site) tuple so an attacker page that
-// iframes our loopback origin cannot read the session a legitimate
-// webview host already established.
-func (s *SessionStore) SetExtMode(enabled bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.extMode = enabled
-}
-
 // ttlDur resolves the current session TTL. Values ≤ 0 are rejected so
-// a UI typo of "0" can't mint immediately-expired sessions. Cached
+// a configuration typo of "0" can't mint immediately-expired sessions. Cached
 // for ttlCacheRefresh to avoid hammering the config DB on every auth
 // op; a UI change takes effect within the refresh window.
 func (s *SessionStore) ttlDur() time.Duration {
@@ -212,16 +180,8 @@ func (s *SessionStore) Delete(token string) {
 	s.mu.Unlock()
 }
 
-// CookieAttrs returns the shared cookie attributes for session cookies
-// (Secure, SameSite, Partitioned). Centralised so SetCookie,
-// ClearCookie, and the Connect handler's manual cookie writers stay in
-// sync. ext-mode flips SameSite=Strict → None + Secure + Partitioned so
-// the cookie survives the cross-site iframe context inside a VS Code
-// webview host.
+// CookieAttrs centralizes the first-party API cookie policy.
 func (s *SessionStore) CookieAttrs() (secure bool, sameSite http.SameSite, partitioned bool) {
-	if s.extMode {
-		return true, http.SameSiteNoneMode, true
-	}
 	return s.secureCk, http.SameSiteStrictMode, false
 }
 

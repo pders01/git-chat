@@ -11,153 +11,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # web/package.json declares @jpahd/chatworks as `file:../../chatworks`,
-      # so the sibling repo must exist next to this checkout before any
-      # `bun install` runs. Public repo — no token needed. Pinned to main;
-      # CHATWORKS_REF (workflow_dispatch input or repo var) lets us swap
-      # in a tag or commit SHA for release builds without touching the file.
-      - name: Checkout sibling chatworks
-        uses: actions/checkout@v4
-        with:
-          repository: pders01/chatworks
-          ref: ${{ vars.CHATWORKS_REF || 'v0.3.0' }}
-          path: chatworks-sibling
-
-      - name: Place chatworks at ../chatworks
-        run: mv chatworks-sibling ../chatworks
-
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            web/node_modules
-            ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
-          restore-keys: |
-            bun-${{ runner.os }}-
-
-      # chatworks declares lit + @bufbuild/protobuf + @connectrpc/* +
-      # @shikijs/langs/* in peerDependencies and devDependencies. The
-      # sibling needs its own install so peers resolve, then `bun run
-      # build` emits dist/ — v0.3.0 onward, chatworks's exports point
-      # at compiled .js + .d.ts instead of source, so consumers will
-      # fail to resolve until dist/ exists.
-      - name: Install chatworks dependencies
-        run: cd ../chatworks && bun install --frozen-lockfile
-
-      - name: Build chatworks dist
-        run: cd ../chatworks && bun run build
 
       - uses: bufbuild/buf-action@v1
         with:
           setup_only: true
 
-      - name: Go vet + test
-        run: |
-          go vet ./...
-          go test ./...
-
-      - name: Web check (tsc + oxlint + oxfmt)
-        run: make check-web
+      - name: Go vet and test
+        run: make check
 
       - name: Build binary
         run: make all
-
-      - name: Bundle size guard
-        run: make size-check
 
       - name: Proto freshness
         run: |
           make proto
           git diff --exit-code gen/ || {
-            echo "Generated code is stale — run 'make proto' locally and commit"
+            echo "Generated Go code is stale — run 'make proto' locally and commit"
             exit 1
           }
-          # TS-side stubs land in the sibling @jpahd/chatworks repo
-          # (see buf.gen.yaml); freshness there is enforced by that
-          # repo's own CI.
-
-  e2e:
-    runs-on: ubuntu-latest
-    needs: check
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # Full history needed for e2e tests to have commits to display
-          fetch-depth: 0
-
-      - name: Checkout sibling chatworks
-        uses: actions/checkout@v4
-        with:
-          repository: pders01/chatworks
-          ref: ${{ vars.CHATWORKS_REF || 'v0.3.0' }}
-          path: chatworks-sibling
-
-      - name: Place chatworks at ../chatworks
-        run: mv chatworks-sibling ../chatworks
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            web/node_modules
-            ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
-          restore-keys: |
-            bun-${{ runner.os }}-
-
-      # See comment on the equivalent step in the check job.
-      - name: Install chatworks dependencies
-        run: cd ../chatworks && bun install --frozen-lockfile
-
-      - name: Build chatworks dist
-        run: cd ../chatworks && bun run build
-
-      - name: Build binary
-        run: make all
-
-      - name: Install Playwright
-        run: |
-          cd web
-          bun install --frozen-lockfile
-          bunx playwright install chromium
-
-      - name: Run e2e tests
-        run: cd web && bunx playwright test --project=desktop --workers=1
-        env:
-          PLAYWRIGHT_TIMEOUT: 60000
-
-      - name: Debug on failure
-        if: failure()
-        run: |
-          echo "=== Server logs (last 100 lines) ==="
-          tail -100 /tmp/gc-e2e-*.log 2>/dev/null || echo "No logs found"
-          echo "=== Process status ==="
-          ps aux | grep git-chat || true
-          echo "=== Network ==="
-          netstat -tlnp 2>/dev/null || ss -tlnp 2>/dev/null || true
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: |
-            web/playwright-report/
-            web/test-results/
-          retention-days: 7

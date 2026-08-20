@@ -1,5 +1,4 @@
-// Package rpc owns the HTTP server: Connect RPC handlers plus the embedded
-// Lit SPA served from the static FS.
+// Package rpc owns the headless Connect RPC HTTP server.
 package rpc
 
 import (
@@ -10,7 +9,6 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/pders01/git-chat/gen/go/gitchat/v1/gitchatv1connect"
-	"github.com/pders01/git-chat/internal/assets"
 	"github.com/pders01/git-chat/internal/auth"
 	"github.com/pders01/git-chat/internal/chat"
 	"github.com/pders01/git-chat/internal/repo"
@@ -26,11 +24,6 @@ type Config struct {
 	AuthSvc  *auth.Service
 	RepoSvc  *repo.Service
 	ChatSvc  *chat.Service
-	// ExtMode relaxes security headers so the SPA can be hosted inside a
-	// VS Code (or Open VSX-derived editor) webview iframe. Drops
-	// X-Frame-Options and adds frame-ancestors to CSP. Only set this when
-	// the server binds to loopback under an extension host's control.
-	ExtMode bool
 }
 
 // NewHTTPServer returns a configured *http.Server ready for ListenAndServe.
@@ -75,17 +68,20 @@ func NewHTTPServer(cfg Config) *http.Server {
 	)
 	mux.Handle(chatPath, chatHandler)
 
-	// Static SPA (everything else). DistFS picks dist/ when populated,
-	// stub/ on fresh clones before `make all`.
-	mux.Handle("/", http.FileServer(http.FS(assets.DistFS())))
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"name":   "git-chat",
+			"mode":   "headless",
+			"health": "/api/health",
+		})
+	})
 
-	// Session middleware wraps the entire mux so both the API and the
-	// static handler see the principal in context (useful when
-	// static routes need auth-aware behavior).
+	// Session middleware wraps the API mux and injects authenticated principals.
 	handler := auth.SessionMiddleware(cfg.Sessions, mux)
 
 	// Security headers: CSP + basic hardening.
-	secured := securityHeaders(handler, cfg.ExtMode)
+	secured := securityHeaders(handler)
 
 	return &http.Server{
 		Addr:              cfg.Addr,
@@ -94,30 +90,13 @@ func NewHTTPServer(cfg Config) *http.Server {
 	}
 }
 
-// securityHeaders adds Content-Security-Policy and other baseline
-// headers. The CSP allows inline styles (Shiki uses them for theming)
-// but blocks everything else that's not same-origin.
-//
-// extMode drops both X-Frame-Options and the CSP frame-ancestors
-// directive so the SPA can render inside arbitrary editor webview
-// chrome (vscode-webview://, vscode-file://, opaque cdn subdomains).
-// CSP `frame-ancestors *` is NOT a substitute — per CSP spec, `*`
-// only matches network schemes (http/https/ws/wss), so non-network
-// parents like vscode-webview:// are still blocked.
-//
-// The real security gates in ext-mode are:
-//   1. loopback-only bind (validateLoopback in cmd/git-chat/local.go)
-//   2. one-shot claim token (auth.LocalTokens)
-// Both are independent of frame-ancestors.
-func securityHeaders(next http.Handler, extMode bool) http.Handler {
-	const baseCSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; img-src 'self' data:; connect-src 'self'; font-src 'self'"
+// securityHeaders prevents API responses from being embedded or MIME-sniffed.
+func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", baseCSP)
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		if !extMode {
-			w.Header().Set("X-Frame-Options", "DENY")
-		}
-		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
 		next.ServeHTTP(w, r)
 	})
 }

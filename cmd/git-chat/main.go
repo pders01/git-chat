@@ -1,18 +1,6 @@
-// git-chat is a self-hosted persistent chat against a git repository with
-// an auto-curated, git-aware knowledge base. See docs/ARCHITECTURE.md for
-// the full design.
+// git-chat is a headless repository-chat and knowledge service.
 //
-// Usage:
-//
-//	git chat              open current directory (or nearest git root)
-//	git chat <path>       open a specific repo or directory of repos
-//	git chat serve        multi-user, HTTP + SSH pairing
-//	git chat local        explicit solo-local mode
-//	git chat mcp          MCP server mode (stdio)
-//	git chat chat "…"     headless one-shot chat, reply on stdout
-//	git chat add-key      append SSH pubkey from stdin
-//	git chat remove-key   revoke a principal's SSH key
-//	git chat list-keys    show registered principals
+// It supports a one-shot terminal client, an MCP server, and a Connect API.
 package main
 
 import (
@@ -71,9 +59,8 @@ func main() {
 	case "-v", "--version", "version":
 		fmt.Println("git-chat", version)
 	default:
-		// Not a known subcommand — treat as a path, revspec, or flag-only
-		// local invocation (e.g. `git chat --range HEAD~3..HEAD`).
-		if strings.HasPrefix(cmd, "-") || looksLikePath(cmd) || looksLikeRevspec(cmd) {
+		// A path or local-mode flag starts the loopback API for that workspace.
+		if strings.HasPrefix(cmd, "-") || looksLikePath(cmd) {
 			if err := runLocal(os.Args[1:]); err != nil {
 				fail(err)
 			}
@@ -98,16 +85,6 @@ func looksLikePath(s string) bool {
 	// Check if it exists on disk.
 	_, err := os.Stat(s)
 	return err == nil
-}
-
-// looksLikeRevspec returns true if s looks like a git revspec (e.g.
-// HEAD~3..HEAD, main..feature, v1.0...v2.0). Single refs go through the
-// --range flag since they are indistinguishable from unknown subcommands.
-func looksLikeRevspec(s string) bool {
-	if strings.HasPrefix(s, "-") {
-		return false
-	}
-	return strings.Contains(s, "..")
 }
 
 func usage() {

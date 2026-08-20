@@ -27,8 +27,7 @@ import (
 //	GITCHAT_MAX_HISTORY_DIFF    — per-diff in history expansion (default 4096)
 
 // diffMarkerPattern matches [[diff]] or [[diff key=value …]] in
-// historical assistant messages. Kept in sync with the frontend
-// regex in web/src/lib/markdown.ts.
+// historical assistant messages and headless API output.
 var diffMarkerPattern = regexp.MustCompile(`\[\[diff(?:\s+([^\]\n]+))?\]\]`)
 
 // diffAttrPattern matches key=value pairs inside a marker's attr
@@ -353,8 +352,8 @@ Here is the most recent commit:
 //	/ (files: Makefile, README.md, go.mod, go.sum)
 //	cmd/ (dirs: git-chat/)
 //	docs/ (files: ARCHITECTURE.md)
-//	internal/ (dirs: auth/, chat/, repo/, rpc/, storage/; files: assets/)
-//	web/ (dirs: src/; files: index.html, package.json, tsconfig.json, vite.config.ts)
+//	internal/ (dirs: auth/, chat/, repo/, rpc/, storage/)
+//	proto/ (dirs: gitchat/)
 func (s *Service) baselineTree(ctx context.Context, r *repo.Entry) string {
 	maxLines := s.cfgInt(ctx, "GITCHAT_MAX_TREE_LINES", defaultMaxTreeLines)
 	maxBytes := s.cfgInt(ctx, "GITCHAT_MAX_TREE_BYTES", defaultMaxTreeBytes)
