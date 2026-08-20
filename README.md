@@ -1,27 +1,60 @@
 # git-chat
 
-Headless repository chat and knowledge services. The browser and editor UIs have
-been removed while the project takes a new direction; the reusable repository
-surfaces now belong in `pi-webui`.
+git-chat is a headless, repository-aware chat and knowledge service for Git
+repositories. It provides command-line workflows, an MCP server, and Connect
+APIs without shipping a browser or editor interface.
 
-## Modes
+> [!NOTE]
+> The deprecated browser and editor UI is preserved on the
+> [`archive/legacy-ui`](https://github.com/pders01/git-chat/tree/archive/legacy-ui)
+> branch for historical reference. It is no longer maintained.
+
+## Commands
 
 ```bash
+# Run one model turn and stream the response to stdout.
 git-chat chat --repo . "summarize the recent changes"
+
+# Expose repository tools to MCP clients over stdio.
 git-chat mcp .
+
+# Start a loopback Connect API and print a one-shot claim token.
 git-chat local .
+
+# Serve one or more repositories with SSH-key pairing.
 git-chat serve --repo /path/to/repo
 ```
 
-- `chat` runs one model turn and streams the answer to stdout.
-- `mcp` exposes read-only repository tools over stdio.
-- `local` starts the Connect API on loopback and prints a one-shot claim token.
-- `serve` starts the authenticated multi-repository Connect API and SSH pairing
-  service.
+Run `git-chat <command> --help` for command-specific options.
 
-The backend retains persistent sessions, the git-aware knowledge-card store,
-repository tools, model adapters, and generated Go Connect contracts. It does
-not ship HTML, JavaScript, a browser launcher, or an editor extension.
+## Capabilities
+
+- Repository-aware chat with bounded file, tree, commit, and diff context.
+- Read-only MCP tools for files, history, search, branches, diffs, outlines, and
+  blame.
+- Persistent chat sessions and a Git-aware knowledge-card store backed by
+  SQLite and FTS5.
+- Blob-based knowledge provenance and invalidation when source content changes.
+- OpenAI-compatible and Anthropic model adapters.
+- Loopback token claims for local API clients and SSH-key pairing for served
+  repositories.
+- Slack and Discord webhook notifications for knowledge-card lifecycle events.
+
+The distribution is a Go binary. It contains no embedded HTML or JavaScript,
+does not launch a browser, and does not include an editor extension.
+
+## Configuration
+
+Configuration is available through command flags and the existing `GITCHAT_*`
+and `LLM_*` environment variables. Common settings include:
+
+- `GITCHAT_DB` — SQLite state path; defaults to
+  `~/.local/state/git-chat/state.db`.
+- `LLM_BACKEND` — `openai` or `anthropic`.
+- `LLM_BASE_URL` — endpoint for an OpenAI-compatible provider.
+- `LLM_MODEL` — model identifier.
+- `LLM_API_KEY` — provider API key.
+- `GITCHAT_WEBHOOK_URL` — optional Slack or Discord webhook.
 
 ## Development
 
@@ -31,13 +64,8 @@ make all
 make proto
 ```
 
-Requirements: Go 1.25+, Git, and Buf when regenerating protobuf code.
-
-## Configuration
-
-The existing `GITCHAT_*` and `LLM_*` environment variables remain supported.
-Use `git-chat <command> --help` for command-specific flags. State defaults to
-`~/.local/state/git-chat/state.db` unless `GITCHAT_DB` is set.
+Development requires Go 1.25+ and Git. Buf is required only when regenerating
+protobuf code.
 
 ## License
 
