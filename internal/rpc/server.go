@@ -68,7 +68,8 @@ func NewHTTPServer(cfg Config) *http.Server {
 	)
 	mux.Handle(chatPath, chatHandler)
 
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, _ *http.Request) {
+	// Match only the root; a method-specific catch-all conflicts with Connect prefixes.
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"name":   "git-chat",
