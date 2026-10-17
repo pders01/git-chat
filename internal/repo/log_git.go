@@ -3,247 +3,193 @@ package repo
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 )
 
-// Distinctive byte markers for git log --format parsing. We bracket each
-// commit's formatted metadata block with \x01 ... \x02; anything else on
-// the stream is numstat output. Body text between the markers can contain
-// arbitrary characters including newlines — the markers themselves are
-// control bytes a commit message will not realistically contain.
-const (
-	logCommitStart = 0x01 // SOH — opens a metadata block
-	logCommitEnd   = 0x02 // STX — closes a metadata block
-	logFieldSep    = 0x1f // US  — between metadata fields
-)
+// Git pretty fields and paths cannot contain NUL. SOH/STX/RS/US, tabs and
+// newlines are legal data and must never be searched as record boundaries.
+const logFormat = "%x00%H%x00%an%x00%ae%x00%at%x00%P%x00%s%x00%b%x00"
+const maxGitLogBytes = 8 * 1024 * 1024
 
-// logFormat wraps the fields in SOH/STX markers. %B is the full raw
-// message (subject + blank + body); caller splits off the subject.
-var logFormat = string([]byte{logCommitStart}) +
-	"%H%x1f%an%x1f%ae%x1f%at%x1f%P%x1f%B" +
-	string([]byte{logCommitEnd})
+// Legacy churn-only framing remains a separate contract. Commits history and
+// search no longer use these sentinels; do not reintroduce them into this parser.
+const logCommitStart = 0x01
+const logCommitEnd = 0x02
 
-// gitLogCommits runs `git log --numstat` with a structured format and
-// parses the result into CommitEntry records. Drops go-git's O(commits)
-// Tree.Diff + Patch.Stats loop in favour of one git subprocess that
-// emits all metadata + per-file stats in native speed (~50-200ms on
-// Koha for the default 50-commit page, vs ~1.4s via go-git).
-//
-// path is optional and becomes `git log ... -- <path>` for a path-
-// filtered view. ref is any revspec git understands; empty means HEAD.
-// Caller is responsible for applying short-SHA truncation, etc.
-func gitLogCommits(ctx context.Context, repoDir, ref string, limit, offset int, path string) ([]*gitchatv1.CommitEntry, bool, error) {
-	args := []string{
-		"log",
-		"-n", strconv.Itoa(limit + 1), // +1 to detect has_more
-		"--skip=" + strconv.Itoa(offset),
-		"--format=" + logFormat,
-		"--numstat",
+var errNativeLogData = errors.New("invalid native Git log data")
+
+func nativeLogArgs(count int) []string {
+	return []string{"log", "-n", strconv.Itoa(count), "--format=" + logFormat,
+		"--numstat", "-z", "--no-renames", "--no-diff-merges", "--no-color",
+		"--no-show-signature", "--no-notes", "--no-ext-diff", "--no-textconv", "--encoding=UTF-8"}
+}
+
+// nativeLogPage bounds metadata before parsing. Cancel the exact subprocess
+// before waiting after a read/parse failure, so a capped pipe cannot deadlock.
+func nativeLogPage(ctx context.Context, repoDir string, args []string, count int) ([]*gitchatv1.CommitEntry, error) {
+	childCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stdout, done, err := (gitCmd{repoDir: repoDir, config: []string{"core.quotePath=off", "diff.renames=false"}, args: args}).pipe(childCtx)
+	if err != nil {
+		return nil, err
 	}
+	rows, parseErr := parseGitLog(stdout, count)
+	if parseErr != nil {
+		cancel()
+	}
+	waitErr := done()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	if waitErr != nil {
+		return nil, waitErr
+	}
+	return rows, nil
+}
+
+// gitLogCommits returns an immutable-ref page and one-row lookahead. The
+// caller supplies ref/path validation; paths retain native literal bytes.
+func gitLogCommits(ctx context.Context, repoDir, ref string, limit, offset int, path string) ([]*gitchatv1.CommitEntry, bool, error) {
+	args := nativeLogArgs(limit + 1)
+	args = append(args, "--skip="+strconv.Itoa(offset))
 	if ref != "" {
 		args = append(args, ref)
 	}
 	if path != "" {
 		args = append(args, "--", path)
 	}
-
-	stdout, done, err := gitCmd{
-		repoDir: repoDir,
-		config:  []string{"core.quotePath=off", "diff.renames=false"}, // keep numstat one-path-per-line
-		args:    args,
-	}.pipe(ctx)
+	rows, err := nativeLogPage(ctx, repoDir, args, limit+1)
 	if err != nil {
 		return nil, false, err
 	}
-
-	commits, parseErr := parseGitLog(stdout, limit+1)
-	if waitErr := done(); waitErr != nil {
-		return nil, false, waitErr
+	more := len(rows) > limit
+	if more {
+		rows = rows[:limit]
 	}
-	if parseErr != nil {
-		return nil, false, fmt.Errorf("git log parse: %w", parseErr)
-	}
-
-	hasMore := false
-	if len(commits) > limit {
-		commits = commits[:limit]
-		hasMore = true
-	}
-	return commits, hasMore, nil
+	return rows, more, nil
 }
 
-// gitLogGrepCommits runs `git log` with a single filter flag (--grep
-// or --author) and returns matching commits. Uses the same SOH/STX
-// format + numstat parser as gitLogCommits so hits are structurally
-// identical to a normal log page. Query is treated literally via
-// --fixed-strings; -i makes the match case-insensitive. Caller passes
-// the flag name ("grep" or "author") — keeping the two search
-// dimensions in one function lets SearchCommits run them in parallel
-// without duplicating the subprocess plumbing.
+// Search uses the same strict format as ordinary history. Its caller owns
+// query semantics; no malformed/oversized output is reinterpreted here.
 func gitLogGrepCommits(ctx context.Context, repoDir, flag, query string, limit int) ([]*gitchatv1.CommitEntry, error) {
-	args := []string{
-		"log",
-		"-n", strconv.Itoa(limit),
-		"--format=" + logFormat,
-		"--numstat",
-		"-i",
-		"--fixed-strings",
-		"--" + flag + "=" + query,
+	if flag != "grep" && flag != "author" {
+		return nil, fmt.Errorf("invalid log search flag")
 	}
-
-	stdout, done, err := gitCmd{
-		repoDir: repoDir,
-		config:  []string{"core.quotePath=off", "diff.renames=false"},
-		args:    args,
-	}.pipe(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	commits, parseErr := parseGitLog(stdout, limit)
-	if waitErr := done(); waitErr != nil {
-		return nil, waitErr
-	}
-	if parseErr != nil {
-		return nil, fmt.Errorf("git log parse: %w", parseErr)
-	}
-	return commits, nil
+	args := append(nativeLogArgs(limit), "-i", "--fixed-strings", "--"+flag+"="+query)
+	return nativeLogPage(ctx, repoDir, args, limit)
 }
 
-// parseGitLog scans the stream, looking for SOH...STX metadata blocks
-// and interleaved numstat lines. Returns up to maxCommits entries.
+func invalidLog(reason string) error { return fmt.Errorf("%w: %s", errNativeLogData, reason) }
+
+// Grammar: NUL prefix, seven NUL-terminated pretty fields, one NUL tformat
+// terminator, optional LF + NUL-terminated numstat rows, then the next prefix.
+// Parse the entire bounded output; never return a valid prefix on malformed tail.
 func parseGitLog(r io.Reader, maxCommits int) ([]*gitchatv1.CommitEntry, error) {
-	raw, err := io.ReadAll(r)
+	raw, err := io.ReadAll(io.LimitReader(r, maxGitLogBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, invalidLog("metadata read failed")
 	}
-
+	if len(raw) > maxGitLogBytes {
+		return nil, invalidLog("metadata byte limit exceeded")
+	}
+	if !utf8.Valid(raw) {
+		return nil, invalidLog("metadata is not valid UTF-8")
+	}
 	var out []*gitchatv1.CommitEntry
-	i := 0
-	for i < len(raw) && len(out) < maxCommits {
-		// Seek to next commit start marker.
-		start := bytes.IndexByte(raw[i:], logCommitStart)
-		if start < 0 {
-			break
+	seen := make(map[string]bool)
+	for len(raw) > 0 {
+		if raw[0] != 0 || len(out) >= maxCommits {
+			return nil, invalidLog("unexpected record prefix/count")
 		}
-		start += i
-		end := bytes.IndexByte(raw[start+1:], logCommitEnd)
-		if end < 0 {
-			return nil, fmt.Errorf("unterminated metadata block near byte %d", start)
+		raw = raw[1:]
+		var fields [7]string
+		for i := range fields {
+			end := bytes.IndexByte(raw, 0)
+			if end < 0 {
+				return nil, invalidLog("truncated pretty field")
+			}
+			fields[i] = string(raw[:end])
+			raw = raw[end+1:]
 		}
-		end += start + 1
-
-		meta := raw[start+1 : end]
-		entry, err := parseCommitMeta(meta)
-		if err != nil {
-			return nil, err
+		if len(raw) == 0 || raw[0] != 0 {
+			return nil, invalidLog("missing pretty terminator")
 		}
-
-		// Numstat lines follow, up to the next commit start (or EOF).
-		tail := raw[end+1:]
-		nextStart := bytes.IndexByte(tail, logCommitStart)
-		var numstatBlock []byte
-		if nextStart < 0 {
-			numstatBlock = tail
-			i = len(raw)
-		} else {
-			numstatBlock = tail[:nextStart]
-			i = end + 1 + nextStart
+		raw = raw[1:]
+		if !validForEachRefObjectID(fields[0]) || seen[fields[0]] {
+			return nil, invalidLog("invalid/duplicate object ID")
 		}
-		adds, dels, files := parseNumstat(numstatBlock)
-		entry.Additions = adds
-		entry.Deletions = dels
-		entry.FilesChanged = files
+		seen[fields[0]] = true
+		ts, err := strconv.ParseInt(fields[3], 10, 64)
+		if err != nil || strconv.FormatInt(ts, 10) != fields[3] {
+			return nil, invalidLog("invalid author timestamp")
+		}
+		var parents []string
+		if fields[4] != "" {
+			parents = strings.Split(fields[4], " ")
+			for _, parent := range parents {
+				if !validForEachRefObjectID(parent) {
+					return nil, invalidLog("invalid parent object ID")
+				}
+			}
+		}
+		entry := &gitchatv1.CommitEntry{Sha: fields[0], ShortSha: ShortSHA(fields[0]), AuthorName: fields[1], AuthorEmail: fields[2],
+			AuthorTime: ts, ParentShas: parents, Message: fields[5], Body: fields[6]}
+		if len(raw) > 0 && raw[0] == '\n' {
+			raw = raw[1:]
+			if len(raw) == 0 || raw[0] == 0 {
+				return nil, invalidLog("missing numstat row")
+			}
+			for len(raw) > 0 && raw[0] != 0 {
+				end := bytes.IndexByte(raw, 0)
+				if end < 0 {
+					return nil, invalidLog("truncated numstat row")
+				}
+				row := raw[:end]
+				raw = raw[end+1:]
+				parts := bytes.SplitN(row, []byte{'\t'}, 3)
+				if len(parts) != 3 || len(parts[2]) == 0 {
+					return nil, invalidLog("malformed numstat row")
+				}
+				var adds, dels int64
+				if string(parts[0]) == "-" && string(parts[1]) == "-" {
+					// Binary changes count as a file, not invented text line totals.
+				} else {
+					adds, err = parseLogCount(string(parts[0]))
+					if err != nil {
+						return nil, err
+					}
+					dels, err = parseLogCount(string(parts[1]))
+					if err != nil {
+						return nil, err
+					}
+				}
+				if int64(entry.Additions)+adds > 2147483647 || int64(entry.Deletions)+dels > 2147483647 || entry.FilesChanged == 2147483647 {
+					return nil, invalidLog("numstat total overflow")
+				}
+				entry.Additions += int32(adds)
+				entry.Deletions += int32(dels)
+				entry.FilesChanged++
+			}
+		}
 		out = append(out, entry)
 	}
 	return out, nil
 }
 
-func parseCommitMeta(meta []byte) (*gitchatv1.CommitEntry, error) {
-	// Split by \x1f into exactly 6 fields: sha, name, email, time, parents, body.
-	// Body (%B) may itself contain \x1f only if the committer somehow
-	// embedded one — vanishingly rare; we SplitN with 6 so body retains
-	// any trailing field separators verbatim.
-	parts := bytes.SplitN(meta, []byte{logFieldSep}, 6)
-	if len(parts) < 6 {
-		return nil, fmt.Errorf("malformed metadata: got %d fields, want 6", len(parts))
+func parseLogCount(value string) (int64, error) {
+	n, err := strconv.ParseInt(value, 10, 32)
+	if err != nil || n < 0 || strconv.FormatInt(n, 10) != value {
+		return 0, invalidLog("invalid numstat count")
 	}
-	sha := string(parts[0])
-	authorName := string(parts[1])
-	authorEmail := string(parts[2])
-	timeStr := string(parts[3])
-	parentsStr := string(parts[4])
-	body := string(parts[5])
-
-	ts, _ := strconv.ParseInt(strings.TrimSpace(timeStr), 10, 64)
-	var parents []string
-	if parentsStr != "" {
-		parents = strings.Fields(parentsStr)
-	}
-
-	// Trim leading/trailing whitespace from the body that git inserts.
-	body = strings.Trim(body, "\n")
-
-	return &gitchatv1.CommitEntry{
-		Sha:         sha,
-		ShortSha:    ShortSHA(sha),
-		Message:     firstLine(body),
-		Body:        commitBody(body),
-		AuthorName:  authorName,
-		AuthorEmail: authorEmail,
-		AuthorTime:  ts,
-		ParentShas:  parents,
-	}, nil
+	return n, nil
 }
-
-// parseNumstat scans `<adds>\t<dels>\t<path>` lines and aggregates
-// totals. Binary files report "-\t-\t<path>"; those count toward files
-// changed but contribute zero to +/-.
-func parseNumstat(block []byte) (adds, dels, files int32) {
-	// Walk the in-memory block directly — bufio.Scanner + 64 KiB buffer
-	// per numstat block was a wasted allocation on every ListCommits
-	// page (one Scanner per commit, 50+ per page).
-	for len(block) > 0 {
-		nl := bytes.IndexByte(block, '\n')
-		var line string
-		if nl < 0 {
-			line = string(block)
-			block = nil
-		} else {
-			line = string(block[:nl])
-			block = block[nl+1:]
-		}
-		if line == "" {
-			continue
-		}
-		// Expect at least two tabs.
-		i1 := strings.IndexByte(line, '\t')
-		if i1 < 0 {
-			continue
-		}
-		i2 := strings.IndexByte(line[i1+1:], '\t')
-		if i2 < 0 {
-			continue
-		}
-		aStr := line[:i1]
-		dStr := line[i1+1 : i1+1+i2]
-		// Increment file count regardless of binary marker.
-		files++
-		if aStr == "-" || dStr == "-" {
-			continue
-		}
-		if n, err := strconv.Atoi(aStr); err == nil {
-			adds += int32(n)
-		}
-		if n, err := strconv.Atoi(dStr); err == nil {
-			dels += int32(n)
-		}
-	}
-	return adds, dels, files
-}
-

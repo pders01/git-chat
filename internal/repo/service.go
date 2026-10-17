@@ -193,14 +193,14 @@ func (s *Service) GetStatus(
 }
 
 func (s *Service) GetWorkingTreeDiff(
-	_ context.Context,
+	ctx context.Context,
 	req *connect.Request[gitchatv1.GetWorkingTreeDiffRequest],
 ) (*connect.Response[gitchatv1.GetWorkingTreeDiffResponse], error) {
 	entry := s.lookup(req.Msg.RepoId)
 	if entry == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("repo not found"))
 	}
-	diff, empty, err := entry.GetWorkingTreeDiff(req.Msg.Path)
+	diff, empty, err := entry.getWorkingTreeDiff(ctx, req.Msg.Path)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -521,6 +521,15 @@ func (s *Service) lookup(id string) *Entry {
 }
 
 func mapErr(err error) error {
+	if errors.Is(err, errDiffWorkLimit) {
+		return connect.NewError(connect.CodeResourceExhausted, err)
+	}
+	if errors.Is(err, context.Canceled) {
+		return connect.NewError(connect.CodeCanceled, err)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
+	}
 	if errors.Is(err, ErrNotFound) {
 		return connect.NewError(connect.CodeNotFound, err)
 	}

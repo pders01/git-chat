@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -291,6 +292,12 @@ func (e *Entry) GetFile(ref, path string, maxBytes int64) (*gitchatv1.GetFileRes
 func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, pathFilter string) ([]*gitchatv1.CommitEntry, bool, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	if err := e.requireFullHistory(); err != nil {
+		return nil, false, err
+	}
 	if limit <= 0 {
 		limit = e.cfgInt(ctx, "GITCHAT_DEFAULT_COMMIT_LIMIT", defaultCommitLimitFallback)
 	}
@@ -304,8 +311,16 @@ func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, 
 	}
 
 	commits, hasMore, gitErr := gitLogCommits(ctx, e.Path, ref, limit, offset, pathFilter)
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
 	if gitErr == nil {
 		return commits, hasMore, nil
+	}
+	// Invalid/truncated/oversized native data is a fidelity refusal, not a
+	// reason to publish a different parser's result through silent fallback.
+	if errors.Is(gitErr, errNativeLogData) {
+		return nil, false, gitErr
 	}
 
 	// ── Fallback: go-git walk ──────────────────────────────────────
@@ -314,7 +329,10 @@ func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, 
 		return nil, false, err
 	}
 
-	// Walk the commit history.
+	if err := requireLinearFallback(ctx, commit); err != nil {
+		return nil, false, err
+	}
+	// Walk only a validated linear graph; native Git owns merge semantics.
 	iter := object.NewCommitIterCTime(commit, nil, nil)
 	defer iter.Close()
 
@@ -328,14 +346,26 @@ func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, 
 	skipped := 0
 	var out []*gitchatv1.CommitEntry
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
+		}
 		c, err := iter.Next()
-		if err != nil {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+		if err != nil {
+			return nil, false, fmt.Errorf("walk commit history: %w", err)
+		}
 
-		// Path filter: skip commits that didn't touch the file.
-		if pathFilter != "" && !commitTouchedPath(c, pathFilter) {
-			continue
+		// Absence is a valid non-match; broken trees/parents are not.
+		if pathFilter != "" {
+			touched, err := commitTouchedPath(c, pathFilter)
+			if err != nil {
+				return nil, false, fmt.Errorf("filter commit path: %w", err)
+			}
+			if !touched {
+				continue
+			}
 		}
 
 		// Skip `offset` matching commits.
@@ -344,6 +374,9 @@ func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, 
 			continue
 		}
 
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
+		}
 		if len(out) == limit {
 			// One extra to detect has_more.
 			return out, true, nil
@@ -353,11 +386,15 @@ func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, 
 		for pi := range parents {
 			parents[pi] = c.ParentHashes[pi].String()
 		}
+		if err := requireFallbackCommitText(c); err != nil {
+			return nil, false, err
+		}
+		subject, body := commitMessageParts(c.Message)
 		entry := &gitchatv1.CommitEntry{
 			Sha:         c.Hash.String(),
 			ShortSha:    ShortSHA(c.Hash.String()),
-			Message:     firstLine(c.Message),
-			Body:        commitBody(c.Message),
+			Message:     subject,
+			Body:        body,
 			AuthorName:  c.Author.Name,
 			AuthorEmail: c.Author.Email,
 			AuthorTime:  c.Author.When.Unix(),
@@ -365,12 +402,20 @@ func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, 
 		}
 		// Diff stats — compare against first parent (root commits
 		// show as all-additions).
-		if stats := commitDiffStats(ctx, c); stats != nil {
-			entry.FilesChanged = int32(stats.files)
-			entry.Additions = int32(stats.additions)
-			entry.Deletions = int32(stats.deletions)
+		stats, err := commitDiffStats(ctx, c, pathFilter)
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
 		}
+		if err != nil {
+			return nil, false, fmt.Errorf("commit diff stats: %w", err)
+		}
+		entry.FilesChanged = int32(stats.files)
+		entry.Additions = int32(stats.additions)
+		entry.Deletions = int32(stats.deletions)
 		out = append(out, entry)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
 	}
 	return out, false, nil
 }
@@ -378,40 +423,38 @@ func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, 
 // commitTouchedPath returns true if the commit changed the file at path
 // compared to its first parent (or if it's a root commit containing
 // the path).
-func commitTouchedPath(c *object.Commit, path string) bool {
+func commitTouchedPath(c *object.Commit, path string) (bool, error) {
 	cTree, err := c.Tree()
 	if err != nil {
-		return false
+		return false, err
 	}
-
-	// Get file at path in this commit's tree.
-	cFile, cErr := cTree.File(path)
-
+	cFile, cErr := cTree.FindEntry(path)
+	if cErr != nil && !errors.Is(cErr, object.ErrEntryNotFound) && !errors.Is(cErr, object.ErrDirectoryNotFound) {
+		return false, cErr
+	}
 	if c.NumParents() == 0 {
-		// Root commit: file is touched if it exists.
-		return cErr == nil
+		return cErr == nil, nil
 	}
-
-	parent, err := c.Parents().Next()
+	parent, err := c.Parent(0)
 	if err != nil {
-		return false
+		return false, err
 	}
 	pTree, err := parent.Tree()
 	if err != nil {
-		return cErr == nil // parent broken, consider touched if file exists
+		return false, err
 	}
-
-	pFile, pErr := pTree.File(path)
-
-	// File added (not in parent) or deleted (not in child).
+	pFile, pErr := pTree.FindEntry(path)
+	if pErr != nil && !errors.Is(pErr, object.ErrEntryNotFound) && !errors.Is(pErr, object.ErrDirectoryNotFound) {
+		return false, pErr
+	}
 	if cErr != nil && pErr != nil {
-		return false // doesn't exist in either
+		return false, nil
 	}
 	if cErr != nil || pErr != nil {
-		return true // added or deleted
+		return true, nil
 	}
-	// Both exist: compare hashes.
-	return cFile.Hash != pFile.Hash
+	// A chmod/symlink-kind transition is history even when the blob is identical.
+	return cFile.Hash != pFile.Hash || cFile.Mode != pFile.Mode, nil
 }
 
 // SearchCommits returns commits matching query across three axes:
@@ -519,58 +562,52 @@ type diffStats struct {
 	files, additions, deletions int
 }
 
-func commitDiffStats(ctx context.Context, c *object.Commit) *diffStats {
+func commitDiffStats(ctx context.Context, c *object.Commit, pathFilter string) (*diffStats, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	cTree, err := c.Tree()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var pTree *object.Tree
 	if c.NumParents() > 0 {
-		parent, err := c.Parents().Next()
-		if err == nil {
-			t, tErr := parent.Tree()
-			if tErr != nil {
-				// Corrupted packfile or missing tree object — fall back
-				// to the root-commit path below, but log so silent
-				// stats-of-zero doesn't mask repo corruption.
-				slog.Warn("parent tree unavailable; diff stats degraded",
-					"commit", c.Hash.String(), "err", tErr)
-			} else {
-				pTree = t
-			}
+		parent, err := c.Parent(0)
+		if err != nil {
+			return nil, err
+		}
+		pTree, err = parent.Tree()
+		if err != nil {
+			return nil, err
 		}
 	}
-	if pTree == nil {
-		// Root commit: count files and estimate lines from size to avoid
-		// reading entire blob contents for every file.
-		var files, lines int
-		cTree.Files().ForEach(func(f *object.File) error {
-			files++
-			lines += int(f.Size) / 40 // rough estimate: ~40 bytes/line
-			return nil
-		})
-		return &diffStats{files: files, additions: lines}
-	}
-	// Rename detection off: for per-commit +/- counts in the log sidebar,
-	// users don't need renames coalesced — and the similarity-matrix cost
-	// dominated ListCommits (~2s for 50 commits on Koha). A renamed file
-	// now shows up as a delete of the original + an add of the new, with
-	// inflated counts; acceptable for a compact summary.
+	// A nil from-tree is the actual empty tree, not an approximate bytes/40
+	// root count. Keep rename detection off and compare real first-parent trees.
 	changes, err := diffTrees(ctx, pTree, cTree)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	patch, err := changes.Patch()
+	if pathFilter != "" {
+		filtered := make(object.Changes, 0, len(changes))
+		for _, change := range changes {
+			matches := func(name string) bool { return name == pathFilter || strings.HasPrefix(name, pathFilter+"/") }
+			if matches(change.From.Name) || matches(change.To.Name) {
+				filtered = append(filtered, change)
+			}
+		}
+		changes = filtered
+	}
+	patch, err := changes.PatchContext(ctx)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	stats := patch.Stats()
-	s := &diffStats{files: len(stats)}
+	s := &diffStats{files: len(changes)}
 	for _, st := range stats {
 		s.additions += st.Addition
 		s.deletions += st.Deletion
 	}
-	return s
+	return s, nil
 }
 
 // GetFileChurnMap returns per-file commit counts, additions, deletions,
@@ -991,6 +1028,10 @@ func (e *Entry) GetCommitTimeRange(ctx context.Context, ref string) (int64, int6
 func (e *Entry) CompareBranches(ctx context.Context, baseRef, headRef string, detectRenames bool) ([]*gitchatv1.ChangedFile, int32, int32, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	work := newDiffWork(ctx)
+	if err := work.check(); err != nil {
+		return nil, 0, 0, err
+	}
 	maxDiffBytes := e.cfgInt(ctx, "GITCHAT_MAX_DIFF_BYTES", defaultMaxDiffBytesFallback)
 	baseCommit, _, err := e.resolveCommit(baseRef)
 	if err != nil {
@@ -1047,9 +1088,18 @@ func (e *Entry) CompareBranches(ctx context.Context, baseRef, headRef string, de
 			status = "renamed"
 			fromPath = c.From.Name
 		}
-		fromContent, _ := fileContent(baseCommit, c.From.Name, maxDiffBytes)
-		toContent, _ := fileContent(headCommit, c.To.Name, maxDiffBytes)
-		adds, dels := countDiffLines(fromContent, toContent)
+		fromContent, fromErr := fileContent(baseCommit, c.From.Name, maxDiffBytes)
+		toContent, toErr := fileContent(headCommit, c.To.Name, maxDiffBytes)
+		if fromErr != nil {
+			return nil, 0, 0, fromErr
+		}
+		if toErr != nil {
+			return nil, 0, 0, toErr
+		}
+		adds, dels, err := countDiffLines(work, fromContent, toContent)
+		if err != nil {
+			return nil, 0, 0, err
+		}
 		out = append(out, &gitchatv1.ChangedFile{
 			Path:      name,
 			Status:    status,
@@ -1059,6 +1109,9 @@ func (e *Entry) CompareBranches(ctx context.Context, baseRef, headRef string, de
 		})
 		totalAdd += adds
 		totalDel += dels
+	}
+	if err := work.check(); err != nil {
+		return nil, 0, 0, err
 	}
 	return out, totalAdd, totalDel, nil
 }
@@ -1200,6 +1253,13 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath string, detectRenames, fullRange, filesOnly bool) (diff, fromSHA, toSHA string, empty bool, files []*gitchatv1.ChangedFile, err error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return "", "", "", false, nil, err
+	}
+	if err := e.requireFullHistory(); err != nil {
+		return "", "", "", false, nil, err
+	}
+	work := newDiffWork(ctx)
 	// Resolve to-side first so we can default fromRef to its parent.
 	toCommit, toResolved, err := e.resolveCommit(toRef)
 	if err != nil {
@@ -1246,25 +1306,46 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 		}
 		from, fromErr := fileContentDetail(fromCommit, fromSidePath, maxDiffBytes)
 		to, toErr := fileContentDetail(toCommit, path, maxDiffBytes)
-		if fromErr != nil && toErr != nil {
-			return "", fromResolved, toResolved, false, nil, ErrNotFound
+		if fromErr != nil {
+			return "", fromResolved, toResolved, false, nil, fromErr
 		}
-		// Identity on (kind, sha): both-missing, same-blob, or same
-		// placeholder over the same blob all count as no change.
-		if from.kind == to.kind && from.sha == to.sha {
+		if toErr != nil {
+			return "", fromResolved, toResolved, false, nil, toErr
+		}
+		if err := work.check(); err != nil {
+			return "", fromResolved, toResolved, false, nil, err
+		}
+		if fromSidePath != path {
+			if err := validateDiffRename(fromCommit, toCommit, fromSidePath, path, from, to); err != nil {
+				return "", fromResolved, toResolved, false, nil, err
+			}
+		}
+		if fromSidePath == path && sameFileSide(from, to) {
 			return "", fromResolved, toResolved, true, nil, nil
 		}
-		// Placeholder-on-either-side diffs can't be rendered as a
-		// useful unified patch (we'd be diffing two sentinel strings),
-		// so emit a minimal placeholder patch the frontend formats
-		// into a clean "file too large / binary" banner. "missing"
-		// doesn't qualify — added/deleted paths render cleanly via
-		// /dev/null markers in renderUnifiedDiff.
-		if needsPlaceholder(from.kind) || needsPlaceholder(to.kind) {
-			return renderPlaceholderPatch(path, from, to), fromResolved, toResolved, false, nil, nil
+		// Preserve the ordinary single-file response shape and bounded work:
+		// don't introduce streaming stats for binary/oversized placeholders.
+		// Pure mode changes have exact zero line deltas from blob identity.
+		var files []*gitchatv1.ChangedFile
+		if fromSidePath != path || changedFileType(from, to) {
+			adds, dels, err := fileDiffStats(work, from, to)
+			if err != nil {
+				return "", fromResolved, toResolved, false, nil, err
+			}
+			file := &gitchatv1.ChangedFile{Path: path, Status: "modified", Additions: adds, Deletions: dels}
+			if fromSidePath != path {
+				file.Status = "renamed"
+				file.FromPath = fromSidePath
+			}
+			files = []*gitchatv1.ChangedFile{file}
+		} else if from.sha == to.sha && from.kind == to.kind && from.mode != to.mode {
+			files = []*gitchatv1.ChangedFile{{Path: path, Status: "modified"}}
 		}
-		patch := renderUnifiedDiff(path, fromResolved, toResolved, from.content, to.content, contextLines)
-		return patch, fromResolved, toResolved, false, nil, nil
+		patch, err := renderFileChange(work, fromSidePath, path, from, to, contextLines)
+		if err != nil {
+			return "", fromResolved, toResolved, false, nil, err
+		}
+		return patch, fromResolved, toResolved, false, files, nil
 	}
 
 	// ── Whole-commit path ──────────────────────────────────────────
@@ -1276,6 +1357,9 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 	// without git installed still work.
 	if fullRange {
 		patch, ngFiles, gerr := gitDiffAll(ctx, e.Path, fromResolved, toResolved, detectRenames, filesOnly)
+		if err := work.check(); err != nil {
+			return "", fromResolved, toResolved, false, nil, err
+		}
 		if gerr == nil {
 			// filesOnly returns an empty patch by design; don't collapse
 			// that into empty=true or the UI thinks nothing changed.
@@ -1294,6 +1378,9 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 	// Also builds per-file metadata in a single tree-diff pass.
 	changed, files, err := changedPathsWithFiles(ctx, fromCommit, toCommit, detectRenames)
 	if err != nil {
+		return "", fromResolved, toResolved, false, nil, err
+	}
+	if err := work.check(); err != nil {
 		return "", fromResolved, toResolved, false, nil, err
 	}
 	if len(changed) == 0 {
@@ -1327,17 +1414,30 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 		if i < len(files) && files[i].FromPath != "" {
 			fromPath = files[i].FromPath
 		}
-		from, _ := fileContentDetail(fromCommit, fromPath, maxDiffBytes)
-		to, _ := fileContentDetail(toCommit, p, maxDiffBytes)
-		// True no-change: same kind + same blob SHA on both sides.
-		// Placeholder text alone isn't authoritative because two
-		// "too-large" sides over different blobs share the same kind
-		// but different SHAs — we still want to emit them.
-		if from.kind == to.kind && from.sha == to.sha {
+		if err := ctx.Err(); err != nil {
+			return "", fromResolved, toResolved, false, nil, err
+		}
+		from, fromErr := fileContentDetail(fromCommit, fromPath, maxDiffBytes)
+		to, toErr := fileContentDetail(toCommit, p, maxDiffBytes)
+		if fromErr != nil {
+			return "", fromResolved, toResolved, false, nil, fromErr
+		}
+		if toErr != nil {
+			return "", fromResolved, toResolved, false, nil, toErr
+		}
+		// Modes are identity too, including binary/oversized unchanged blobs.
+		if fromPath == p && sameFileSide(from, to) {
 			continue
 		}
 		if i < len(files) {
-			files[i].Additions, files[i].Deletions = fileDiffStats(from, to)
+			adds, dels, err := fileDiffStats(work, from, to)
+			if err != nil {
+				return "", fromResolved, toResolved, false, nil, err
+			}
+			files[i].Additions, files[i].Deletions = adds, dels
+			if changedFileType(from, to) && fromPath == p {
+				files[i].Status = "modified"
+			}
 		}
 		// Past the byte cap: keep computing stats for remaining files
 		// so the sidebar is accurate, but stop appending to the patch
@@ -1345,11 +1445,9 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 		if overCap {
 			continue
 		}
-		var filePatch string
-		if needsPlaceholder(from.kind) || needsPlaceholder(to.kind) {
-			filePatch = renderPlaceholderPatch(p, from, to)
-		} else {
-			filePatch = renderUnifiedDiff(p, fromResolved, toResolved, from.content, to.content, contextLines)
+		filePatch, err := renderFileChange(work, fromPath, p, from, to, contextLines)
+		if err != nil {
+			return "", fromResolved, toResolved, false, nil, err
 		}
 		if !fullRange && sb.Len()+len(filePatch) > maxDiffBytes {
 			truncated = len(changed) - i
@@ -1357,6 +1455,9 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 			continue
 		}
 		sb.WriteString(filePatch)
+	}
+	if err := work.check(); err != nil {
+		return "", fromResolved, toResolved, false, nil, err
 	}
 	if truncated > 0 {
 		fmt.Fprintf(&sb, "\n… (%d more file(s) truncated)\n", truncated)
@@ -1381,27 +1482,14 @@ func changedPathsWithFiles(ctx context.Context, from, to *object.Commit, detectR
 	if err != nil {
 		return nil, nil, fmt.Errorf("to tree: %w", err)
 	}
-	if from == nil {
-		// Root commit — every file is new.
-		var paths []string
-		err := toTree.Files().ForEach(func(f *object.File) error {
-			paths = append(paths, f.Name)
-			return nil
-		})
+	// A nil from-tree represents the actual empty tree. Tree.Files omits
+	// gitlinks, which would otherwise silently disappear from root diffs.
+	var fromTree *object.Tree
+	if from != nil {
+		fromTree, err = from.Tree()
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("from tree: %w", err)
 		}
-		sort.Strings(paths)
-		files := make([]*gitchatv1.ChangedFile, len(paths))
-		for i, p := range paths {
-			files[i] = &gitchatv1.ChangedFile{Path: p, Status: "added"}
-		}
-		return paths, files, nil
-	}
-
-	fromTree, err := from.Tree()
-	if err != nil {
-		return nil, nil, fmt.Errorf("from tree: %w", err)
 	}
 	changes, err := diffTrees(ctx, fromTree, toTree)
 	if err != nil {
@@ -1465,17 +1553,21 @@ func changedPathsWithFiles(ctx context.Context, from, to *object.Commit, detectR
 // cheaper than go-git's Patch() because it skips the intra-line diff
 // (Myers bisection) — status-bar stats only need line counts, not char
 // alignment.
-func countDiffLines(fromContent, toContent string) (adds, dels int32) {
-	if fromContent == toContent {
-		return 0, 0
+func countDiffLines(work *diffWork, fromContent, toContent string) (adds, dels int32, err error) {
+	hunks, err := textDiffHunks(work, fromContent, toContent, defaultDiffContextLinesFallback)
+	if err != nil {
+		return 0, 0, err
 	}
-	fromLines := splitLinesKeepNL(fromContent)
-	toLines := splitLinesKeepNL(toContent)
-	// countDiffLines only needs the +/- tally, which is independent of
-	// how hunks are grouped for rendering. Pass the fallback context so
-	// we don't drag a tunable resolve into hot-loop stat computation.
-	for _, h := range diffHunks(fromLines, toLines, defaultDiffContextLinesFallback) {
-		for _, line := range h.lines {
+	for _, h := range hunks {
+		if err := work.check(); err != nil {
+			return 0, 0, err
+		}
+		for i, line := range h.lines {
+			if i&1023 == 0 {
+				if err := work.check(); err != nil {
+					return 0, 0, err
+				}
+			}
 			if line == "" {
 				continue
 			}
@@ -1487,7 +1579,10 @@ func countDiffLines(fromContent, toContent string) (adds, dels int32) {
 			}
 		}
 	}
-	return adds, dels
+	if err := work.check(); err != nil {
+		return 0, 0, err
+	}
+	return adds, dels, nil
 }
 
 // GetStatus returns the working tree status: staged, unstaged, and
@@ -1564,32 +1659,44 @@ func mapStatusCode(c git.StatusCode) string {
 // GetWorkingTreeDiff returns a unified diff for a single file between
 // its HEAD version and its current working tree content.
 func (e *Entry) GetWorkingTreeDiff(path string) (string, bool, error) {
+	return e.getWorkingTreeDiff(context.Background(), path)
+}
+
+func (e *Entry) getWorkingTreeDiff(ctx context.Context, path string) (string, bool, error) {
 	clean, err := SafePath(path)
 	if err != nil {
 		return "", false, err
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	// No ctx in signature; Registry's own DB lookup is timeout-guarded.
-	ctx := context.Background()
+	work := newDiffWork(ctx)
+	if err := work.check(); err != nil {
+		return "", false, err
+	}
 	maxDiffBytes := e.cfgInt(ctx, "GITCHAT_MAX_DIFF_BYTES", defaultMaxDiffBytesFallback)
 	contextLines := e.cfgInt(ctx, "GITCHAT_DIFF_CONTEXT_LINES", defaultDiffContextLinesFallback)
 	headCommit, _, err := e.resolveCommit("")
 	if err != nil {
 		return "", false, err
 	}
-	headContent, _ := fileContent(headCommit, clean, maxDiffBytes)
+	headContent, err := fileContent(headCommit, clean, maxDiffBytes)
+	if err != nil {
+		return "", false, err
+	}
 
 	diskPath := filepath.Join(e.Path, clean)
 	diskBytes, err := os.ReadFile(diskPath)
+	if canceled := work.check(); canceled != nil {
+		return "", false, canceled
+	}
 	if err != nil {
 		if os.IsNotExist(err) {
 			// File deleted from working tree.
 			if headContent == "" {
 				return "", true, nil
 			}
-			patch := renderUnifiedDiff(path, "HEAD", "working tree", headContent, "", contextLines)
-			return patch, false, nil
+			patch, err := renderUnifiedDiff(work, path, "HEAD", "working tree", headContent, "", contextLines)
+			return patch, false, err
 		}
 		return "", false, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -1598,8 +1705,8 @@ func (e *Entry) GetWorkingTreeDiff(path string) (string, bool, error) {
 	if headContent == diskContent {
 		return "", true, nil
 	}
-	patch := renderUnifiedDiff(path, "HEAD", "working tree", headContent, diskContent, contextLines)
-	return patch, false, nil
+	patch, err := renderUnifiedDiff(work, path, "HEAD", "working tree", headContent, diskContent, contextLines)
+	return patch, false, err
 }
 
 // fileSide captures everything GetDiff needs to know about one side of a
@@ -1608,15 +1715,15 @@ func (e *Entry) GetWorkingTreeDiff(path string) (string, bool, error) {
 // ("too-large", "binary") and missing paths ("missing"). `blob` is the
 // underlying go-git handle for streaming reads (e.g. cheap line counts
 // on oversized blobs where we intentionally skip loading the full bytes
-// into memory). `sha` plus `kind` are what callers compare for identity
-// — two placeholder strings that happen to share literal text no longer
-// masquerade as "unchanged" when the blobs behind them differ.
+// into memory). `sha`, `kind` and `mode` define identity: shared placeholder
+// text cannot hide a changed blob, nor can a shared blob hide chmod changes.
 type fileSide struct {
 	content string
 	kind    string // "" (real) | "missing" | "too-large" | "binary"
 	blob    *object.Blob
 	sha     string
 	size    int64
+	mode    filemode.FileMode
 }
 
 // fileContentDetail resolves `path` at `commit` to a fileSide. Missing
@@ -1627,6 +1734,9 @@ type fileSide struct {
 // instead of their contents. Callers resolve this from the config
 // Registry so UI edits to GITCHAT_MAX_DIFF_BYTES take effect live.
 func fileContentDetail(commit *object.Commit, path string, maxBytes int) (fileSide, error) {
+	if !utf8.ValidString(path) || strings.ContainsRune(path, 0) {
+		return fileSide{}, errors.New("diff path is not valid UTF-8 text")
+	}
 	if commit == nil {
 		return fileSide{kind: "missing"}, nil
 	}
@@ -1634,18 +1744,29 @@ func fileContentDetail(commit *object.Commit, path string, maxBytes int) (fileSi
 	if err != nil {
 		return fileSide{}, fmt.Errorf("get tree: %w", err)
 	}
-	f, err := tree.File(path)
+	entry, err := tree.FindEntry(path)
 	if err != nil {
-		if errors.Is(err, object.ErrFileNotFound) {
+		if errors.Is(err, object.ErrEntryNotFound) || errors.Is(err, object.ErrDirectoryNotFound) {
 			return fileSide{kind: "missing"}, nil
 		}
 		return fileSide{}, fmt.Errorf("find file: %w", err)
+	}
+	switch entry.Mode {
+	case filemode.Regular, filemode.Executable, filemode.Deprecated, filemode.Symlink:
+	default:
+		return fileSide{}, errors.New("unsupported diff entry mode")
+	}
+	// Unlike Tree.File, this does not turn a missing blob into path absence.
+	f, err := tree.TreeEntryFile(entry)
+	if err != nil {
+		return fileSide{}, fmt.Errorf("read file object: %w", err)
 	}
 	sha := f.Hash.String()
 	if f.Size > int64(maxBytes) {
 		return fileSide{
 			content: fmt.Sprintf("(file too large for inline diff: %s, %d bytes)", sha[:12], f.Size),
 			kind:    "too-large",
+			mode:    f.Mode,
 			blob:    &f.Blob,
 			sha:     sha,
 			size:    f.Size,
@@ -1659,12 +1780,16 @@ func fileContentDetail(commit *object.Commit, path string, maxBytes int) (fileSi
 		return fileSide{
 			content: fmt.Sprintf("(binary file: %s)", sha[:12]),
 			kind:    "binary",
+			mode:    f.Mode,
 			blob:    &f.Blob,
 			sha:     sha,
 			size:    f.Size,
 		}, nil
 	}
-	return fileSide{content: contents, blob: &f.Blob, sha: sha, size: f.Size}, nil
+	if !utf8.ValidString(contents) {
+		return fileSide{}, errors.New("text diff is not valid UTF-8")
+	}
+	return fileSide{content: contents, blob: &f.Blob, sha: sha, size: f.Size, mode: f.Mode}, nil
 }
 
 // fileContent is a string-only adapter over fileContentDetail for
@@ -1682,9 +1807,15 @@ func fileContent(commit *object.Commit, path string, maxBytes int) (string, erro
 // newline. Used for per-file stats on oversized blobs where we've
 // declined to load the full contents into a string — so we can still
 // put a useful net-delta number in the file list instead of zeros.
-func blobLineCount(blob *object.Blob) (int, error) {
+func blobLineCount(work *diffWork, blob *object.Blob) (int, error) {
+	if err := work.check(); err != nil {
+		return 0, err
+	}
 	if blob == nil {
 		return 0, nil
+	}
+	if err := work.scanBytes(blob.Size, false); err != nil {
+		return 0, err
 	}
 	r, err := blob.Reader()
 	if err != nil {
@@ -1696,7 +1827,13 @@ func blobLineCount(blob *object.Blob) (int, error) {
 	hadBytes := false
 	var last byte
 	for {
+		if err := work.check(); err != nil {
+			return 0, err
+		}
 		n, rerr := r.Read(buf[:])
+		if err := work.scanBytes(int64(n), true); err != nil {
+			return 0, err
+		}
 		if n > 0 {
 			hadBytes = true
 			last = buf[n-1]
@@ -1725,15 +1862,30 @@ func blobLineCount(blob *object.Blob) (int, error) {
 // — undercounts in-place edits (swapping all 1000 lines shows 0/0) but
 // accurately reports growth/shrink, which beats the previous always-0
 // behaviour. Binary on either side: stats are meaningless, return 0/0.
-func fileDiffStats(from, to fileSide) (int32, int32) {
+func fileDiffStats(work *diffWork, from, to fileSide) (int32, int32, error) {
+	if err := work.check(); err != nil {
+		return 0, 0, err
+	}
+	// Git's numstat compares blob text even when the patch represents a type
+	// transition as deletion/creation. Identical blobs still have 0/0 stats.
+	// A pure mode change has no line changes; don't stream oversized blobs.
+	if from.sha == to.sha {
+		return 0, 0, nil
+	}
 	if from.kind == "" && to.kind == "" {
-		return countDiffLines(from.content, to.content)
+		return countDiffLines(work, from.content, to.content)
 	}
 	if from.kind == "binary" || to.kind == "binary" {
-		return 0, 0
+		return 0, 0, nil
 	}
-	fromLines, _ := blobLineCount(from.blob)
-	toLines, _ := blobLineCount(to.blob)
+	fromLines, err := blobLineCount(work, from.blob)
+	if err != nil {
+		return 0, 0, err
+	}
+	toLines, err := blobLineCount(work, to.blob)
+	if err != nil {
+		return 0, 0, err
+	}
 	adds, dels := int32(0), int32(0)
 	if toLines > fromLines {
 		adds = int32(toLines - fromLines)
@@ -1741,43 +1893,25 @@ func fileDiffStats(from, to fileSide) (int32, int32) {
 	if fromLines > toLines {
 		dels = int32(fromLines - toLines)
 	}
-	return adds, dels
+	if err := work.check(); err != nil {
+		return 0, 0, err
+	}
+	return adds, dels, nil
 }
 
-// renderUnifiedDiff produces a `diff --git` style unified patch for a
-// single file. Uses the stdlib-free unified diff builder via
-// github.com/go-git/go-git's own patch machinery would require a full
-// tree diff; for a single-file view we compute it directly from the
-// two content strings with a line-level LCS. That's cheaper and gives
-// us full control over the output format.
-func renderUnifiedDiff(path, fromSHA, toSHA, fromContent, toContent string, contextLines int) string {
-	fromLines := splitLinesKeepNL(fromContent)
-	toLines := splitLinesKeepNL(toContent)
-	hunks := diffHunks(fromLines, toLines, contextLines)
-
-	var sb bytes.Buffer
-	// Header mimics git's shape so Shiki's diff grammar highlights it.
-	fmt.Fprintf(&sb, "diff --git a/%s b/%s\n", path, path)
-	if fromSHA != "" && toSHA != "" {
-		fmt.Fprintf(&sb, "index %s..%s\n", ShortSHA(fromSHA), ShortSHA(toSHA))
-	}
+// renderUnifiedDiff retains the legacy string-only working-tree call shape.
+// Immutable GetDiff uses renderTextPatch with explicit file presence; an empty
+// content string alone cannot distinguish an existing empty file from absence.
+func renderUnifiedDiff(work *diffWork, path, fromSHA, toSHA, fromContent, toContent string, contextLines int) (string, error) {
+	from := fileSide{content: fromContent, sha: fromSHA}
+	to := fileSide{content: toContent, sha: toSHA}
 	if fromContent == "" {
-		sb.WriteString("--- /dev/null\n")
-	} else {
-		fmt.Fprintf(&sb, "--- a/%s\n", path)
+		from.kind = "missing"
 	}
 	if toContent == "" {
-		sb.WriteString("+++ /dev/null\n")
-	} else {
-		fmt.Fprintf(&sb, "+++ b/%s\n", path)
+		to.kind = "missing"
 	}
-	for _, h := range hunks {
-		fmt.Fprintf(&sb, "@@ -%d,%d +%d,%d @@\n", h.fromStart, h.fromLen, h.toStart, h.toLen)
-		for _, line := range h.lines {
-			sb.WriteString(line)
-		}
-	}
-	return sb.String()
+	return renderTextPatch(work, path, from, to, contextLines)
 }
 
 // renderPlaceholderPatch emits a minimal unified-diff-shaped stub for a
@@ -1787,14 +1921,14 @@ func renderUnifiedDiff(path, fromSHA, toSHA, fromContent, toContent string, cont
 // clean "file too large / binary file changed" banner. Shape stays
 // diff-adjacent so tools that dump the raw patch (CLI, chat prompts)
 // still show something readable.
-func renderPlaceholderPatch(path string, from, to fileSide) string {
+func renderPlaceholderPatch(fromPath, path string, from, to fileSide) string {
 	var sb bytes.Buffer
-	fmt.Fprintf(&sb, "diff --git a/%s b/%s\n", path, path)
+	fmt.Fprintf(&sb, "diff --git %s %s\n", gitPatchPath("a/"+fromPath), gitPatchPath("b/"+path))
 	if from.sha != "" && to.sha != "" {
 		fmt.Fprintf(&sb, "index %s..%s\n", ShortSHA(from.sha), ShortSHA(to.sha))
 	}
-	fmt.Fprintf(&sb, "--- a/%s\n", path)
-	fmt.Fprintf(&sb, "+++ b/%s\n", path)
+	fmt.Fprintf(&sb, "--- %s\n", gitPatchPath("a/"+fromPath))
+	fmt.Fprintf(&sb, "+++ %s\n", gitPatchPath("b/"+path))
 	// Single synthetic hunk: the marker lines are prefixed with '#' so
 	// no diff parser interprets them as +/- content. The frontend looks
 	// for the "placeholder-diff:" sentinel to swap in the banner UI.
@@ -1839,8 +1973,8 @@ func ShortSHA(s string) string {
 // splitLinesKeepNL splits s into lines, keeping trailing newlines so
 // the diff output preserves line terminators. An input ending in "\n"
 // produces N lines; an input without the trailing newline produces the
-// final line without one (matching git's "\ No newline at end of file"
-// behaviour, though we don't emit that marker here).
+// final line without one. buildHunk emits Git's explicit EOF marker rather
+// than silently adding a line terminator to the represented content.
 func splitLinesKeepNL(s string) []string {
 	if s == "" {
 		return nil
@@ -1863,27 +1997,41 @@ func splitLinesKeepNL(s string) []string {
 type diffHunk struct {
 	fromStart, fromLen int
 	toStart, toLen     int
-	lines              []string // each prefixed with ' ', '-', or '+'
+	lines              []string // ' ', '-', '+' content, or a separate '\\' EOF marker
 }
 
-// diffHunks computes hunks from line arrays using a simple LCS-based
-// diff. Good enough for file-pair diffing; not optimized for huge
-// files. The file cap is already ~16 KiB via GetFile's max, so
-// O(m*n) here is fine.
-func diffHunks(a, b []string, contextLines int) []diffHunk {
-	ops := lcsDiffOps(a, b)
+// diffHunks shares one read-owned computation budget with stats/rendering.
+func diffHunks(work *diffWork, a, b []string, contextLines int) ([]diffHunk, error) {
+	ops, err := lcsDiffOps(work, a, b)
+	if err != nil {
+		return nil, err
+	}
 	if len(ops) == 0 {
-		return nil
+		return nil, work.check()
 	}
 
 	// Group non-equal ops into hunks with context lines around.
 	context := contextLines
+	if context < 0 {
+		return nil, errors.New("invalid diff context lines")
+	}
+	if context > len(ops) {
+		context = len(ops)
+	}
 	var hunks []diffHunk
 	n := len(ops)
 	i := 0
 	for i < n {
+		if err := work.check(); err != nil {
+			return nil, err
+		}
 		// Skip leading equals.
 		for i < n && ops[i].kind == opEqual {
+			if i&1023 == 0 {
+				if err := work.check(); err != nil {
+					return nil, err
+				}
+			}
 			i++
 		}
 		if i >= n {
@@ -1898,6 +2046,11 @@ func diffHunks(a, b []string, contextLines int) []diffHunk {
 		// equals (i.e. merge adjacent changes into one hunk).
 		j := i
 		for j < n {
+			if j&1023 == 0 {
+				if err := work.check(); err != nil {
+					return nil, err
+				}
+			}
 			if ops[j].kind != opEqual {
 				j++
 				continue
@@ -1905,6 +2058,11 @@ func diffHunks(a, b []string, contextLines int) []diffHunk {
 			// Count run of equals from j.
 			k := j
 			for k < n && ops[k].kind == opEqual {
+				if k&1023 == 0 {
+					if err := work.check(); err != nil {
+						return nil, err
+					}
+				}
 				k++
 			}
 			runLen := k - j
@@ -1921,22 +2079,33 @@ func diffHunks(a, b []string, contextLines int) []diffHunk {
 		// we have equals for — recompute from the actual ops.
 		actualEnd := j
 		for actualEnd < ctxEnd && actualEnd < n && ops[actualEnd].kind == opEqual {
+			if actualEnd&1023 == 0 {
+				if err := work.check(); err != nil {
+					return nil, err
+				}
+			}
 			actualEnd++
 		}
 
-		h := buildHunk(ops[ctxStart:actualEnd])
+		h, err := buildHunk(work, ops[ctxStart:actualEnd])
+		if err != nil {
+			return nil, err
+		}
 		hunks = append(hunks, h)
 		i = actualEnd
 	}
-	return hunks
+	if err := work.check(); err != nil {
+		return nil, err
+	}
+	return hunks, nil
 }
 
 // diffOp kinds.
 type diffOp struct {
 	kind int    // opEqual | opDel | opIns
 	line string // the line from a or b
-	aIdx int    // 1-based line number in a (0 for inserts)
-	bIdx int    // 1-based line number in b (0 for deletes)
+	aIdx int    // 1-based old line, or preceding old position for an insert
+	bIdx int    // 1-based new line, or preceding new position for a delete
 }
 
 const (
@@ -1946,23 +2115,33 @@ const (
 )
 
 // lcsDiffOps returns a sequence of ops (equal/del/ins) describing the
-// transformation from a to b. Standard dynamic-programming LCS — O(m*n)
-// space and time. Adequate for file-pair diffs up to ~10k lines.
-func lcsDiffOps(a, b []string) []diffOp {
+// transformation from a to b. Reserve bounded cells before allocation and
+// use a flat matrix so row-slice overhead cannot evade the allocation bound.
+func lcsDiffOps(work *diffWork, a, b []string) ([]diffOp, error) {
 	m, n := len(a), len(b)
-	// dp[i][j] = length of LCS of a[:i] and b[:j]
-	dp := make([][]int, m+1)
-	for i := range dp {
-		dp[i] = make([]int, n+1)
+	cells, err := work.reserveCells(m, n)
+	if err != nil {
+		return nil, err
 	}
+	width := n + 1
+	dp := make([]int, cells)
 	for i := 1; i <= m; i++ {
+		if err := work.check(); err != nil {
+			return nil, err
+		}
 		for j := 1; j <= n; j++ {
+			if j&1023 == 0 {
+				if err := work.check(); err != nil {
+					return nil, err
+				}
+			}
+			at := i*width + j
 			if a[i-1] == b[j-1] {
-				dp[i][j] = dp[i-1][j-1] + 1
-			} else if dp[i-1][j] >= dp[i][j-1] {
-				dp[i][j] = dp[i-1][j]
+				dp[at] = dp[at-width-1] + 1
+			} else if dp[at-width] >= dp[at-1] {
+				dp[at] = dp[at-width]
 			} else {
-				dp[i][j] = dp[i][j-1]
+				dp[at] = dp[at-1]
 			}
 		}
 	}
@@ -1970,64 +2149,84 @@ func lcsDiffOps(a, b []string) []diffOp {
 	var ops []diffOp
 	i, j := m, n
 	for i > 0 || j > 0 {
+		if len(ops)&1023 == 0 {
+			if err := work.check(); err != nil {
+				return nil, err
+			}
+		}
 		switch {
 		case i > 0 && j > 0 && a[i-1] == b[j-1]:
 			ops = append(ops, diffOp{kind: opEqual, line: a[i-1], aIdx: i, bIdx: j})
 			i--
 			j--
-		case j > 0 && (i == 0 || dp[i][j-1] >= dp[i-1][j]):
-			ops = append(ops, diffOp{kind: opIns, line: b[j-1], bIdx: j})
+		case j > 0 && (i == 0 || dp[i*width+j-1] >= dp[(i-1)*width+j]):
+			ops = append(ops, diffOp{kind: opIns, line: b[j-1], aIdx: i, bIdx: j})
 			j--
 		default:
-			ops = append(ops, diffOp{kind: opDel, line: a[i-1], aIdx: i})
+			ops = append(ops, diffOp{kind: opDel, line: a[i-1], aIdx: i, bIdx: j})
 			i--
 		}
 	}
 	// Reverse.
 	for l, r := 0, len(ops)-1; l < r; l, r = l+1, r-1 {
+		if l&1023 == 0 {
+			if err := work.check(); err != nil {
+				return nil, err
+			}
+		}
 		ops[l], ops[r] = ops[r], ops[l]
 	}
-	return ops
+	if err := work.check(); err != nil {
+		return nil, err
+	}
+	return ops, nil
 }
 
 // buildHunk renders a slice of ops into a diffHunk with proper line
 // numbers and prefixed lines.
-func buildHunk(slice []diffOp) diffHunk {
+func buildHunk(work *diffWork, slice []diffOp) (diffHunk, error) {
 	var h diffHunk
-	// Establish starting line numbers from the first op in the slice.
-	for _, op := range slice {
-		if op.aIdx > 0 {
-			h.fromStart = op.aIdx
-			break
+	appendLine := func(prefix, line string) {
+		h.lines = append(h.lines, prefix+ensureNL(line))
+		if !strings.HasSuffix(line, "\n") {
+			h.lines = append(h.lines, "\\ No newline at end of file\n")
 		}
 	}
-	for _, op := range slice {
-		if op.bIdx > 0 {
-			h.toStart = op.bIdx
-			break
+	for i, op := range slice {
+		if i&1023 == 0 {
+			if err := work.check(); err != nil {
+				return diffHunk{}, err
+			}
 		}
-	}
-	if h.fromStart == 0 {
-		h.fromStart = 1
-	}
-	if h.toStart == 0 {
-		h.toStart = 1
-	}
-	for _, op := range slice {
 		switch op.kind {
 		case opEqual:
-			h.lines = append(h.lines, " "+ensureNL(op.line))
+			appendLine(" ", op.line)
 			h.fromLen++
 			h.toLen++
 		case opDel:
-			h.lines = append(h.lines, "-"+ensureNL(op.line))
+			appendLine("-", op.line)
 			h.fromLen++
 		case opIns:
-			h.lines = append(h.lines, "+"+ensureNL(op.line))
+			appendLine("+", op.line)
 			h.toLen++
 		}
 	}
-	return h
+	if len(slice) > 0 {
+		first := slice[0]
+		h.fromStart, h.toStart = first.aIdx, first.bIdx
+		// Empty ranges name the preceding line (including zero at BOF).
+		// Nonempty ranges name the first represented line on that side.
+		if first.kind == opIns && h.fromLen > 0 {
+			h.fromStart++
+		}
+		if first.kind == opDel && h.toLen > 0 {
+			h.toStart++
+		}
+	}
+	if err := work.check(); err != nil {
+		return diffHunk{}, err
+	}
+	return h, nil
 }
 
 func ensureNL(s string) string {
@@ -2075,7 +2274,11 @@ func diffTrees(ctx context.Context, from, to *object.Tree) (object.Changes, erro
 // become a race if go-git ever adds a slice or map field.
 func detectRenamesIn(changes object.Changes) (object.Changes, error) {
 	opts := *object.DefaultDiffTreeOptions
-	return object.DetectRenames(changes, &opts)
+	detected, err := object.DetectRenames(changes, &opts)
+	if err != nil {
+		return nil, err
+	}
+	return exactPermissionRenames(detected), nil
 }
 
 func entryType(m filemode.FileMode) gitchatv1.EntryType {
@@ -2101,15 +2304,6 @@ func isBinary(content []byte) bool {
 		check = check[:8192]
 	}
 	return bytes.IndexByte(check, 0) >= 0
-}
-
-func commitBody(s string) string {
-	// Body is everything after the subject + blank separator line.
-	idx := strings.Index(s, "\n\n")
-	if idx < 0 {
-		return ""
-	}
-	return strings.TrimSpace(s[idx+2:])
 }
 
 func firstLine(s string) string {
