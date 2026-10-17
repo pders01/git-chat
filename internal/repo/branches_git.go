@@ -3,6 +3,7 @@ package repo
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -19,16 +20,15 @@ import (
 // branches, "refs/tags" for tags. The Branch proto is intentionally
 // wire-compatible for both.
 func gitListBranches(ctx context.Context, repoDir, refspec string) ([]*gitchatv1.Branch, error) {
-	// Separator: unit (\x1f) between fields, record (\x1e) between refs.
-	// for-each-ref lets us choose any format string; using control bytes
-	// removes any concern about subjects or branch names containing the
-	// separator character.
-	const fieldSep = "%1f"
-	const recSep = "%1e"
-	format := "%(refname:short)" + fieldSep +
+	// Subjects can contain RS/US, but not NUL. Prefix each record with
+	// NUL and terminate all five fields with NUL; for-each-ref appends
+	// exactly one newline after each record. Never trim field contents.
+	const fieldSep = "%00"
+	format := fieldSep + "%(refname:short)" + fieldSep +
 		"%(objectname)" + fieldSep +
 		"%(committerdate:unix)" + fieldSep +
-		"%(subject)" + recSep
+		"%(refname)" + fieldSep +
+		"%(subject)" + fieldSep
 
 	out, err := gitCmd{
 		repoDir: repoDir,
@@ -52,23 +52,84 @@ func parseForEachRef(r io.Reader) ([]*gitchatv1.Branch, error) {
 		return nil, err
 	}
 	var out []*gitchatv1.Branch
-	// Records are \x1e-terminated.
-	for _, rec := range bytes.Split(raw, []byte{0x1e}) {
-		rec = bytes.TrimLeft(rec, "\n")
-		if len(rec) == 0 {
-			continue
+	for record := 1; len(raw) > 0; record++ {
+		if raw[0] != 0 {
+			return nil, fmt.Errorf("for-each-ref record %d: missing NUL prefix", record)
 		}
-		parts := bytes.SplitN(rec, []byte{0x1f}, 4)
-		if len(parts) < 4 {
-			continue
+		raw = raw[1:]
+		var fields [5]string
+		for i := range fields {
+			end := bytes.IndexByte(raw, 0)
+			if end < 0 {
+				return nil, fmt.Errorf("for-each-ref record %d: truncated field %d", record, i+1)
+			}
+			fields[i], raw = string(raw[:end]), raw[end+1:]
 		}
-		ts, _ := strconv.ParseInt(strings.TrimSpace(string(parts[2])), 10, 64)
+		if len(raw) == 0 || raw[0] != '\n' {
+			return nil, fmt.Errorf("for-each-ref record %d: missing record newline", record)
+		}
+		raw = raw[1:]
+		if !validForEachRefName(fields[0]) {
+			return nil, fmt.Errorf("for-each-ref record %d: invalid display name", record)
+		}
+		if !validForEachRefObjectID(fields[1]) {
+			return nil, fmt.Errorf("for-each-ref record %d: invalid object ID", record)
+		}
+		// An annotated tag has no committerdate; retain its legacy zero.
+		var ts int64
+		if fields[2] != "" {
+			ts, err = strconv.ParseInt(fields[2], 10, 64)
+			if err != nil || strconv.FormatInt(ts, 10) != fields[2] {
+				return nil, fmt.Errorf("for-each-ref record %d: invalid committer timestamp", record)
+			}
+		}
+		if !strings.HasPrefix(fields[3], "refs/") || !validForEachRefName(fields[3]) {
+			return nil, fmt.Errorf("for-each-ref record %d: invalid canonical ref", record)
+		}
 		out = append(out, &gitchatv1.Branch{
-			Name:          string(parts[0]),
-			Commit:        string(parts[1]),
+			Name:          fields[0],
+			Commit:        fields[1],
 			CommitterTime: ts,
-			Subject:       string(parts[3]),
+			FullRef:       fields[3],
+			Subject:       fields[4],
 		})
 	}
 	return out, nil
+}
+
+// Validate Git ref spelling without cleaning paths or shortening namespaces.
+// Short display names may be one-level (including "@"), and must stay verbatim.
+func validForEachRefName(name string) bool {
+	if name == "" || strings.HasSuffix(name, ".") || strings.Contains(name, "..") ||
+		strings.Contains(name, "@{") || strings.ContainsAny(name, "~^:?*[\\") {
+		return false
+	}
+	for i := range len(name) {
+		if name[i] <= ' ' || name[i] == 0x7f {
+			return false
+		}
+	}
+	for _, part := range strings.Split(name, "/") {
+		if part == "" || strings.HasPrefix(part, ".") || strings.HasSuffix(part, ".lock") {
+			return false
+		}
+	}
+	return true
+}
+
+func validForEachRefObjectID(id string) bool {
+	// Native Git supports both SHA-1 and SHA-256 object formats. Do not
+	// decode through go-git's SHA-1 Hash, which can truncate/normalize IDs.
+	if len(id) != 40 && len(id) != 64 {
+		return false
+	}
+	nonzero := false
+	for i := range len(id) {
+		c := id[i]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+		nonzero = nonzero || c != '0'
+	}
+	return nonzero
 }

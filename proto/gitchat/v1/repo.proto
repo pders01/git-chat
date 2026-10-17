@@ -116,10 +116,14 @@ message ListBranchesResponse {
 }
 
 message Branch {
-  string name = 1;
-  string commit = 2;          // full SHA
+  string name = 1;            // legacy display name; may be ambiguity-shortened
+  string commit = 2;          // full object ID; annotated tags may name tag objects
   int64 committer_time = 3;   // unix seconds
   string subject = 4;         // first line of the commit message
+  // Exact canonical ref in its namespace, e.g. refs/heads/main or refs/tags/main.
+  // Reading clients use this selector, never reconstruct it from the display name.
+  // Additive: older servers/clients may omit/ignore it. This is not a resolved commit.
+  string full_ref = 5;
 }
 
 // ─── ListTree ───────────────────────────────────────────────────────────

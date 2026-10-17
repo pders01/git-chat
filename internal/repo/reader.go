@@ -73,6 +73,7 @@ func (e *Entry) ListBranches(ctx context.Context) ([]*gitchatv1.Branch, error) {
 		}
 		out = append(out, &gitchatv1.Branch{
 			Name:          ref.Name().Short(),
+			FullRef:       ref.Name().String(),
 			Commit:        ref.Hash().String(),
 			CommitterTime: commit.Committer.When.Unix(),
 			Subject:       firstLine(commit.Message),
@@ -110,8 +111,9 @@ func (e *Entry) ListTags(ctx context.Context) ([]*gitchatv1.Branch, error) {
 	var out []*gitchatv1.Branch
 	err = iter.ForEach(func(ref *plumbing.Reference) error {
 		tag := &gitchatv1.Branch{
-			Name:   ref.Name().Short(),
-			Commit: ref.Hash().String(),
+			Name:    ref.Name().Short(),
+			FullRef: ref.Name().String(),
+			Commit:  ref.Hash().String(),
 		}
 		// Try to resolve as annotated tag first.
 		if tagObj, err := e.repo.TagObject(ref.Hash()); err == nil {

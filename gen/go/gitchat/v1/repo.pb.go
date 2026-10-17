@@ -325,10 +325,14 @@ func (x *ListBranchesResponse) GetTags() []*Branch {
 
 type Branch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Commit        string                 `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`                                     // full SHA
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                         // legacy display name; may be ambiguity-shortened
+	Commit        string                 `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`                                     // full object ID; annotated tags may name tag objects
 	CommitterTime int64                  `protobuf:"varint,3,opt,name=committer_time,json=committerTime,proto3" json:"committer_time,omitempty"` // unix seconds
 	Subject       string                 `protobuf:"bytes,4,opt,name=subject,proto3" json:"subject,omitempty"`                                   // first line of the commit message
+	// Exact canonical ref in its namespace, e.g. refs/heads/main or refs/tags/main.
+	// Reading clients use this selector, never reconstruct it from the display name.
+	// Additive: older servers/clients may omit/ignore it. This is not a resolved commit.
+	FullRef       string `protobuf:"bytes,5,opt,name=full_ref,json=fullRef,proto3" json:"full_ref,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -387,6 +391,13 @@ func (x *Branch) GetCommitterTime() int64 {
 func (x *Branch) GetSubject() string {
 	if x != nil {
 		return x.Subject
+	}
+	return ""
+}
+
+func (x *Branch) GetFullRef() string {
+	if x != nil {
+		return x.FullRef
 	}
 	return ""
 }
@@ -3475,12 +3486,13 @@ const file_gitchat_v1_repo_proto_rawDesc = "" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\"n\n" +
 	"\x14ListBranchesResponse\x12.\n" +
 	"\bbranches\x18\x01 \x03(\v2\x12.gitchat.v1.BranchR\bbranches\x12&\n" +
-	"\x04tags\x18\x02 \x03(\v2\x12.gitchat.v1.BranchR\x04tags\"u\n" +
+	"\x04tags\x18\x02 \x03(\v2\x12.gitchat.v1.BranchR\x04tags\"\x90\x01\n" +
 	"\x06Branch\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06commit\x18\x02 \x01(\tR\x06commit\x12%\n" +
 	"\x0ecommitter_time\x18\x03 \x01(\x03R\rcommitterTime\x12\x18\n" +
-	"\asubject\x18\x04 \x01(\tR\asubject\"P\n" +
+	"\asubject\x18\x04 \x01(\tR\asubject\x12\x19\n" +
+	"\bfull_ref\x18\x05 \x01(\tR\afullRef\"P\n" +
 	"\x0fListTreeRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x10\n" +
 	"\x03ref\x18\x02 \x01(\tR\x03ref\x12\x12\n" +
