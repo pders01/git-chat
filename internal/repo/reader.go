@@ -300,17 +300,28 @@ func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, 
 	}
 	if limit <= 0 {
 		limit = e.cfgInt(ctx, "GITCHAT_DEFAULT_COMMIT_LIMIT", defaultCommitLimitFallback)
+		if limit <= 0 {
+			limit = defaultCommitLimitFallback
+		}
 	}
 	// Cap limit to prevent memory issues on large repos
 	if limit > 200 {
 		limit = 200
 	}
-	// Cap offset for performance
+	// Cap offset for performance.
 	if offset > 10000 {
 		offset = 10000
 	}
-
-	commits, hasMore, gitErr := gitLogCommits(ctx, e.Path, ref, limit, offset, pathFilter)
+	if offset < 0 || !validHistorySelector(ref) || !validHistoryPath(pathFilter) {
+		return nil, false, errInvalidHistoryQuery
+	}
+	// Both backends start from the same resolved commit. A client selector
+	// must never reach Git's option or range parser as part of a history walk.
+	commit, sha, err := e.resolveHistoryCommit(ref)
+	if err != nil {
+		return nil, false, err
+	}
+	commits, hasMore, gitErr := gitLogCommits(ctx, e.Path, sha, limit, offset, pathFilter)
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
@@ -324,11 +335,6 @@ func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, 
 	}
 
 	// ── Fallback: go-git walk ──────────────────────────────────────
-	commit, _, err := e.resolveCommit(ref)
-	if err != nil {
-		return nil, false, err
-	}
-
 	if err := requireLinearFallback(ctx, commit); err != nil {
 		return nil, false, err
 	}
@@ -418,6 +424,48 @@ func (e *Entry) ListCommits(ctx context.Context, ref string, limit, offset int, 
 		return nil, false, err
 	}
 	return out, false, nil
+}
+
+var errInvalidHistoryQuery = errors.New("invalid commit history query")
+
+func (e *Entry) resolveHistoryCommit(ref string) (*object.Commit, string, error) {
+	if ref == "" {
+		ref = "refs/heads/" + e.DefaultBranch
+	}
+	exact := validForEachRefObjectID(ref)
+	if strings.HasPrefix(ref, "refs/") && validForEachRefName(ref) {
+		// A canonical ref name never falls through to a similarly named ref.
+		// ResolveRevision then peels an annotated tag through its object ID.
+		r, err := e.repo.Reference(plumbing.ReferenceName(ref), true)
+		if err != nil {
+			return nil, "", fmt.Errorf("%w: unknown canonical ref", errInvalidHistoryQuery)
+		}
+		ref = r.Hash().String()
+	}
+	commit, sha, err := e.resolveCommit(ref)
+	if err != nil || (exact && sha != ref) {
+		return nil, "", fmt.Errorf("%w: could not resolve history commit", errInvalidHistoryQuery)
+	}
+	return commit, sha, nil
+}
+
+func validHistorySelector(ref string) bool {
+	return len(ref) <= 1024 && utf8.ValidString(ref) && !strings.ContainsRune(ref, '\x00')
+}
+
+func validHistoryPath(path string) bool {
+	if path == "" {
+		return true
+	}
+	if len(path) > 4096 || !utf8.ValidString(path) || strings.ContainsRune(path, '\x00') {
+		return false
+	}
+	for _, part := range strings.Split(path, "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // commitTouchedPath returns true if the commit changed the file at path

@@ -85,9 +85,12 @@ assets are served or embedded by git-chat.
 
 ### History fallback fidelity
 
-`ListCommits` uses native Git with a validated linear-history go-git fallback;
-cancellation is terminal rather than a reason to start another walk. Iterator/tree/blob/stat
-failures reject the page instead of reporting false exhaustion or zero stats.
+`ListCommits` resolves the selector to one commit before paging. Canonical refs
+are exact, paths are literal repository-relative filters, and an empty selector
+uses the registered default branch. Native Git and the validated linear-history
+go-git fallback start from the same commit. Cancellation is terminal rather than
+a reason to start another walk. Iterator/tree/blob/stat failures reject the page
+instead of reporting false exhaustion or zero stats.
 Exact-path history retains mode-only changes; summaries use actual empty-tree
 root diffs and honor the literal file/directory filter rather than estimating
 root additions from file size or counting unrelated paths.

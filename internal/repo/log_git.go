@@ -57,16 +57,17 @@ func nativeLogPage(ctx context.Context, repoDir string, args []string, count int
 	return rows, nil
 }
 
-// gitLogCommits returns an immutable-ref page and one-row lookahead. The
-// caller supplies ref/path validation; paths retain native literal bytes.
+// gitLogCommits pages an already resolved commit with one-row lookahead.
+// Treat the path as repository-relative literal data, not a pathspec pattern.
 func gitLogCommits(ctx context.Context, repoDir, ref string, limit, offset int, path string) ([]*gitchatv1.CommitEntry, bool, error) {
 	args := nativeLogArgs(limit + 1)
 	args = append(args, "--skip="+strconv.Itoa(offset))
 	if ref != "" {
-		args = append(args, ref)
+		args = append(args, "--end-of-options", ref)
 	}
+	args = append(args, "--")
 	if path != "" {
-		args = append(args, "--", path)
+		args = append(args, ":(top,literal)"+path)
 	}
 	rows, err := nativeLogPage(ctx, repoDir, args, limit+1)
 	if err != nil {

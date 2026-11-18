@@ -19,9 +19,10 @@ func TestReaderHistoryLiteralSparsePathsAndFilteredStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Legal literal whitespace and LF are not normalization or Git pathspecs.
-	target := "nested/ exact \tline\n.txt "
-	sibling := target + "-sibling"
+	// A literal bracketed name and a separate file matched by the equivalent
+	// glob must stay distinct in both engines. Whitespace and LF are also data.
+	target := "nested/ exact \tline\n[x].txt "
+	sibling := "nested/ exact \tline\nx.txt "
 	if err := os.MkdirAll(filepath.Join(entry.Path, "nested"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -85,18 +86,24 @@ func TestReaderHistoryLiteralSparsePathsAndFilteredStats(t *testing.T) {
 		}
 		oracles[i] = answer{rows, more}
 	}
-	hideReaderGit(t, entry)
-	for i, q := range queries {
-		rows, more, err := entry.ListCommits(context.Background(), q.ref, q.limit, q.offset, q.path)
-		want := oracles[i]
-		if err != nil || len(rows) != len(want.rows) || more != want.more {
-			t.Fatalf("fallback query %d: rows=%v more=%v err=%v", i, rows, more, err)
-		}
-		for j, row := range rows {
-			oracle := want.rows[j]
-			if row.Sha != oracle.Sha || row.FilesChanged != oracle.FilesChanged || row.Additions != oracle.Additions || row.Deletions != oracle.Deletions {
-				t.Errorf("fallback query %d row %d differs from native membership/filtered counts: got=%v want=%v", i, j, row, oracle)
+	for _, mode := range []string{"native", "fallback"} {
+		t.Run(mode, func(t *testing.T) {
+			if mode == "fallback" {
+				hideReaderGit(t, entry)
 			}
-		}
+			for i, q := range queries {
+				rows, more, err := entry.ListCommits(context.Background(), q.ref, q.limit, q.offset, q.path)
+				want := oracles[i]
+				if err != nil || len(rows) != len(want.rows) || more != want.more {
+					t.Fatalf("query %d: rows=%v more=%v err=%v", i, rows, more, err)
+				}
+				for j, row := range rows {
+					oracle := want.rows[j]
+					if row.Sha != oracle.Sha || row.FilesChanged != oracle.FilesChanged || row.Additions != oracle.Additions || row.Deletions != oracle.Deletions {
+						t.Errorf("query %d row %d differs from native membership/filtered counts: got=%v want=%v", i, j, row, oracle)
+					}
+				}
+			}
+		})
 	}
 }

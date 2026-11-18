@@ -63,6 +63,31 @@ func hideReaderGit(t *testing.T, entry *Entry) {
 	}
 }
 
+func TestReaderHistorySelectsCanonicalRefsBeforePaging(t *testing.T) {
+	entry, ids := readerHistoryFixture(t)
+	if _, err := entry.repo.CreateTag("main", plumbing.NewHash(ids[0]), &git.CreateTagOptions{
+		Tagger:  &object.Signature{Name: "Fixture", Email: "tag@example.invalid", When: time.Unix(1700000010, 0)},
+		Message: "A tag that shares the branch's display name.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"native", "fallback"} {
+		t.Run(mode, func(t *testing.T) {
+			if mode == "fallback" {
+				hideReaderGit(t, entry)
+			}
+			for _, query := range []struct{ ref, first string }{
+				{"", ids[2]}, {"refs/heads/main", ids[2]}, {"refs/tags/main", ids[0]}, {ids[1], ids[1]},
+			} {
+				rows, more, err := entry.ListCommits(context.Background(), query.ref, 1, 0, "")
+				if err != nil || len(rows) != 1 || rows[0].Sha != query.first || more != (query.first != ids[0]) {
+					t.Fatalf("ref %q: rows=%v more=%v err=%v", query.ref, rows, more, err)
+				}
+			}
+		})
+	}
+}
+
 func TestReaderHistoryCanceledReadDoesNotFallThrough(t *testing.T) {
 	for _, mode := range []string{"native", "fallback"} {
 		t.Run(mode, func(t *testing.T) {

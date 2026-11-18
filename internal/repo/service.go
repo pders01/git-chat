@@ -524,6 +524,9 @@ func mapErr(err error) error {
 	if errors.Is(err, errDiffWorkLimit) {
 		return connect.NewError(connect.CodeResourceExhausted, err)
 	}
+	if errors.Is(err, errInvalidHistoryQuery) {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	if errors.Is(err, context.Canceled) {
 		return connect.NewError(connect.CodeCanceled, err)
 	}
