@@ -76,11 +76,12 @@ commit. Resolve the selected full ref before immutable history reads. Old client
 can ignore `full_ref`; older servers omit it, so clients must not guess through
 ambiguous legacy names.
 
-The separate Chatworks consumer carries generated TypeScript descriptors. After a
-contract change, regenerate its `src/gen/` from this same module with Buf's pinned
-`buf.build/bufbuild/es:v2.12.0` plugin (`target=ts`, `import_extension=js`, managed
-mode enabled), rebuild that consumer, and verify binary/JSON compatibility. No
-browser assets are served or embedded by git-chat.
+git-chat owns the wire schemas and generated Go code. After an approved schema
+change, use the selected git-chat revision to update the generated TypeScript
+descriptors in Repokit according to its protocol generation guide, and verify
+binary/JSON compatibility there. Chatworks reexports those descriptors from
+the compiled protocol package and verifies its own packed consumer. No browser
+assets are served or embedded by git-chat.
 
 ### History fallback fidelity
 
