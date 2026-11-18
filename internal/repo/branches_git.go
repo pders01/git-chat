@@ -7,9 +7,23 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 )
+
+const (
+	maxListedRefs     = 2_000
+	maxRefOutputBytes = 8 * 1024 * 1024
+)
+
+func chargeListedRef(entries int, bytes int, branch *gitchatv1.Branch) (int, error) {
+	bytes += len(branch.Name) + len(branch.FullRef) + len(branch.Commit) + len(branch.Subject)
+	if entries >= maxListedRefs || bytes > maxRefOutputBytes {
+		return 0, fmt.Errorf("%w: ref inventory", errRepoReadLimit)
+	}
+	return bytes, nil
+}
 
 // gitListBranches runs `git for-each-ref refs/heads` with a structured
 // format and returns one Branch per local branch. One subprocess reads
@@ -39,7 +53,7 @@ func gitListBranches(ctx context.Context, repoDir, refspec string) ([]*gitchatv1
 			"--format=" + format,
 			refspec,
 		},
-	}.run(ctx)
+	}.runBounded(ctx, maxRefOutputBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -51,8 +65,14 @@ func parseForEachRef(r io.Reader) ([]*gitchatv1.Branch, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !utf8.Valid(raw) {
+		return nil, fmt.Errorf("for-each-ref output is not valid UTF-8")
+	}
 	var out []*gitchatv1.Branch
 	for record := 1; len(raw) > 0; record++ {
+		if record > maxListedRefs {
+			return nil, fmt.Errorf("%w: ref inventory", errRepoReadLimit)
+		}
 		if raw[0] != 0 {
 			return nil, fmt.Errorf("for-each-ref record %d: missing NUL prefix", record)
 		}

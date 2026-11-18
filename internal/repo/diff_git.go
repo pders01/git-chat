@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	gitchatv1 "github.com/pders01/git-chat/gen/go/gitchat/v1"
 	"golang.org/x/sync/errgroup"
@@ -17,6 +18,11 @@ import (
 // so we substitute this sentinel and git treats the other side as the
 // "add everything" baseline.
 const gitEmptyTreeSHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+const (
+	maxFullRangeOutputBytes = 8 * 1024 * 1024 // per patch, raw, or numstat stream
+	maxFullRangeFiles       = 10_000
+)
 
 // gitDiffAll runs the whole-range diff through the native git binary.
 // Returns per-file metadata (status, renames, +/- stats) always; the
@@ -47,12 +53,12 @@ func gitDiffAll(ctx context.Context, repoDir, fromSHA, toSHA string, detectRenam
 	}
 	mkArgs := func(extra ...string) []string {
 		a := make([]string, 0, 4+len(extra))
-		a = append(a, "diff")
+		a = append(a, "diff", "--no-ext-diff", "--no-textconv")
 		if detectRenames {
 			a = append(a, "-M")
 		}
 		a = append(a, extra...)
-		a = append(a, fromSHA, toSHA)
+		a = append(a, fromSHA, toSHA, "--")
 		return a
 	}
 	cfg := []string{"core.quotePath=off"}
@@ -61,23 +67,26 @@ func gitDiffAll(ctx context.Context, repoDir, fromSHA, toSHA string, detectRenam
 	g, gctx := errgroup.WithContext(ctx)
 	if !filesOnly {
 		g.Go(func() error {
-			b, e := gitCmd{repoDir: repoDir, config: cfg, args: mkArgs()}.run(gctx)
+			b, e := gitCmd{repoDir: repoDir, config: cfg, args: mkArgs()}.runBounded(gctx, maxFullRangeOutputBytes)
 			patchB = b
 			return e
 		})
 	}
 	g.Go(func() error {
-		b, e := gitCmd{repoDir: repoDir, config: cfg, args: mkArgs("--numstat", "-z")}.run(gctx)
+		b, e := gitCmd{repoDir: repoDir, config: cfg, args: mkArgs("--numstat", "-z")}.runBounded(gctx, maxFullRangeOutputBytes)
 		statB = b
 		return e
 	})
 	g.Go(func() error {
-		b, e := gitCmd{repoDir: repoDir, config: cfg, args: mkArgs("--raw", "-z")}.run(gctx)
+		b, e := gitCmd{repoDir: repoDir, config: cfg, args: mkArgs("--raw", "-z")}.runBounded(gctx, maxFullRangeOutputBytes)
 		rawB = b
 		return e
 	})
 	if werr := g.Wait(); werr != nil {
 		return "", nil, werr
+	}
+	if !utf8.Valid(patchB) || !utf8.Valid(statB) || !utf8.Valid(rawB) {
+		return "", nil, fmt.Errorf("native diff output is not valid UTF-8")
 	}
 
 	byPath := make(map[string]*gitchatv1.ChangedFile)
@@ -88,6 +97,9 @@ func gitDiffAll(ctx context.Context, repoDir, fromSHA, toSHA string, detectRenam
 		return "", nil, fmt.Errorf("parse --numstat: %w", perr)
 	}
 
+	if len(byPath) > maxFullRangeFiles {
+		return "", nil, fmt.Errorf("%w: full-range file count", errRepoReadLimit)
+	}
 	files = make([]*gitchatv1.ChangedFile, 0, len(byPath))
 	for _, f := range byPath {
 		files = append(files, f)

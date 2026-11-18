@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -55,8 +56,13 @@ func (e *Entry) ListBranches(ctx context.Context) ([]*gitchatv1.Branch, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if out, err := gitListBranches(ctx, e.Path, "refs/heads"); err == nil {
 		return out, nil
+	} else if !errors.Is(err, exec.ErrNotFound) {
+		return nil, err
 	}
 
 	// Fallback: go-git. Much slower on large repos because each branch
@@ -67,18 +73,27 @@ func (e *Entry) ListBranches(ctx context.Context) ([]*gitchatv1.Branch, error) {
 		return nil, fmt.Errorf("iterate branches: %w", err)
 	}
 	var out []*gitchatv1.Branch
+	var listedBytes int
 	err = iter.ForEach(func(ref *plumbing.Reference) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		commit, err := e.repo.CommitObject(ref.Hash())
 		if err != nil {
-			return nil
+			return fmt.Errorf("load listed branch: %w", err)
 		}
-		out = append(out, &gitchatv1.Branch{
+		branch := &gitchatv1.Branch{
 			Name:          ref.Name().Short(),
 			FullRef:       ref.Name().String(),
 			Commit:        ref.Hash().String(),
 			CommitterTime: commit.Committer.When.Unix(),
 			Subject:       firstLine(commit.Message),
-		})
+		}
+		listedBytes, err = chargeListedRef(len(out), listedBytes, branch)
+		if err != nil {
+			return err
+		}
+		out = append(out, branch)
 		return nil
 	})
 	if err != nil {
@@ -98,8 +113,13 @@ func (e *Entry) ListTags(ctx context.Context) ([]*gitchatv1.Branch, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if out, err := gitListBranches(ctx, e.Path, "refs/tags"); err == nil {
 		return out, nil
+	} else if !errors.Is(err, exec.ErrNotFound) {
+		return nil, err
 	}
 
 	// Fallback: go-git. Annotated vs lightweight tag resolution is done
@@ -110,7 +130,11 @@ func (e *Entry) ListTags(ctx context.Context) ([]*gitchatv1.Branch, error) {
 		return nil, fmt.Errorf("iterate tags: %w", err)
 	}
 	var out []*gitchatv1.Branch
+	var listedBytes int
 	err = iter.ForEach(func(ref *plumbing.Reference) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		tag := &gitchatv1.Branch{
 			Name:    ref.Name().Short(),
 			FullRef: ref.Name().String(),
@@ -129,6 +153,11 @@ func (e *Entry) ListTags(ctx context.Context) ([]*gitchatv1.Branch, error) {
 			tag.CommitterTime = commit.Committer.When.Unix()
 			tag.Subject = firstLine(commit.Message)
 		}
+		nextBytes, err := chargeListedRef(len(out), listedBytes, tag)
+		if err != nil {
+			return err
+		}
+		listedBytes = nextBytes
 		out = append(out, tag)
 		return nil
 	})
@@ -1287,11 +1316,9 @@ func (e *Entry) GetBlame(ctx context.Context, ref, path string) ([]*gitchatv1.Bl
 // commit do"); empty toRef defaults to HEAD. Returns empty=true if
 // nothing changed between the two commits for the scope requested.
 //
-// fullRange=true drops the file-count and patch-byte caps — callers
-// that picked an explicit range (branch-vs-branch in compare-view)
-// opt into rendering the whole thing. Per-file stats are always
-// populated regardless of caps so the sidebar never shows +0/-0 for
-// real changes.
+// fullRange=true selects the larger full-range limits rather than the
+// default preview caps. A range that doesn't fit is refused in full.
+// Per-file stats remain available beyond the default patch preview cap.
 //
 // filesOnly=true (whole-commit path only) makes the server skip the
 // aggregate unified patch entirely and return just the file list +
@@ -1401,8 +1428,8 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 	// tree walk + double Myers per file is O(minutes) on Koha-sized
 	// branch diffs; `git diff` finishes the same workload in seconds
 	// because it reuses packfile streams and parallelises internally.
-	// On exec failure we fall through to the go-git path so hosts
-	// without git installed still work.
+	// Only a missing executable permits the go-git fallback; a failed or
+	// refused native read is not a reason to run the operation again.
 	if fullRange {
 		patch, ngFiles, gerr := gitDiffAll(ctx, e.Path, fromResolved, toResolved, detectRenames, filesOnly)
 		if err := work.check(); err != nil {
@@ -1418,6 +1445,9 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 				return "", fromResolved, toResolved, true, nil, nil
 			}
 			return patch, fromResolved, toResolved, false, ngFiles, nil
+		}
+		if !errors.Is(gerr, exec.ErrNotFound) {
+			return "", fromResolved, toResolved, false, nil, gerr
 		}
 	}
 
@@ -1436,8 +1466,19 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 	}
 	// Cap files processed for large diffs. files is index-aligned with
 	// changed, so we slice both together before appending the sentinel.
-	// fullRange opts out — the caller picked an explicit range and wants
-	// the whole thing.
+	// Full-range fallback keeps the whole result only within its hard limit.
+	if fullRange {
+		if len(changed) > maxFullRangeFiles {
+			return "", fromResolved, toResolved, false, nil, fmt.Errorf("%w: full-range file count", errRepoReadLimit)
+		}
+		var metadataBytes int
+		for _, file := range files {
+			metadataBytes += len(file.Path) + len(file.FromPath) + len(file.Status)
+			if metadataBytes > maxFullRangeOutputBytes {
+				return "", fromResolved, toResolved, false, nil, fmt.Errorf("%w: full-range metadata bytes", errRepoReadLimit)
+			}
+		}
+	}
 	const maxFiles = 100
 	if !fullRange && len(changed) > maxFiles {
 		truncatedCount := len(changed) - maxFiles
@@ -1489,13 +1530,16 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 		}
 		// Past the byte cap: keep computing stats for remaining files
 		// so the sidebar is accurate, but stop appending to the patch
-		// buffer. fullRange skips this entire gate.
-		if overCap {
+		// buffer. A files-only request never renders patches.
+		if overCap || filesOnly {
 			continue
 		}
 		filePatch, err := renderFileChange(work, fromPath, p, from, to, contextLines)
 		if err != nil {
 			return "", fromResolved, toResolved, false, nil, err
+		}
+		if fullRange && len(filePatch) > maxFullRangeOutputBytes-sb.Len() {
+			return "", fromResolved, toResolved, false, nil, fmt.Errorf("%w: full-range patch bytes", errRepoReadLimit)
 		}
 		if !fullRange && sb.Len()+len(filePatch) > maxDiffBytes {
 			truncated = len(changed) - i
@@ -1506,6 +1550,9 @@ func (e *Entry) GetDiff(ctx context.Context, fromRef, toRef, path, fromPath stri
 	}
 	if err := work.check(); err != nil {
 		return "", fromResolved, toResolved, false, nil, err
+	}
+	if filesOnly {
+		return "", fromResolved, toResolved, false, files, nil
 	}
 	if truncated > 0 {
 		fmt.Fprintf(&sb, "\n… (%d more file(s) truncated)\n", truncated)

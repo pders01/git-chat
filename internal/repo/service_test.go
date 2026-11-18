@@ -305,8 +305,8 @@ func TestGetDiff(t *testing.T) {
 //     into a single "truncated" sentinel, and files past the byte cap
 //     still get accurate +/− stats so the sidebar never shows +0/-0 for
 //     a file that actually changed.
-//   - fullRange=true: both caps are skipped — every file is returned
-//     with real stats and the patch contains every file header.
+//   - fullRange=true: a range within the hard limits keeps real stats
+//     and a patch with every file header.
 func TestGetDiffCaps(t *testing.T) {
 	path := mustInitRepo(t)
 	r, err := git.PlainOpen(path)
@@ -376,8 +376,8 @@ func TestGetDiffCaps(t *testing.T) {
 		}
 	}
 
-	// fullRange=true: no caps. All 150 files returned with stats, no
-	// sentinel row, and every file header appears in the patch.
+	// fullRange=true: all 150 files fit the higher limits and return
+	// with stats, no sentinel row, and every patch header.
 	full, err := client.GetDiff(ctx, connect.NewRequest(&gitchatv1.GetDiffRequest{
 		RepoId:    entry.ID,
 		FullRange: true,

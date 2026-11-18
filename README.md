@@ -128,7 +128,17 @@ normalization, directory/gitlink patch support and complete rename classificatio
 are not certified. Legacy working-tree presence inference remains separate. Full
 diff/encoding/version/performance parity remains unestablished.
 
-### Diff work limits
+### Repository read limits
+
+Ref inventory returns at most 2,000 branches and tags combined, or refuses the
+request. Native inventory stdout is limited to 8 MiB per namespace. Full-range
+diffs retain the full patch and file inventory only within hard limits: 10,000
+files and 8 MiB per native patch or metadata stream. The go-git fallback also
+limits retained patch and path metadata to 8 MiB each. A files-only request
+still has bounded metadata and does not generate the patch. Cancellation,
+invalid native inventory or diff output, and resource refusal do not trigger a
+second read. These native Git reads require trusted local configuration; the
+limits are not an OS sandbox.
 
 The backend text LCS checks dimensions before line-slice/matrix allocation and uses
 at most 1,048,576 matrix cells (8 MiB of ints on 64-bit hosts) per computation.

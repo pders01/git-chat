@@ -57,12 +57,14 @@ func (s *Service) ListBranches(
 	}
 	branches, err := entry.ListBranches(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, mapErr(err)
 	}
 	tags, err := entry.ListTags(ctx)
 	if err != nil {
-		// Tags are best-effort — don't fail the whole response.
-		tags = nil
+		return nil, mapErr(err)
+	}
+	if len(branches)+len(tags) > maxListedRefs {
+		return nil, mapErr(errRepoReadLimit)
 	}
 	return connect.NewResponse(&gitchatv1.ListBranchesResponse{Branches: branches, Tags: tags}), nil
 }
@@ -521,7 +523,7 @@ func (s *Service) lookup(id string) *Entry {
 }
 
 func mapErr(err error) error {
-	if errors.Is(err, errDiffWorkLimit) {
+	if errors.Is(err, errDiffWorkLimit) || errors.Is(err, errRepoReadLimit) {
 		return connect.NewError(connect.CodeResourceExhausted, err)
 	}
 	if errors.Is(err, errInvalidHistoryQuery) {

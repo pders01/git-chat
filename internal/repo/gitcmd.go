@@ -3,6 +3,7 @@ package repo
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -62,6 +63,40 @@ func (g gitCmd) run(ctx context.Context) ([]byte, error) {
 		return nil, wrapStderrErr(g.args, err, stderr)
 	}
 	return out, nil
+}
+
+var errRepoReadLimit = errors.New("repository read limit exceeded")
+
+// runBounded stops the owned process at the stdout limit and never returns a
+// successful prefix. The caller's cancellation takes precedence over errors.
+func (g gitCmd) runBounded(ctx context.Context, maxBytes int64) ([]byte, error) {
+	childCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stdout, wait, err := g.pipe(childCtx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, err
+	}
+	out, readErr := io.ReadAll(io.LimitReader(stdout, maxBytes+1))
+	overLimit := int64(len(out)) > maxBytes
+	if readErr != nil || overLimit {
+		cancel()
+	}
+	waitErr := wait()
+	switch {
+	case ctx.Err() != nil:
+		return nil, ctx.Err()
+	case overLimit:
+		return nil, fmt.Errorf("%w: git %s stdout", errRepoReadLimit, firstArg(g.args))
+	case readErr != nil:
+		return nil, readErr
+	case waitErr != nil:
+		return nil, waitErr
+	default:
+		return out, nil
+	}
 }
 
 // pipe starts the command and returns a streaming reader over stdout
